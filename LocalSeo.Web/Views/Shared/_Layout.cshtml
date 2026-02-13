@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Local SEO Tool</title>
+    <link rel="stylesheet" href="/css/site.css" />
+</head>
+<body>
+<header>
+    <a href="/search">Search</a> | <a href="/runs">Runs</a>
+    @if (User.Identity?.IsAuthenticated == true)
+    {
+        <form method="post" action="/logout" style="display:inline">
+            @Html.AntiForgeryToken()
+            <button type="submit">Logout (@User.Identity?.Name)</button>
+        </form>
+    }
+</header>
+<main>
+    @RenderBody()
+</main>
+</body>
+</html>

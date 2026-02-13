@@ -1,0 +1,13 @@
+@model IReadOnlyList<PlaceSnapshotRow>
+<h2>Run @ViewBag.RunId snapshots</h2>
+<table>
+<thead><tr><th>Rank</th><th>PlaceId</th><th>Name</th><th>Rating</th><th>Ratings</th><th>Address</th><th>Captured</th></tr></thead>
+<tbody>
+@foreach (var s in Model)
+{
+    <tr>
+        <td>@s.RankPosition</td><td>@s.PlaceId</td><td>@s.DisplayName</td><td>@s.Rating</td><td>@s.UserRatingCount</td><td>@s.FormattedAddress</td><td>@s.CapturedAtUtc</td>
+    </tr>
+}
+</tbody>
+</table>
