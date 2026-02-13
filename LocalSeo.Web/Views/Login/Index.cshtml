@@ -1,0 +1,29 @@
+@{
+    var step = (string?)ViewBag.Step ?? "request";
+    var email = (string?)ViewBag.Email ?? "";
+}
+<h2>Login</h2>
+@if (ViewBag.Message != null)
+{
+    <p>@ViewBag.Message</p>
+}
+@if (step == "verify")
+{
+    <form method="post" action="/login/verify">
+        @Html.AntiForgeryToken()
+        <input type="hidden" name="Email" value="@email" />
+        <label>Email: @email</label><br />
+        <label>6-digit code</label>
+        <input name="Code" maxlength="6" />
+        <button type="submit">Verify</button>
+    </form>
+}
+else
+{
+    <form method="post" action="/login/request">
+        @Html.AntiForgeryToken()
+        <label>Email</label>
+        <input name="Email" type="email" required />
+        <button type="submit">Send Code</button>
+    </form>
+}

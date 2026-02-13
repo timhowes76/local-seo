@@ -1,0 +1,21 @@
+@model SearchFormModel
+<h2>Run Google Places Search</h2>
+@if (TempData["Status"] != null)
+{
+    <div>@TempData["Status"]</div>
+}
+<form method="post" action="/search">
+    @Html.AntiForgeryToken()
+    <label>SeedKeyword</label><input asp-for="SeedKeyword" required /><br />
+    <label>LocationName</label><input asp-for="LocationName" required /><br />
+    <label>CenterLat</label><input asp-for="CenterLat" /><br />
+    <label>CenterLng</label><input asp-for="CenterLng" /><br />
+    <label>RadiusMeters</label><input asp-for="RadiusMeters" /><br />
+    <label>ResultLimit (1..20)</label><input asp-for="ResultLimit" min="1" max="20" /><br />
+    <label>Fetch Reviews</label><input asp-for="FetchReviews" type="checkbox" /><br />
+    <button type="submit">Run Search</button>
+</form>
+<div>
+    <h3>Status Log</h3>
+    <p>Latest action: @(TempData["Status"] ?? "Ready")</p>
+</div>
