@@ -1,0 +1,74 @@
+@model IReadOnlyList<DataForSeoTaskRow>
+<h2>DataForSEO Tasks</h2>
+
+@if (TempData["Status"] != null)
+{
+    <div>@TempData["Status"]</div>
+}
+
+<p><a href="/admin">Back to Admin</a></p>
+
+<form method="post" action="/admin/dataforseo-tasks/refresh">
+    @Html.AntiForgeryToken()
+    <button type="submit">Refresh Statuses (Tasks Ready)</button>
+</form>
+
+@if (Model.Count == 0)
+{
+    <p>No DataForSEO tasks found.</p>
+}
+else
+{
+    <table>
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>Task ID</th>
+            <th>Place ID</th>
+            <th>Location</th>
+            <th>Status</th>
+            <th>Task Code</th>
+            <th>Task Message</th>
+            <th>Endpoint</th>
+            <th>Created</th>
+            <th>Last Checked</th>
+            <th>Ready</th>
+            <th>Populated</th>
+            <th>Callback At</th>
+            <th>Callback Task ID</th>
+            <th>Last Import Count</th>
+            <th>Error</th>
+            <th>Action</th>
+        </tr>
+    </thead>
+    <tbody>
+    @foreach (var row in Model)
+    {
+        <tr>
+            <td>@row.DataForSeoReviewTaskId</td>
+            <td><code>@row.DataForSeoTaskId</code></td>
+            <td><code>@row.PlaceId</code></td>
+            <td>@(row.LocationName ?? "N/A")</td>
+            <td>@row.Status</td>
+            <td>@(row.TaskStatusCode?.ToString() ?? "N/A")</td>
+            <td>@(row.TaskStatusMessage ?? "N/A")</td>
+            <td>@(row.Endpoint ?? "N/A")</td>
+            <td>@row.CreatedAtUtc.ToString("u")</td>
+            <td>@(row.LastCheckedUtc?.ToString("u") ?? "N/A")</td>
+            <td>@(row.ReadyAtUtc?.ToString("u") ?? "N/A")</td>
+            <td>@(row.PopulatedAtUtc?.ToString("u") ?? "N/A")</td>
+            <td>@(row.CallbackReceivedAtUtc?.ToString("u") ?? "N/A")</td>
+            <td>@(row.CallbackTaskId ?? "N/A")</td>
+            <td>@(row.LastPopulateReviewCount?.ToString() ?? "N/A")</td>
+            <td>@(row.LastError ?? "N/A")</td>
+            <td>
+                <form method="post" action="/admin/dataforseo-tasks/@row.DataForSeoReviewTaskId/populate">
+                    @Html.AntiForgeryToken()
+                    <button type="submit">Populate Results</button>
+                </form>
+            </td>
+        </tr>
+    }
+    </tbody>
+    </table>
+}
