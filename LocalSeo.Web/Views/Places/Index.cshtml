@@ -1,0 +1,43 @@
+@model IReadOnlyList<PlaceVelocityListItemDto>
+@{
+    var reviewsDir = string.Equals((string?)ViewBag.Sort, "reviewsLast90", StringComparison.OrdinalIgnoreCase) && string.Equals((string?)ViewBag.Direction, "desc", StringComparison.OrdinalIgnoreCase) ? "asc" : "desc";
+    var trendDir = string.Equals((string?)ViewBag.Sort, "trend90Pct", StringComparison.OrdinalIgnoreCase) && string.Equals((string?)ViewBag.Direction, "desc", StringComparison.OrdinalIgnoreCase) ? "asc" : "desc";
+    var daysDir = string.Equals((string?)ViewBag.Sort, "daysSinceLastReview", StringComparison.OrdinalIgnoreCase) && string.Equals((string?)ViewBag.Direction, "desc", StringComparison.OrdinalIgnoreCase) ? "asc" : "desc";
+}
+
+<h2>Places</h2>
+<table>
+    <thead>
+        <tr>
+            <th>Place</th>
+            <th>Avg Rating</th>
+            <th>Total Reviews</th>
+            <th><a href="/places?sort=reviewsLast90&direction=@reviewsDir">Reviews 90d</a></th>
+            <th>Avg/mo (12m)</th>
+            <th><a href="/places?sort=trend90Pct&direction=@trendDir">Trend (90d)</a></th>
+            <th><a href="/places?sort=daysSinceLastReview&direction=@daysDir">Days since last review</a></th>
+            <th><a href="/places?sort=needsAttention&direction=asc">Status</a></th>
+            <th>Momentum</th>
+            <th>Details</th>
+        </tr>
+    </thead>
+    <tbody>
+    @foreach (var row in Model)
+    {
+        var trend = row.Trend90Pct.HasValue ? $"{row.Trend90Pct.Value:+0.##;-0.##;0}%" : "N/A";
+        var trendArrow = !row.Trend90Pct.HasValue ? "→" : row.Trend90Pct.Value > 0 ? "↑" : row.Trend90Pct.Value < 0 ? "↓" : "→";
+        <tr>
+            <td>@(row.DisplayName ?? row.PlaceId)</td>
+            <td>@(row.Rating?.ToString("0.0") ?? "N/A")</td>
+            <td>@(row.UserRatingCount?.ToString() ?? "N/A")</td>
+            <td>@(row.ReviewsLast90?.ToString() ?? "0")</td>
+            <td>@(row.AvgPerMonth12m?.ToString("0.0") ?? "0.0")</td>
+            <td>@trendArrow @trend</td>
+            <td>@(row.DaysSinceLastReview?.ToString() ?? "N/A")</td>
+            <td><span class="status-pill status-@((row.StatusLabel ?? "NoReviews").ToLowerInvariant())">@(row.StatusLabel ?? "NoReviews")</span></td>
+            <td>@(row.MomentumScore?.ToString() ?? "N/A")</td>
+            <td><a href="/places/@row.PlaceId">View</a></td>
+        </tr>
+    }
+    </tbody>
+</table>

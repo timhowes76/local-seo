@@ -14,6 +14,7 @@ public sealed class DataForSeoReviewsProvider(
     ISqlConnectionFactory connectionFactory,
     IHttpClientFactory httpClientFactory,
     IOptions<DataForSeoOptions> options,
+    IReviewVelocityService reviewVelocityService,
     ILogger<DataForSeoReviewsProvider> logger) : IReviewsProvider, IDataForSeoTaskTracker
 {
     public async Task FetchAndStoreReviewsAsync(
@@ -352,6 +353,7 @@ WHERE DataForSeoReviewTaskId=@DataForSeoReviewTaskId;",
             }, tx, cancellationToken: ct));
 
         await tx.CommitAsync(ct);
+        await reviewVelocityService.RecomputePlaceStatsAsync(task.PlaceId, ct);
 
         return new DataForSeoPopulateResult(true, $"Upserted {upserted} reviews.", upserted);
     }

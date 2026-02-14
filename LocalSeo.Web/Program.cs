@@ -51,6 +51,8 @@ builder.Services.AddScoped<NullReviewsProvider>();
 builder.Services.AddScoped<NotImplementedReviewsProvider>();
 builder.Services.AddScoped<DataForSeoReviewsProvider>();
 builder.Services.AddScoped<IDataForSeoTaskTracker, DataForSeoReviewsProvider>();
+builder.Services.AddScoped<IReviewVelocityService, ReviewVelocityService>();
+builder.Services.AddScoped<ICompetitorVelocityAdapter, NullCompetitorVelocityAdapter>();
 
 var app = builder.Build();
 

@@ -16,7 +16,13 @@ public sealed record PlaceSnapshotRow(
     decimal? Lat,
     decimal? Lng,
     string? FormattedAddress,
-    string? WebsiteUri);
+    string? WebsiteUri,
+    int? ReviewsLast90,
+    decimal? AvgPerMonth12m,
+    decimal? Trend90Pct,
+    int? DaysSinceLastReview,
+    string? StatusLabel,
+    int? MomentumScore);
 public sealed record PlaceHistoryRow(long SearchRunId, int RankPosition, decimal? Rating, int? UserRatingCount, DateTime CapturedAtUtc);
 public sealed record PlaceReviewRow(
     string ReviewId,
@@ -73,7 +79,55 @@ public sealed class PlaceDetailsViewModel
     public DateTime? ActiveCapturedAtUtc { get; init; }
     public IReadOnlyList<PlaceReviewRow> Reviews { get; init; } = [];
     public IReadOnlyList<PlaceHistoryRow> History { get; init; } = [];
+    public PlaceReviewVelocityDetailsDto? ReviewVelocity { get; init; }
 }
+
+public sealed record PlaceVelocityListItemDto(
+    string PlaceId,
+    string? DisplayName,
+    decimal? Rating,
+    int? UserRatingCount,
+    int? ReviewsLast90,
+    decimal? AvgPerMonth12m,
+    decimal? Trend90Pct,
+    int? DaysSinceLastReview,
+    string? StatusLabel,
+    int? MomentumScore);
+
+public sealed record PlaceReviewVelocityDetailsDto(
+    string PlaceId,
+    DateTime? AsOfUtc,
+    int? ReviewsLast90,
+    int? ReviewsLast180,
+    int? ReviewsLast270,
+    int? ReviewsLast365,
+    decimal? AvgPerMonth12m,
+    int? Prev90,
+    decimal? Trend90Pct,
+    int? DaysSinceLastReview,
+    DateTime? LastReviewTimestampUtc,
+    int? LongestGapDays12m,
+    decimal? RespondedPct12m,
+    decimal? AvgOwnerResponseHours12m,
+    int? MomentumScore,
+    string? StatusLabel,
+    IReadOnlyList<MonthlyReviewCountDto> MonthlySeries,
+    IReadOnlyList<YearReviewBreakdownDto> YearBreakdown,
+    CompetitorVelocityBlockDto? CompetitorBlock);
+
+public sealed record MonthlyReviewCountDto(int Year, int Month, int ReviewCount);
+
+public sealed record YearReviewBreakdownDto(int Year, int ReviewCount, decimal? AvgRating, decimal? RespondedPct);
+
+public sealed record CompetitorVelocityBlockDto(
+    IReadOnlyList<CompetitorVelocityItemDto> Competitors,
+    decimal? CompetitorAverageReviewsPerMonth12m);
+
+public sealed record CompetitorVelocityItemDto(
+    string Name,
+    int ReviewsLast365,
+    decimal? AvgRating,
+    int? DaysSinceLastReview);
 
 public sealed class SearchFormModel
 {
