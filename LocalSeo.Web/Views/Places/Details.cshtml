@@ -1,0 +1,87 @@
+@model PlaceDetailsViewModel
+<h2>Location Details</h2>
+@if (ViewBag.RequestedRunId != null)
+{
+    <p><a href="/runs/@ViewBag.RequestedRunId">Back to Run @ViewBag.RequestedRunId</a></p>
+}
+
+<div><strong>Name:</strong> @Model.DisplayName</div>
+<div><strong>Place ID:</strong> @Model.PlaceId</div>
+<div><strong>Address:</strong> @Model.FormattedAddress</div>
+<div><strong>Primary Category:</strong> @(Model.PrimaryCategory ?? Model.PrimaryType ?? "N/A")</div>
+<div><strong>Telephone:</strong> @(Model.NationalPhoneNumber ?? "N/A")</div>
+<div>
+    <strong>Website:</strong>
+    @if (!string.IsNullOrWhiteSpace(Model.WebsiteUri))
+    {
+        <a href="@Model.WebsiteUri" target="_blank" rel="noopener noreferrer">@Model.WebsiteUri</a>
+    }
+    else
+    {
+        <span>N/A</span>
+    }
+</div>
+<div><strong>Latitude:</strong> @Model.Lat</div>
+<div><strong>Longitude:</strong> @Model.Lng</div>
+<div><strong>Photo Count:</strong> @(Model.PhotoCount?.ToString() ?? "N/A")</div>
+<div><strong>Description:</strong> @(Model.Description ?? "N/A")</div>
+<div><strong>Service Area Business:</strong> @(Model.IsServiceAreaBusiness.HasValue ? (Model.IsServiceAreaBusiness.Value ? "Yes" : "No") : "N/A")</div>
+<div><strong>Business Status:</strong> @(Model.BusinessStatus ?? "N/A")</div>
+<div><strong>Active Run:</strong> @(Model.ActiveRunId?.ToString() ?? "N/A")</div>
+<div><strong>Active Rank:</strong> @(Model.ActiveRankPosition?.ToString() ?? "N/A")</div>
+<div><strong>Active Rating:</strong> @(Model.ActiveRating?.ToString() ?? "N/A")</div>
+<div><strong>Active Rating Count:</strong> @(Model.ActiveUserRatingCount?.ToString() ?? "N/A")</div>
+<div><strong>Captured At:</strong> @(Model.ActiveCapturedAtUtc?.ToString("u") ?? "N/A")</div>
+
+<h3>Opening Hours</h3>
+@if (Model.RegularOpeningHours.Count == 0)
+{
+    <p>N/A</p>
+}
+else
+{
+    <ul>
+    @foreach (var row in Model.RegularOpeningHours)
+    {
+        <li>@row</li>
+    }
+    </ul>
+}
+
+<h3>Other Categories</h3>
+@if (Model.OtherCategories.Count == 0)
+{
+    <p>None</p>
+}
+else
+{
+    <ul>
+    @foreach (var category in Model.OtherCategories)
+    {
+        <li>@category</li>
+    }
+    </ul>
+}
+
+<h3>Social Profiles</h3>
+<p>Not available from Google Places API. Requires Google Business Profile data.</p>
+
+<h3>Service Areas</h3>
+<p>Not available from Google Places API. Requires Google Business Profile data.</p>
+
+<h3>Recent History</h3>
+<table>
+<thead><tr><th>Run</th><th>Rank</th><th>Rating</th><th>Ratings</th><th>Captured</th></tr></thead>
+<tbody>
+@foreach (var h in Model.History)
+{
+    <tr>
+        <td><a href="/runs/@h.SearchRunId">@h.SearchRunId</a></td>
+        <td>@h.RankPosition</td>
+        <td>@h.Rating</td>
+        <td>@h.UserRatingCount</td>
+        <td>@h.CapturedAtUtc</td>
+    </tr>
+}
+</tbody>
+</table>

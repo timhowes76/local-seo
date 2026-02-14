@@ -1,4 +1,5 @@
 using LocalSeo.Web.Services;
+using LocalSeo.Web.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -14,7 +15,11 @@ public class RunsController(ISearchIngestionService ingestionService) : Controll
     [HttpGet("/runs/{id:long}")]
     public async Task<IActionResult> Details(long id, CancellationToken ct)
     {
-        ViewBag.RunId = id;
-        return View(await ingestionService.GetRunSnapshotsAsync(id, ct));
+        var run = await ingestionService.GetRunAsync(id, ct);
+        if (run is null)
+            return NotFound();
+
+        var snapshots = await ingestionService.GetRunSnapshotsAsync(id, ct);
+        return View(new RunDetailsViewModel(run, snapshots));
     }
 }
