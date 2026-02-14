@@ -1,13 +1,168 @@
-@model IReadOnlyList<PlaceSnapshotRow>
-<h2>Run @ViewBag.RunId snapshots</h2>
+@using System.Text.Json
+@inject Microsoft.Extensions.Options.IOptions<LocalSeo.Web.Options.GoogleOptions> GoogleOptions
+@model RunDetailsViewModel
+<h2>Run @Model.Run.SearchRunId snapshots</h2>
+<div><strong>Keyword:</strong> @Model.Run.SeedKeyword</div>
+<div><strong>Location:</strong> @Model.Run.LocationName</div>
+
 <table>
-<thead><tr><th>Rank</th><th>PlaceId</th><th>Name</th><th>Rating</th><th>Ratings</th><th>Address</th><th>Captured</th></tr></thead>
+<thead><tr><th>Rank</th><th>Name</th><th>Primary Category</th><th>Photos</th><th>Telephone</th><th>Website</th><th>Avg Rating</th><th>Reviews</th><th>Address</th><th>Captured</th><th>Details</th></tr></thead>
 <tbody>
-@foreach (var s in Model)
+@foreach (var s in Model.Snapshots)
 {
     <tr>
-        <td>@s.RankPosition</td><td>@s.PlaceId</td><td>@s.DisplayName</td><td>@s.Rating</td><td>@s.UserRatingCount</td><td>@s.FormattedAddress</td><td>@s.CapturedAtUtc</td>
+        <td>@s.RankPosition</td>
+        <td>@s.DisplayName</td>
+        <td>@(string.IsNullOrWhiteSpace(s.PrimaryCategory) ? "N/A" : s.PrimaryCategory)</td>
+        <td>@(s.PhotoCount?.ToString() ?? "N/A")</td>
+        <td>
+            @if (!string.IsNullOrWhiteSpace(s.NationalPhoneNumber))
+            {
+                <a href="tel:@s.NationalPhoneNumber">@s.NationalPhoneNumber</a>
+            }
+            else
+            {
+                <span>N/A</span>
+            }
+        </td>
+        <td>
+            @if (!string.IsNullOrWhiteSpace(s.WebsiteUri))
+            {
+                <a href="@s.WebsiteUri" target="_blank" rel="noopener noreferrer">Website</a>
+            }
+            else
+            {
+                <span>N/A</span>
+            }
+        </td>
+        <td>@(s.Rating?.ToString() ?? "N/A")</td>
+        <td>@(s.UserRatingCount?.ToString() ?? "N/A")</td>
+        <td>@s.FormattedAddress</td>
+        <td>@s.CapturedAtUtc</td>
+        <td><a href="/places/@s.PlaceId?runId=@Model.Run.SearchRunId">View</a></td>
     </tr>
 }
 </tbody>
 </table>
+
+@{
+    var apiKey = GoogleOptions.Value.ApiKey;
+    var mapPoints = Model.Snapshots
+        .Where(x => x.Lat.HasValue && x.Lng.HasValue)
+        .Select(x => new
+        {
+            placeId = x.PlaceId,
+            displayName = x.DisplayName,
+            rating = x.Rating,
+            userRatingCount = x.UserRatingCount,
+            primaryCategory = x.PrimaryCategory,
+            lat = x.Lat!.Value,
+            lng = x.Lng!.Value,
+            detailsUrl = $"/places/{x.PlaceId}?runId={Model.Run.SearchRunId}"
+        })
+        .ToList();
+}
+
+@if (string.IsNullOrWhiteSpace(apiKey))
+{
+    <p>Map unavailable because Google API key is not configured.</p>
+}
+else
+{
+    <h3>Search Center Map</h3>
+    <div id="run-map" style="width:100%;height:500px;margin-top:12px;"></div>
+    <script>
+        const runCenter = {
+            lat: @((Model.Run.CenterLat?.ToString(System.Globalization.CultureInfo.InvariantCulture)) ?? "null"),
+            lng: @((Model.Run.CenterLng?.ToString(System.Globalization.CultureInfo.InvariantCulture)) ?? "null")
+        };
+        const businessPins = @Html.Raw(JsonSerializer.Serialize(mapPoints));
+
+        function escapeHtml(value) {
+            if (value === null || value === undefined) return "";
+            return String(value)
+                .replaceAll("&", "&amp;")
+                .replaceAll("<", "&lt;")
+                .replaceAll(">", "&gt;")
+                .replaceAll("\"", "&quot;")
+                .replaceAll("'", "&#39;");
+        }
+
+        function initRunMap() {
+            const hasCenter = runCenter.lat !== null && runCenter.lng !== null;
+            const fallbackCenter = hasCenter ? { lat: runCenter.lat, lng: runCenter.lng } : { lat: 0, lng: 0 };
+
+            const map = new google.maps.Map(document.getElementById("run-map"), {
+                center: fallbackCenter,
+                zoom: 12
+            });
+
+            const bounds = new google.maps.LatLngBounds();
+            const infoWindow = new google.maps.InfoWindow();
+
+            const myLocationIcon = {
+                path: "M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zm8.94 3A8.994 8.994 0 0 0 13 3.06V1h-2v2.06A8.994 8.994 0 0 0 3.06 11H1v2h2.06A8.994 8.994 0 0 0 11 20.94V23h2v-2.06A8.994 8.994 0 0 0 20.94 13H23v-2h-2.06zM12 19a7 7 0 1 1 0-14 7 7 0 0 1 0 14z",
+                fillColor: "#1a73e8",
+                fillOpacity: 1,
+                strokeColor: "#0b3d91",
+                strokeWeight: 1,
+                scale: 1.15,
+                anchor: new google.maps.Point(12, 12)
+            };
+
+            const placeIcon = {
+                path: "M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z",
+                fillColor: "#e53935",
+                fillOpacity: 1,
+                strokeColor: "#7f0000",
+                strokeWeight: 1,
+                scale: 1.2,
+                anchor: new google.maps.Point(12, 24)
+            };
+
+            if (hasCenter) {
+                const centerPosition = { lat: runCenter.lat, lng: runCenter.lng };
+                new google.maps.Marker({
+                    map: map,
+                    position: centerPosition,
+                    icon: myLocationIcon,
+                    title: "Search Center"
+                });
+                bounds.extend(centerPosition);
+            }
+
+            for (const pin of businessPins) {
+                const position = { lat: pin.lat, lng: pin.lng };
+                const marker = new google.maps.Marker({
+                    map: map,
+                    position: position,
+                    icon: placeIcon,
+                    title: pin.displayName || "Business"
+                });
+
+                marker.addListener("click", () => {
+                    const content = `
+                        <div style="min-width:240px;line-height:1.35;">
+                            <div style="font-size:2em;font-weight:700;">${escapeHtml(pin.displayName || "N/A")}</div>
+                            <div style="margin-top:4px;">
+                                ${escapeHtml(pin.rating ?? "N/A")}
+                                <span style="color:#fbbc04;" aria-label="star">★</span>
+                                (${escapeHtml(pin.userRatingCount ?? "N/A")})
+                                - ${escapeHtml(pin.primaryCategory || "N/A")}
+                            </div>
+                            <div style="margin-top:8px;"><a href="${escapeHtml(pin.detailsUrl)}">View</a></div>
+                        </div>`;
+                    infoWindow.setContent(content);
+                    infoWindow.open({ map, anchor: marker });
+                });
+
+                bounds.extend(position);
+            }
+
+            if (!bounds.isEmpty()) {
+                map.fitBounds(bounds);
+            }
+        }
+    </script>
+    <script async defer src="https://maps.googleapis.com/maps/api/js?key=@System.Uri.EscapeDataString(apiKey)&callback=initRunMap"></script>
+}

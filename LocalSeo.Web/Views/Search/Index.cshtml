@@ -6,10 +6,9 @@
 }
 <form method="post" action="/search">
     @Html.AntiForgeryToken()
+    @Html.ValidationSummary(false)
     <label>SeedKeyword</label><input asp-for="SeedKeyword" required /><br />
     <label>LocationName</label><input asp-for="LocationName" required /><br />
-    <label>CenterLat</label><input asp-for="CenterLat" /><br />
-    <label>CenterLng</label><input asp-for="CenterLng" /><br />
     <label>RadiusMeters</label><input asp-for="RadiusMeters" /><br />
     <label>ResultLimit (1..20)</label><input asp-for="ResultLimit" min="1" max="20" /><br />
     <label>Fetch Reviews</label><input asp-for="FetchReviews" type="checkbox" /><br />
