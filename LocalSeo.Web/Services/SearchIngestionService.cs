@@ -21,6 +21,7 @@ public sealed class SearchIngestionService(
     IGooglePlacesClient google,
     IOptions<PlacesOptions> placesOptions,
     IReviewsProviderResolver reviewsProviderResolver,
+    DataForSeoReviewsProvider dataForSeoReviewsProvider,
     ILogger<SearchIngestionService> logger) : ISearchIngestionService
 {
     public async Task<long> RunAsync(SearchFormModel model, CancellationToken ct)
@@ -29,7 +30,10 @@ public sealed class SearchIngestionService(
         if (center is null)
             throw new InvalidOperationException($"Could not determine coordinates for '{model.LocationName}'.");
 
-        var (centerLat, centerLng) = center.Value;
+        var (centerLat, centerLng, canonicalLocationName) = center.Value;
+        var effectiveLocationName = !string.IsNullOrWhiteSpace(canonicalLocationName)
+            ? canonicalLocationName
+            : model.LocationName;
         var places = await google.SearchAsync(model.SeedKeyword, model.LocationName, centerLat, centerLng, model.RadiusMeters, model.ResultLimit, ct);
 
         await using var conn = (Microsoft.Data.SqlClient.SqlConnection)await connectionFactory.OpenConnectionAsync(ct);
@@ -49,9 +53,24 @@ VALUES(@SeedKeyword,@LocationName,@CenterLat,@CenterLng,@RadiusMeters,@ResultLim
                 model.ResultLimit
             }, tx, cancellationToken: ct));
 
-        var provider = reviewsProviderResolver.Resolve(out var providerName);
-        if (providerName.Equals("SerpApi", StringComparison.OrdinalIgnoreCase) && model.FetchReviews)
-            logger.LogWarning("Reviews provider selected as SerpApi, but implementation is pending.");
+        IReviewsProvider? provider = null;
+        var providerName = string.Empty;
+        if (model.FetchReviews)
+        {
+            provider = reviewsProviderResolver.Resolve(out providerName);
+            if (provider is NullReviewsProvider)
+            {
+                provider = dataForSeoReviewsProvider;
+                providerName = "DataForSeo";
+                logger.LogWarning("FetchReviews was checked with provider '{ProviderName}'. Falling back to DataForSeo.", placesOptions.Value.ReviewsProvider);
+            }
+            if (providerName.Equals("SerpApi", StringComparison.OrdinalIgnoreCase))
+                logger.LogWarning("Reviews provider selected as SerpApi, but implementation is pending.");
+        }
+
+        var reviewRequests = model.FetchReviews
+            ? new Dictionary<string, int?>(StringComparer.OrdinalIgnoreCase)
+            : null;
 
         for (var i = 0; i < places.Count; i++)
         {
@@ -74,13 +93,14 @@ WHEN MATCHED THEN UPDATE SET
   PhotoCount=@PhotoCount,
   IsServiceAreaBusiness=@IsServiceAreaBusiness,
   BusinessStatus=@BusinessStatus,
+  SearchLocationName=@SearchLocationName,
   RegularOpeningHoursJson=@RegularOpeningHoursJson,
   LastSeenUtc=SYSUTCDATETIME()
 WHEN NOT MATCHED THEN INSERT(
-  PlaceId,DisplayName,PrimaryType,PrimaryCategory,TypesCsv,FormattedAddress,Lat,Lng,NationalPhoneNumber,WebsiteUri,Description,PhotoCount,IsServiceAreaBusiness,BusinessStatus,RegularOpeningHoursJson
+  PlaceId,DisplayName,PrimaryType,PrimaryCategory,TypesCsv,FormattedAddress,Lat,Lng,NationalPhoneNumber,WebsiteUri,Description,PhotoCount,IsServiceAreaBusiness,BusinessStatus,SearchLocationName,RegularOpeningHoursJson
 )
 VALUES(
-  @PlaceId,@DisplayName,@PrimaryType,@PrimaryCategory,@TypesCsv,@FormattedAddress,@Lat,@Lng,@NationalPhoneNumber,@WebsiteUri,@Description,@PhotoCount,@IsServiceAreaBusiness,@BusinessStatus,@RegularOpeningHoursJson
+  @PlaceId,@DisplayName,@PrimaryType,@PrimaryCategory,@TypesCsv,@FormattedAddress,@Lat,@Lng,@NationalPhoneNumber,@WebsiteUri,@Description,@PhotoCount,@IsServiceAreaBusiness,@BusinessStatus,@SearchLocationName,@RegularOpeningHoursJson
 );",
                 new
                 {
@@ -98,6 +118,7 @@ VALUES(
                     p.PhotoCount,
                     p.IsServiceAreaBusiness,
                     p.BusinessStatus,
+                    SearchLocationName = effectiveLocationName,
                     RegularOpeningHoursJson = p.RegularOpeningHours.Count == 0 ? null : JsonSerializer.Serialize(p.RegularOpeningHours)
                 }, tx, cancellationToken: ct));
 
@@ -106,11 +127,36 @@ INSERT INTO dbo.PlaceSnapshot(SearchRunId,PlaceId,RankPosition,Rating,UserRating
 VALUES(@SearchRunId,@PlaceId,@RankPosition,@Rating,@UserRatingCount)",
                 new { SearchRunId = runId, PlaceId = p.Id, RankPosition = i + 1, p.Rating, p.UserRatingCount }, tx, cancellationToken: ct));
 
-            if (model.FetchReviews)
-                await provider.FetchAndStoreReviewsAsync(p.Id, ct);
+            if (reviewRequests is not null)
+                reviewRequests[p.Id] = p.UserRatingCount;
         }
 
         await tx.CommitAsync(ct);
+
+        if (reviewRequests is not null && provider is not null)
+        {
+            logger.LogInformation("FetchReviews requested. Provider {ProviderName}. Creating review tasks for {PlaceCount} places.", providerName, reviewRequests.Count);
+            foreach (var reviewRequest in reviewRequests)
+            {
+                ct.ThrowIfCancellationRequested();
+                try
+                {
+                    await provider.FetchAndStoreReviewsAsync(
+                        reviewRequest.Key,
+                        reviewRequest.Value,
+                        effectiveLocationName,
+                        centerLat,
+                        centerLng,
+                        model.RadiusMeters,
+                        ct);
+                }
+                catch (Exception ex) when (!ct.IsCancellationRequested)
+                {
+                    logger.LogWarning(ex, "Review fetch failed for place {PlaceId} using provider {ProviderName}.", reviewRequest.Key, providerName);
+                }
+            }
+        }
+
         return runId;
     }
 
@@ -196,6 +242,22 @@ FROM dbo.PlaceSnapshot
 WHERE PlaceId=@PlaceId
 ORDER BY CapturedAtUtc DESC", new { PlaceId = placeId }, cancellationToken: ct))).ToList();
 
+        var reviews = (await conn.QueryAsync<PlaceReviewRow>(new CommandDefinition(@"
+SELECT TOP 100
+  ReviewId,
+  ProfileName,
+  Rating,
+  ReviewText,
+  ReviewTimestampUtc,
+  TimeAgo,
+  OwnerAnswer,
+  OwnerTimestampUtc,
+  ReviewUrl,
+  LastSeenUtc
+FROM dbo.PlaceReview
+WHERE PlaceId=@PlaceId
+ORDER BY COALESCE(ReviewTimestampUtc, LastSeenUtc) DESC, PlaceReviewId DESC", new { PlaceId = placeId }, cancellationToken: ct))).ToList();
+
         var effectiveTypesCsv = ChooseBestTypesCsv(place.TypesCsv, liveDetails?.TypesCsv);
         var primaryType = SelectBestPrimaryType(
             PreferSpecificType(place.PrimaryType, liveDetails?.PrimaryType),
@@ -238,6 +300,7 @@ ORDER BY CapturedAtUtc DESC", new { PlaceId = placeId }, cancellationToken: ct))
             ActiveRating = active?.Rating,
             ActiveUserRatingCount = active?.UserRatingCount,
             ActiveCapturedAtUtc = active?.CapturedAtUtc,
+            Reviews = reviews,
             History = history
         };
     }

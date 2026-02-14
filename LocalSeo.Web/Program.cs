@@ -15,6 +15,7 @@ builder.Services.Configure<AuthOptions>(builder.Configuration.GetSection("Auth")
 builder.Services.Configure<GoogleOptions>(builder.Configuration.GetSection("Google"));
 builder.Services.Configure<SendGridOptions>(builder.Configuration.GetSection("SendGrid"));
 builder.Services.Configure<PlacesOptions>(builder.Configuration.GetSection("Places"));
+builder.Services.Configure<DataForSeoOptions>(builder.Configuration.GetSection("DataForSeo"));
 
 builder.Services.AddControllersWithViews();
 builder.Services.AddHttpClient();
@@ -48,6 +49,8 @@ builder.Services.AddScoped<ICodeHasher, CodeHasher>();
 builder.Services.AddScoped<IReviewsProviderResolver, ReviewsProviderResolver>();
 builder.Services.AddScoped<NullReviewsProvider>();
 builder.Services.AddScoped<NotImplementedReviewsProvider>();
+builder.Services.AddScoped<DataForSeoReviewsProvider>();
+builder.Services.AddScoped<IDataForSeoTaskTracker, DataForSeoReviewsProvider>();
 
 var app = builder.Build();
 

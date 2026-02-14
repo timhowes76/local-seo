@@ -69,6 +69,40 @@ else
 <h3>Service Areas</h3>
 <p>Not available from Google Places API. Requires Google Business Profile data.</p>
 
+<h3>Reviews</h3>
+@if (Model.Reviews.Count == 0)
+{
+    <p>No stored reviews yet.</p>
+}
+else
+{
+    <table>
+    <thead><tr><th>When</th><th>Profile</th><th>Rating</th><th>Review</th><th>Owner Reply</th><th>Link</th></tr></thead>
+    <tbody>
+    @foreach (var r in Model.Reviews)
+    {
+        <tr>
+            <td>@(r.ReviewTimestampUtc?.ToString("u") ?? r.LastSeenUtc.ToString("u"))</td>
+            <td>@(r.ProfileName ?? "N/A")</td>
+            <td>@(r.Rating?.ToString() ?? "N/A")</td>
+            <td>@(r.ReviewText ?? "N/A")</td>
+            <td>@(r.OwnerAnswer ?? "N/A")</td>
+            <td>
+                @if (!string.IsNullOrWhiteSpace(r.ReviewUrl))
+                {
+                    <a href="@r.ReviewUrl" target="_blank" rel="noopener noreferrer">Open</a>
+                }
+                else
+                {
+                    <span>N/A</span>
+                }
+            </td>
+        </tr>
+    }
+    </tbody>
+    </table>
+}
+
 <h3>Recent History</h3>
 <table>
 <thead><tr><th>Run</th><th>Rank</th><th>Rating</th><th>Ratings</th><th>Captured</th></tr></thead>

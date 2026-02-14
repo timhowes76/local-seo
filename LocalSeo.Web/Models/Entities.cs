@@ -18,6 +18,35 @@ public sealed record PlaceSnapshotRow(
     string? FormattedAddress,
     string? WebsiteUri);
 public sealed record PlaceHistoryRow(long SearchRunId, int RankPosition, decimal? Rating, int? UserRatingCount, DateTime CapturedAtUtc);
+public sealed record PlaceReviewRow(
+    string ReviewId,
+    string? ProfileName,
+    decimal? Rating,
+    string? ReviewText,
+    DateTime? ReviewTimestampUtc,
+    string? TimeAgo,
+    string? OwnerAnswer,
+    DateTime? OwnerTimestampUtc,
+    string? ReviewUrl,
+    DateTime LastSeenUtc);
+public sealed record DataForSeoTaskRow(
+    long DataForSeoReviewTaskId,
+    string DataForSeoTaskId,
+    string PlaceId,
+    string? LocationName,
+    string Status,
+    int? TaskStatusCode,
+    string? TaskStatusMessage,
+    string? Endpoint,
+    DateTime CreatedAtUtc,
+    DateTime? LastCheckedUtc,
+    DateTime? ReadyAtUtc,
+    DateTime? PopulatedAtUtc,
+    DateTime? LastAttemptedPopulateUtc,
+    int? LastPopulateReviewCount,
+    DateTime? CallbackReceivedAtUtc,
+    string? CallbackTaskId,
+    string? LastError);
 public sealed record RunDetailsViewModel(SearchRun Run, IReadOnlyList<PlaceSnapshotRow> Snapshots);
 
 public sealed class PlaceDetailsViewModel
@@ -42,6 +71,7 @@ public sealed class PlaceDetailsViewModel
     public decimal? ActiveRating { get; init; }
     public int? ActiveUserRatingCount { get; init; }
     public DateTime? ActiveCapturedAtUtc { get; init; }
+    public IReadOnlyList<PlaceReviewRow> Reviews { get; init; } = [];
     public IReadOnlyList<PlaceHistoryRow> History { get; init; } = [];
 }
 

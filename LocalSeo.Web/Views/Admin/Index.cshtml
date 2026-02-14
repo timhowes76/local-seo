@@ -5,8 +5,10 @@
     <div>@TempData["Status"]</div>
 }
 
+<p><a href="/admin/dataforseo-tasks">DataForSEO Tasks</a></p>
+
 <p>Clear all stored run history from the app database.</p>
-<p>This deletes all rows from <code>SearchRun</code>, <code>PlaceSnapshot</code>, and <code>Place</code>.</p>
+<p>This deletes all rows from <code>DataForSeoReviewTask</code>, <code>PlaceReview</code>, <code>SearchRun</code>, <code>PlaceSnapshot</code>, and <code>Place</code>.</p>
 
 <form method="post" action="/admin/clear-runs" onsubmit="return confirm('Clear all run data? This cannot be undone.');">
     @Html.AntiForgeryToken()

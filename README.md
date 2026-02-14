@@ -9,7 +9,10 @@ ASP.NET Core MVC app for internal staff to run Google Places Text Search queries
 - Ingestion pipeline with retries/backoff for Google transient errors.
 - SQL bootstrap on startup (creates all required tables/indexes if missing).
 - `/runs` and `/runs/{id}` pages for historical snapshots.
-- Reviews provider abstraction with `None` and `SerpApi` placeholder.
+- Reviews provider abstraction with `None`, `SerpApi` placeholder, and `DataForSeo` implementation.
+- DataForSEO reviews are upserted by `(PlaceId, ReviewId)` so repeat runs only add new reviews.
+- DataForSEO task tracking in `/admin/dataforseo-tasks` with status refresh and manual populate.
+- DataForSEO postbacks are accepted at `/api/dataforseo/postback` (supports gzip payloads).
 - Structured logging with Serilog.
 
 ## Tech
@@ -31,7 +34,19 @@ Set via `appsettings.json` and/or environment variables:
 - `Auth__MaxSendsPerHour` (default `3`)
 - `Places__DefaultRadiusMeters` (default `5000`)
 - `Places__DefaultResultLimit` (default `20`)
-- `Places__ReviewsProvider` (`None` or `SerpApi`)
+- `Places__ReviewsProvider` (`None`, `SerpApi`, or `DataForSeo`)
+- `DataForSeo__BaseUrl` (default `https://api.dataforseo.com`)
+- `DataForSeo__Login`
+- `DataForSeo__Password`
+- `DataForSeo__PostbackUrl` (e.g. `https://your-domain/api/dataforseo/postback?id=$id&tag=$tag`)
+- `DataForSeo__TaskPostPath` (default `/v3/business_data/google/reviews/task_post`)
+- `DataForSeo__TaskGetPathFormat` (default `/v3/business_data/google/reviews/task_get/{0}`)
+- `DataForSeo__TasksReadyPath` (default `/v3/business_data/google/reviews/tasks_ready`)
+- `DataForSeo__LanguageCode` (default `en`)
+- `DataForSeo__Depth` (default `100`)
+- `DataForSeo__SortBy` (default `newest`)
+- `DataForSeo__MaxPollAttempts` (default `10`)
+- `DataForSeo__PollDelayMs` (default `1000`)
 
 ## Run
 1. Create SQL DB and set `ConnectionStrings__Sql`.
@@ -43,7 +58,7 @@ Set via `appsettings.json` and/or environment variables:
    ```
 4. Open `/login`.
 
-> On startup, schema bootstrap creates these tables if missing: `SearchRun`, `Place`, `PlaceSnapshot`, `LoginCode`, `LoginThrottle`.
+> On startup, schema bootstrap creates these tables if missing: `SearchRun`, `Place`, `PlaceSnapshot`, `PlaceReview`, `DataForSeoReviewTask`, `LoginCode`, `LoginThrottle`.
 
 ## OTP security rules implemented
 - Allowed domain enforcement.

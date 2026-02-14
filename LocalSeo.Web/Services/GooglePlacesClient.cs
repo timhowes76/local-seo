@@ -11,7 +11,7 @@ public interface IGooglePlacesClient
 {
     Task<IReadOnlyList<GooglePlace>> SearchAsync(string seedKeyword, string locationName, decimal? centerLat, decimal? centerLng, int radiusMeters, int limit, CancellationToken ct);
     Task<GooglePlace?> GetPlaceDetailsAsync(string placeId, CancellationToken ct);
-    Task<(decimal Lat, decimal Lng)?> GeocodeAsync(string locationName, string? countryCode, CancellationToken ct);
+    Task<(decimal Lat, decimal Lng, string? CanonicalLocationName)?> GeocodeAsync(string locationName, string? countryCode, CancellationToken ct);
 }
 
 public sealed class GooglePlacesClient(IHttpClientFactory factory, IOptions<GoogleOptions> options, ILogger<GooglePlacesClient> logger) : IGooglePlacesClient
@@ -167,7 +167,7 @@ public sealed class GooglePlacesClient(IHttpClientFactory factory, IOptions<Goog
             details.RegularOpeningHours);
     }
 
-    public async Task<(decimal Lat, decimal Lng)?> GeocodeAsync(string locationName, string? countryCode, CancellationToken ct)
+    public async Task<(decimal Lat, decimal Lng, string? CanonicalLocationName)?> GeocodeAsync(string locationName, string? countryCode, CancellationToken ct)
     {
         var apiKey = options.Value.ApiKey;
         if (string.IsNullOrWhiteSpace(apiKey))
@@ -215,7 +215,8 @@ public sealed class GooglePlacesClient(IHttpClientFactory factory, IOptions<Goog
 
         var lat = (decimal)latNode.GetDouble();
         var lng = (decimal)lngNode.GetDouble();
-        return (lat, lng);
+        var canonical = BuildCanonicalLocationName(first);
+        return (lat, lng, canonical);
     }
 
     private static bool IsTransient(HttpStatusCode statusCode)
@@ -321,6 +322,59 @@ public sealed class GooglePlacesClient(IHttpClientFactory factory, IOptions<Goog
             .Where(x => !string.IsNullOrWhiteSpace(x))
             .Select(x => x!.Trim())
             .ToList();
+    }
+
+    private static string? BuildCanonicalLocationName(JsonElement geocodeResult)
+    {
+        string? city = null;
+        string? region = null;
+        string? country = null;
+
+        if (geocodeResult.TryGetProperty("address_components", out var components) && components.ValueKind == JsonValueKind.Array)
+        {
+            city = GetAddressComponentLongName(components, "locality")
+                ?? GetAddressComponentLongName(components, "postal_town")
+                ?? GetAddressComponentLongName(components, "administrative_area_level_2");
+            region = GetAddressComponentLongName(components, "administrative_area_level_1");
+            country = GetAddressComponentLongName(components, "country");
+        }
+
+        if (string.Equals(country, "UK", StringComparison.OrdinalIgnoreCase))
+            country = "United Kingdom";
+
+        var parts = new[] { city, region, country }
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Select(x => x!.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (parts.Count >= 2)
+            return string.Join(",", parts);
+
+        if (geocodeResult.TryGetProperty("formatted_address", out var formatted) && formatted.ValueKind == JsonValueKind.String)
+            return formatted.GetString();
+
+        return null;
+    }
+
+    private static string? GetAddressComponentLongName(JsonElement components, string type)
+    {
+        foreach (var component in components.EnumerateArray())
+        {
+            if (!component.TryGetProperty("types", out var types) || types.ValueKind != JsonValueKind.Array)
+                continue;
+
+            var match = types.EnumerateArray()
+                .Select(x => x.GetString())
+                .Any(x => string.Equals(x, type, StringComparison.OrdinalIgnoreCase));
+            if (!match)
+                continue;
+
+            if (component.TryGetProperty("long_name", out var longName) && longName.ValueKind == JsonValueKind.String)
+                return longName.GetString();
+        }
+
+        return null;
     }
 
     private async Task<PlaceDetailsEnvelope?> TryGetPlaceDetailsAsync(HttpClient client, string apiKey, string placeId, CancellationToken ct)
