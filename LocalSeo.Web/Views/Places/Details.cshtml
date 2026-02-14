@@ -119,3 +119,80 @@ else
 }
 </tbody>
 </table>
+
+
+@if (Model.ReviewVelocity is null || string.Equals(Model.ReviewVelocity.StatusLabel, "NoReviews", StringComparison.OrdinalIgnoreCase))
+{
+    <h3>Review Velocity</h3>
+    <p>No reviews captured yet for this place.</p>
+}
+else
+{
+    var v = Model.ReviewVelocity;
+    string summary = v.StatusLabel switch
+    {
+        "Slowing" => $"Review activity has slowed by {Math.Abs(v.Trend90Pct ?? 0):0.#}% vs the prior 90 days; consider running a review request campaign.",
+        "Stalled" => $"No reviews in {v.DaysSinceLastReview ?? 0} days; visibility and conversion trust signals may decay—prioritise generating new reviews.",
+        "Accelerating" => $"Review activity is accelerating, up {v.Trend90Pct ?? 0:0.#}% in the last 90 days vs the prior period.",
+        _ => $"Review activity is steady; last review was {v.DaysSinceLastReview ?? 0} days ago and the last 90 days are broadly stable vs the prior period."
+    };
+
+    <h3>Review Velocity</h3>
+    <p>@summary</p>
+    <table>
+        <thead><tr><th>3m</th><th>6m</th><th>9m</th><th>12m</th><th>Avg/mo</th><th>Trend 90d</th><th>Days since</th><th>Longest gap 12m</th><th>Responded %</th><th>Avg response hrs</th><th>Momentum</th><th>Status</th></tr></thead>
+        <tbody>
+            <tr>
+                <td>@(v.ReviewsLast90 ?? 0)</td>
+                <td>@(v.ReviewsLast180 ?? 0)</td>
+                <td>@(v.ReviewsLast270 ?? 0)</td>
+                <td>@(v.ReviewsLast365 ?? 0)</td>
+                <td>@(v.AvgPerMonth12m?.ToString("0.0") ?? "0.0")</td>
+                <td>@(v.Trend90Pct?.ToString("+0.##;-0.##;0") ?? "0")%</td>
+                <td>@(v.DaysSinceLastReview?.ToString() ?? "N/A")</td>
+                <td>@(v.LongestGapDays12m?.ToString() ?? "N/A")</td>
+                <td>@(v.RespondedPct12m?.ToString("0.##") ?? "N/A")%</td>
+                <td>@(v.AvgOwnerResponseHours12m?.ToString("0.##") ?? "N/A")</td>
+                <td>@(v.MomentumScore?.ToString() ?? "N/A")</td>
+                <td><span class="status-pill status-@((v.StatusLabel ?? "healthy").ToLowerInvariant())">@v.StatusLabel</span></td>
+            </tr>
+        </tbody>
+    </table>
+
+    <h4>Monthly Reviews (last 24 months)</h4>
+    <table>
+        <thead><tr><th>Month</th><th>Reviews</th></tr></thead>
+        <tbody>
+        @foreach (var m in v.MonthlySeries)
+        {
+            <tr><td>@($"{m.Year}-{m.Month:00}")</td><td>@m.ReviewCount</td></tr>
+        }
+        </tbody>
+    </table>
+
+    <h4>Year Breakdown</h4>
+    <table>
+        <thead><tr><th>Year</th><th>Reviews</th><th>Avg Rating</th><th>Responded %</th></tr></thead>
+        <tbody>
+        @foreach (var y in v.YearBreakdown)
+        {
+            <tr><td>@y.Year</td><td>@y.ReviewCount</td><td>@(y.AvgRating?.ToString("0.00") ?? "N/A")</td><td>@(y.RespondedPct?.ToString("0.##") ?? "N/A")</td></tr>
+        }
+        </tbody>
+    </table>
+
+    @if (v.CompetitorBlock is not null)
+    {
+        <h4>Competitor Velocity</h4>
+        <div>Competitor average reviews/mo (12m): @(v.CompetitorBlock.CompetitorAverageReviewsPerMonth12m?.ToString("0.00") ?? "N/A")</div>
+        <table>
+            <thead><tr><th>Name</th><th>Reviews 365d</th><th>Avg Rating</th><th>Days since last review</th></tr></thead>
+            <tbody>
+            @foreach (var c in v.CompetitorBlock.Competitors)
+            {
+                <tr><td>@c.Name</td><td>@c.ReviewsLast365</td><td>@(c.AvgRating?.ToString("0.00") ?? "N/A")</td><td>@(c.DaysSinceLastReview?.ToString() ?? "N/A")</td></tr>
+            }
+            </tbody>
+        </table>
+    }
+}

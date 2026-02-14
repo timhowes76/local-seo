@@ -22,6 +22,7 @@ public sealed class SearchIngestionService(
     IOptions<PlacesOptions> placesOptions,
     IReviewsProviderResolver reviewsProviderResolver,
     DataForSeoReviewsProvider dataForSeoReviewsProvider,
+    IReviewVelocityService reviewVelocityService,
     ILogger<SearchIngestionService> logger) : ISearchIngestionService
 {
     public async Task<long> RunAsync(SearchFormModel model, CancellationToken ct)
@@ -133,6 +134,18 @@ VALUES(@SearchRunId,@PlaceId,@RankPosition,@Rating,@UserRatingCount)",
 
         await tx.CommitAsync(ct);
 
+        foreach (var place in places)
+        {
+            try
+            {
+                await reviewVelocityService.RecomputePlaceStatsAsync(place.Id, ct);
+            }
+            catch (Exception ex) when (!ct.IsCancellationRequested)
+            {
+                logger.LogWarning(ex, "Failed to recompute review velocity stats for place {PlaceId} after capture.", place.Id);
+            }
+        }
+
         if (reviewRequests is not null && provider is not null)
         {
             logger.LogInformation("FetchReviews requested. Provider {ProviderName}. Creating review tasks for {PlaceCount} places.", providerName, reviewRequests.Count);
@@ -183,9 +196,11 @@ WHERE SearchRunId=@RunId", new { RunId = runId }, cancellationToken: ct));
         await using var conn = (Microsoft.Data.SqlClient.SqlConnection)await connectionFactory.OpenConnectionAsync(ct);
         var rows = await conn.QueryAsync<PlaceSnapshotRow>(new CommandDefinition(@"
 SELECT s.PlaceSnapshotId, s.SearchRunId, s.PlaceId, s.RankPosition, s.Rating, s.UserRatingCount, s.CapturedAtUtc,
-       p.DisplayName, p.PrimaryCategory, p.PhotoCount, p.NationalPhoneNumber, p.Lat, p.Lng, p.FormattedAddress, p.WebsiteUri
+       p.DisplayName, p.PrimaryCategory, p.PhotoCount, p.NationalPhoneNumber, p.Lat, p.Lng, p.FormattedAddress, p.WebsiteUri,
+       v.ReviewsLast90, v.AvgPerMonth12m, v.Trend90Pct, v.DaysSinceLastReview, v.StatusLabel, v.MomentumScore
 FROM dbo.PlaceSnapshot s
 JOIN dbo.Place p ON p.PlaceId=s.PlaceId
+LEFT JOIN dbo.PlaceReviewVelocityStats v ON v.PlaceId=s.PlaceId
 WHERE s.SearchRunId=@RunId
 ORDER BY s.RankPosition", new { RunId = runId }, cancellationToken: ct));
         return rows.ToList();
@@ -301,7 +316,8 @@ ORDER BY COALESCE(ReviewTimestampUtc, LastSeenUtc) DESC, PlaceReviewId DESC", ne
             ActiveUserRatingCount = active?.UserRatingCount,
             ActiveCapturedAtUtc = active?.CapturedAtUtc,
             Reviews = reviews,
-            History = history
+            History = history,
+            ReviewVelocity = await reviewVelocityService.GetPlaceReviewVelocityAsync(placeId, ct)
         };
     }
 

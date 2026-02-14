@@ -157,10 +157,142 @@ IF COL_LENGTH('dbo.PlaceReview', 'FirstSeenUtc') IS NULL
   ALTER TABLE dbo.PlaceReview ADD FirstSeenUtc datetime2(0) NOT NULL CONSTRAINT DF_PlaceReview_FirstSeenUtc_Alt DEFAULT SYSUTCDATETIME();
 IF COL_LENGTH('dbo.PlaceReview', 'LastSeenUtc') IS NULL
   ALTER TABLE dbo.PlaceReview ADD LastSeenUtc datetime2(0) NOT NULL CONSTRAINT DF_PlaceReview_LastSeenUtc_Alt DEFAULT SYSUTCDATETIME();
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='UX_PlaceReview_Place_Review' AND object_id=OBJECT_ID('dbo.PlaceReview'))
-  CREATE UNIQUE INDEX UX_PlaceReview_Place_Review ON dbo.PlaceReview(PlaceId, ReviewId);
+IF EXISTS (SELECT 1 FROM sys.indexes WHERE name='UX_PlaceReview_Place_Review' AND object_id=OBJECT_ID('dbo.PlaceReview'))
+  DROP INDEX UX_PlaceReview_Place_Review ON dbo.PlaceReview;
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='UX_PlaceReview_Place_Review_NotNull' AND object_id=OBJECT_ID('dbo.PlaceReview'))
+  CREATE UNIQUE INDEX UX_PlaceReview_Place_Review_NotNull ON dbo.PlaceReview(PlaceId, ReviewId) WHERE ReviewId IS NOT NULL;
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_PlaceReview_Place_LastSeen' AND object_id=OBJECT_ID('dbo.PlaceReview'))
   CREATE INDEX IX_PlaceReview_Place_LastSeen ON dbo.PlaceReview(PlaceId, LastSeenUtc DESC);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_PlaceReview_Place_ReviewTimestampUtc' AND object_id=OBJECT_ID('dbo.PlaceReview'))
+  CREATE INDEX IX_PlaceReview_Place_ReviewTimestampUtc ON dbo.PlaceReview(PlaceId, ReviewTimestampUtc DESC) INCLUDE (Rating, OwnerTimestampUtc);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_PlaceReview_Place_OwnerTimestampUtc' AND object_id=OBJECT_ID('dbo.PlaceReview'))
+  CREATE INDEX IX_PlaceReview_Place_OwnerTimestampUtc ON dbo.PlaceReview(PlaceId, OwnerTimestampUtc DESC) INCLUDE (ReviewTimestampUtc);
+IF OBJECT_ID('dbo.PlaceReviewVelocityStats','U') IS NULL
+BEGIN
+  CREATE TABLE dbo.PlaceReviewVelocityStats(
+    PlaceId nvarchar(128) NOT NULL PRIMARY KEY FOREIGN KEY REFERENCES dbo.Place(PlaceId),
+    AsOfUtc datetime2(0) NOT NULL,
+    ReviewsLast90 int NOT NULL CONSTRAINT DF_PlaceReviewVelocityStats_ReviewsLast90 DEFAULT(0),
+    ReviewsLast180 int NOT NULL CONSTRAINT DF_PlaceReviewVelocityStats_ReviewsLast180 DEFAULT(0),
+    ReviewsLast270 int NOT NULL CONSTRAINT DF_PlaceReviewVelocityStats_ReviewsLast270 DEFAULT(0),
+    ReviewsLast365 int NOT NULL CONSTRAINT DF_PlaceReviewVelocityStats_ReviewsLast365 DEFAULT(0),
+    AvgPerMonth12m decimal(6,2) NULL,
+    Prev90 int NOT NULL CONSTRAINT DF_PlaceReviewVelocityStats_Prev90 DEFAULT(0),
+    Trend90Pct decimal(7,2) NULL,
+    DaysSinceLastReview int NULL,
+    LastReviewTimestampUtc datetime2(0) NULL,
+    LongestGapDays12m int NULL,
+    RespondedPct12m decimal(7,2) NULL,
+    AvgOwnerResponseHours12m decimal(8,2) NULL,
+    MomentumScore int NULL,
+    StatusLabel varchar(20) NOT NULL CONSTRAINT DF_PlaceReviewVelocityStats_StatusLabel DEFAULT('NoReviews')
+  );
+END;
+EXEC('CREATE OR ALTER PROCEDURE dbo.usp_RecomputePlaceReviewVelocityStats @PlaceId nvarchar(128) AS
+BEGIN
+  SET NOCOUNT ON;
+  DECLARE @AsOfUtc datetime2(0) = SYSUTCDATETIME();
+  DECLARE @WindowStart12m datetime2(0) = DATEADD(day,-365,@AsOfUtc);
+  DECLARE @ReviewsLast90 int = (SELECT COUNT(1) FROM dbo.PlaceReview WHERE PlaceId=@PlaceId AND ReviewTimestampUtc >= DATEADD(day,-90,@AsOfUtc));
+  DECLARE @ReviewsLast180 int = (SELECT COUNT(1) FROM dbo.PlaceReview WHERE PlaceId=@PlaceId AND ReviewTimestampUtc >= DATEADD(day,-180,@AsOfUtc));
+  DECLARE @ReviewsLast270 int = (SELECT COUNT(1) FROM dbo.PlaceReview WHERE PlaceId=@PlaceId AND ReviewTimestampUtc >= DATEADD(day,-270,@AsOfUtc));
+  DECLARE @ReviewsLast365 int = (SELECT COUNT(1) FROM dbo.PlaceReview WHERE PlaceId=@PlaceId AND ReviewTimestampUtc >= @WindowStart12m);
+  DECLARE @Prev90 int = (SELECT COUNT(1) FROM dbo.PlaceReview WHERE PlaceId=@PlaceId AND ReviewTimestampUtc >= DATEADD(day,-180,@AsOfUtc) AND ReviewTimestampUtc < DATEADD(day,-90,@AsOfUtc));
+  DECLARE @LastReviewTimestampUtc datetime2(0) = (SELECT MAX(ReviewTimestampUtc) FROM dbo.PlaceReview WHERE PlaceId=@PlaceId);
+  DECLARE @DaysSinceLastReview int = CASE WHEN @LastReviewTimestampUtc IS NULL THEN NULL ELSE DATEDIFF(day,@LastReviewTimestampUtc,@AsOfUtc) END;
+  DECLARE @Trend90Pct decimal(7,2) = CASE WHEN @Prev90 = 0 AND @ReviewsLast90 = 0 THEN 0 WHEN @Prev90 = 0 AND @ReviewsLast90 > 0 THEN 100 ELSE CAST(((@ReviewsLast90 - @Prev90) * 100.0) / NULLIF(@Prev90,0) AS decimal(7,2)) END;
+
+  DECLARE @Total12m int = (SELECT COUNT(1) FROM dbo.PlaceReview WHERE PlaceId=@PlaceId AND ReviewTimestampUtc >= @WindowStart12m);
+  DECLARE @Replied12m int = (SELECT COUNT(1) FROM dbo.PlaceReview WHERE PlaceId=@PlaceId AND ReviewTimestampUtc >= @WindowStart12m AND OwnerTimestampUtc IS NOT NULL AND OwnerTimestampUtc >= ReviewTimestampUtc);
+  DECLARE @RespondedPct12m decimal(7,2) = CASE WHEN @Total12m = 0 THEN NULL ELSE CAST((@Replied12m * 100.0) / NULLIF(@Total12m,0) AS decimal(7,2)) END;
+  DECLARE @AvgOwnerResponseHours12m decimal(8,2) = (
+    SELECT CAST(AVG(DATEDIFF(minute, ReviewTimestampUtc, OwnerTimestampUtc) / 60.0) AS decimal(8,2))
+    FROM dbo.PlaceReview
+    WHERE PlaceId=@PlaceId
+      AND ReviewTimestampUtc >= @WindowStart12m
+      AND OwnerTimestampUtc IS NOT NULL
+      AND OwnerTimestampUtc >= ReviewTimestampUtc
+  );
+
+  DECLARE @LongestGapDays12m int = NULL;
+  ;WITH review_points AS (
+    SELECT CAST(@WindowStart12m AS datetime2(0)) AS PointUtc
+    UNION ALL
+    SELECT ReviewTimestampUtc FROM dbo.PlaceReview WHERE PlaceId=@PlaceId AND ReviewTimestampUtc >= @WindowStart12m
+    UNION ALL
+    SELECT @AsOfUtc
+  ), gap_points AS (
+    SELECT PointUtc, LEAD(PointUtc) OVER (ORDER BY PointUtc) AS NextPointUtc FROM review_points
+  )
+  SELECT @LongestGapDays12m = MAX(CASE WHEN NextPointUtc IS NULL THEN 0 ELSE DATEDIFF(day, PointUtc, NextPointUtc) END)
+  FROM gap_points;
+
+  DECLARE @RecencyScore decimal(9,2) = CASE
+    WHEN @DaysSinceLastReview IS NULL THEN 0
+    WHEN @DaysSinceLastReview <= 7 THEN 100
+    WHEN @DaysSinceLastReview <= 30 THEN 100 - ((@DaysSinceLastReview - 7) * (40.0 / 23.0))
+    WHEN @DaysSinceLastReview <= 60 THEN 60 - ((@DaysSinceLastReview - 30) * (30.0 / 30.0))
+    ELSE 0 END;
+
+  DECLARE @MeanMonthly decimal(9,4), @StdMonthly decimal(9,4), @ConsistencyScore decimal(9,2);
+  ;WITH months AS (
+    SELECT 0 AS n, DATEFROMPARTS(YEAR(DATEADD(month,-11,@AsOfUtc)), MONTH(DATEADD(month,-11,@AsOfUtc)), 1) AS MonthStart
+    UNION ALL
+    SELECT n + 1, DATEADD(month,1,MonthStart) FROM months WHERE n < 11
+  ), bucket AS (
+    SELECT m.MonthStart, COUNT(r.PlaceReviewId) AS Cnt
+    FROM months m
+    LEFT JOIN dbo.PlaceReview r ON r.PlaceId=@PlaceId AND r.ReviewTimestampUtc >= m.MonthStart AND r.ReviewTimestampUtc < DATEADD(month,1,m.MonthStart)
+    GROUP BY m.MonthStart
+  )
+  SELECT @MeanMonthly = AVG(CAST(Cnt AS decimal(9,4))), @StdMonthly = STDEV(CAST(Cnt AS decimal(9,4))) FROM bucket OPTION (MAXRECURSION 20);
+
+  SET @ConsistencyScore = CASE WHEN ISNULL(@MeanMonthly,0) = 0 THEN 0 ELSE CASE WHEN (100 - ((ISNULL(@StdMonthly,0)/NULLIF(@MeanMonthly,0))*100.0)) < 0 THEN 0 WHEN (100 - ((ISNULL(@StdMonthly,0)/NULLIF(@MeanMonthly,0))*100.0)) > 100 THEN 100 ELSE (100 - ((ISNULL(@StdMonthly,0)/NULLIF(@MeanMonthly,0))*100.0)) END END;
+
+  DECLARE @GrowthScore decimal(9,2);
+  DECLARE @TrendClamped decimal(9,2) = CASE WHEN @Trend90Pct < -100 THEN -100 WHEN @Trend90Pct > 200 THEN 200 ELSE @Trend90Pct END;
+  SET @GrowthScore = CASE
+    WHEN @TrendClamped <= 0 THEN (@TrendClamped + 100) * 0.5
+    WHEN @TrendClamped <= 100 THEN 50 + (@TrendClamped * 0.25)
+    ELSE 75 + ((@TrendClamped - 100) * 0.25)
+  END;
+
+  DECLARE @MomentumScore int = CAST(ROUND((0.45 * @RecencyScore) + (0.25 * @ConsistencyScore) + (0.30 * @GrowthScore),0) AS int);
+  IF @MomentumScore < 0 SET @MomentumScore = 0;
+  IF @MomentumScore > 100 SET @MomentumScore = 100;
+
+  DECLARE @StatusLabel varchar(20) = CASE
+    WHEN @LastReviewTimestampUtc IS NULL THEN ''NoReviews''
+    WHEN @DaysSinceLastReview > 60 THEN ''Stalled''
+    WHEN @Trend90Pct <= -30 THEN ''Slowing''
+    WHEN @Trend90Pct >= 30 AND @DaysSinceLastReview <= 30 THEN ''Accelerating''
+    ELSE ''Healthy'' END;
+
+  MERGE dbo.PlaceReviewVelocityStats AS target
+  USING (SELECT @PlaceId AS PlaceId) AS source
+  ON target.PlaceId = source.PlaceId
+  WHEN MATCHED THEN UPDATE SET
+    AsOfUtc=@AsOfUtc,
+    ReviewsLast90=@ReviewsLast90,
+    ReviewsLast180=@ReviewsLast180,
+    ReviewsLast270=@ReviewsLast270,
+    ReviewsLast365=@ReviewsLast365,
+    AvgPerMonth12m=CAST(@ReviewsLast365 / 12.0 AS decimal(6,2)),
+    Prev90=@Prev90,
+    Trend90Pct=@Trend90Pct,
+    DaysSinceLastReview=@DaysSinceLastReview,
+    LastReviewTimestampUtc=@LastReviewTimestampUtc,
+    LongestGapDays12m=@LongestGapDays12m,
+    RespondedPct12m=@RespondedPct12m,
+    AvgOwnerResponseHours12m=@AvgOwnerResponseHours12m,
+    MomentumScore=@MomentumScore,
+    StatusLabel=@StatusLabel
+  WHEN NOT MATCHED THEN INSERT(
+    PlaceId,AsOfUtc,ReviewsLast90,ReviewsLast180,ReviewsLast270,ReviewsLast365,AvgPerMonth12m,Prev90,Trend90Pct,DaysSinceLastReview,LastReviewTimestampUtc,LongestGapDays12m,RespondedPct12m,AvgOwnerResponseHours12m,MomentumScore,StatusLabel
+  ) VALUES(
+    @PlaceId,@AsOfUtc,@ReviewsLast90,@ReviewsLast180,@ReviewsLast270,@ReviewsLast365,CAST(@ReviewsLast365 / 12.0 AS decimal(6,2)),@Prev90,@Trend90Pct,@DaysSinceLastReview,@LastReviewTimestampUtc,@LongestGapDays12m,@RespondedPct12m,@AvgOwnerResponseHours12m,@MomentumScore,@StatusLabel
+  );
+END');
 IF OBJECT_ID('dbo.DataForSeoReviewTask','U') IS NULL
 BEGIN
   CREATE TABLE dbo.DataForSeoReviewTask(
