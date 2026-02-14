@@ -8,12 +8,13 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace LocalSeo.Web.Controllers;
 
-[AllowAnonymous]
 public class LoginController(ILoginService loginService) : Controller
 {
+    [AllowAnonymous]
     [HttpGet("/login")]
     public IActionResult Index() => View();
 
+    [AllowAnonymous]
     [HttpPost("/login/request")]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> RequestCode(LoginEmailModel model, CancellationToken ct)
@@ -25,6 +26,7 @@ public class LoginController(ILoginService loginService) : Controller
         return View("Index");
     }
 
+    [AllowAnonymous]
     [HttpPost("/login/verify")]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> VerifyCode(LoginCodeModel model, CancellationToken ct)

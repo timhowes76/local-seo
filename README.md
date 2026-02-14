@@ -1,4 +1,4 @@
-# Local SEO Ingestion Tool (.NET 8)
+# Local SEO Ingestion Tool (.NET 10)
 
 ASP.NET Core MVC app for internal staff to run Google Places Text Search queries and persist snapshots into SQL Server 2019.
 
@@ -13,7 +13,7 @@ ASP.NET Core MVC app for internal staff to run Google Places Text Search queries
 - Structured logging with Serilog.
 
 ## Tech
-- .NET 8 ASP.NET Core MVC
+- .NET 10 ASP.NET Core MVC
 - SQL Server 2019
 - Dapper + Microsoft.Data.SqlClient
 - Cookie auth + antiforgery
