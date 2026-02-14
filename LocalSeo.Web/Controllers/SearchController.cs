@@ -25,8 +25,22 @@ public class SearchController(ISearchIngestionService ingestionService, IOptions
     public async Task<IActionResult> Run(SearchFormModel model, CancellationToken ct)
     {
         model.ResultLimit = Math.Clamp(model.ResultLimit, 1, 20);
-        var runId = await ingestionService.RunAsync(model, ct);
-        TempData["Status"] = $"Search complete. Run #{runId}";
-        return RedirectToAction("Index", new { runId });
+
+        try
+        {
+            var runId = await ingestionService.RunAsync(model, ct);
+            TempData["Status"] = $"Search complete. Run #{runId}";
+            return RedirectToAction("Index", new { runId });
+        }
+        catch (InvalidOperationException ex)
+        {
+            ModelState.AddModelError(string.Empty, ex.Message);
+            return View("Index", model);
+        }
+        catch (HttpRequestException ex)
+        {
+            ModelState.AddModelError(string.Empty, $"Google request failed: {ex.Message}");
+            return View("Index", model);
+        }
     }
 }
