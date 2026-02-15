@@ -12,6 +12,10 @@ public interface IReviewsProvider
         decimal? centerLat,
         decimal? centerLng,
         int? radiusMeters,
+        bool fetchGoogleReviews,
+        bool fetchMyBusinessInfo,
+        bool fetchGoogleUpdates,
+        bool fetchGoogleQuestionsAndAnswers,
         CancellationToken ct);
 }
 
@@ -51,6 +55,10 @@ public sealed class NullReviewsProvider : IReviewsProvider
         decimal? centerLat,
         decimal? centerLng,
         int? radiusMeters,
+        bool fetchGoogleReviews,
+        bool fetchMyBusinessInfo,
+        bool fetchGoogleUpdates,
+        bool fetchGoogleQuestionsAndAnswers,
         CancellationToken ct) => Task.CompletedTask;
 }
 
@@ -63,6 +71,10 @@ public sealed class NotImplementedReviewsProvider(ILogger<NotImplementedReviewsP
         decimal? centerLat,
         decimal? centerLng,
         int? radiusMeters,
+        bool fetchGoogleReviews,
+        bool fetchMyBusinessInfo,
+        bool fetchGoogleUpdates,
+        bool fetchGoogleQuestionsAndAnswers,
         CancellationToken ct)
     {
         logger.LogWarning("SerpApi provider requested for place {PlaceId}, but not implemented.", placeId);

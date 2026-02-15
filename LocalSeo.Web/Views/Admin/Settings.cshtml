@@ -1,0 +1,47 @@
+@model AdminSettingsModel
+@{
+    ViewData["Title"] = "Settings";
+    var statusMessage = TempData["Status"] as string;
+}
+
+<div class="page-stack">
+    @if (!string.IsNullOrWhiteSpace(statusMessage))
+    {
+        <div class="notice">@statusMessage</div>
+    }
+
+    <section class="card">
+        <div class="card-header">
+            <h2 class="card-title">Data Collection Windows</h2>
+            <a class="btn btn-secondary" href="/admin">Back to Admin</a>
+        </div>
+
+        <form method="post" action="/admin/settings" class="form-grid">
+            @Html.AntiForgeryToken()
+
+            <div class="form-row">
+                <label for="EnhancedGoogleDataRefreshHours">Number of hours before attempting Google Enhanced Data collection</label>
+                <input id="EnhancedGoogleDataRefreshHours" name="EnhancedGoogleDataRefreshHours" type="number" min="1" step="1" value="@Model.EnhancedGoogleDataRefreshHours" />
+            </div>
+
+            <div class="form-row">
+                <label for="GoogleReviewsRefreshHours">Number of hours before attempting Google Review collection</label>
+                <input id="GoogleReviewsRefreshHours" name="GoogleReviewsRefreshHours" type="number" min="1" step="1" value="@Model.GoogleReviewsRefreshHours" />
+            </div>
+
+            <div class="form-row">
+                <label for="GoogleUpdatesRefreshHours">Number of hours before attempting Google Updates collection</label>
+                <input id="GoogleUpdatesRefreshHours" name="GoogleUpdatesRefreshHours" type="number" min="1" step="1" value="@Model.GoogleUpdatesRefreshHours" />
+            </div>
+
+            <div class="form-row">
+                <label for="GoogleQuestionsAndAnswersRefreshHours">Number of hours before attempting Google Question &amp; Answers collection</label>
+                <input id="GoogleQuestionsAndAnswersRefreshHours" name="GoogleQuestionsAndAnswersRefreshHours" type="number" min="1" step="1" value="@Model.GoogleQuestionsAndAnswersRefreshHours" />
+            </div>
+
+            <div class="toolbar">
+                <button type="submit">Save Settings</button>
+            </div>
+        </form>
+    </section>
+</div>

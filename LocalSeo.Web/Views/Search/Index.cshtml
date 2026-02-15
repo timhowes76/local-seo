@@ -1,28 +1,101 @@
 @model SearchFormModel
-<h2>Run Google Places Search</h2>
-@if (TempData["Status"] != null)
-{
-    <div>@TempData["Status"]</div>
+@{
+    ViewData["Title"] = "Search";
+    var statusMessage = TempData["Status"] as string;
+    var isRerun = Model.RerunSourceRunId.HasValue;
 }
-<form method="post" action="/search">
-    @Html.AntiForgeryToken()
-    @Html.ValidationSummary(false)
-    <label asp-for="SeedKeyword">Seed Keyword</label><input asp-for="SeedKeyword" required /><br />
-    <label asp-for="LocationName">Location Name</label><input asp-for="LocationName" required /><br />
-    <label for="RadiusKm">Radius</label>
-    <input id="RadiusKm" name="RadiusKm" type="range" min="1" max="100" step="1" value="@Math.Max(1, Model.RadiusMeters / 1000)" />
-    <span id="RadiusKmDisplay">@Math.Max(1, Model.RadiusMeters / 1000) KM</span>
-    <input asp-for="RadiusMeters" type="hidden" />
-    <br />
-    <label asp-for="ResultLimit">Search Depth</label><input asp-for="ResultLimit" min="1" max="20" /><br />
-    <label asp-for="FetchReviews">Get Detailed Data</label><input asp-for="FetchReviews" type="checkbox" /><br />
-    <button type="submit">Run Search</button>
-</form>
+<div class="page-stack">
+    @if (!string.IsNullOrWhiteSpace(statusMessage))
+    {
+        <div class="notice">@statusMessage</div>
+    }
+
+    @if (isRerun)
+    {
+        <div class="notice">
+            Rerun mode from <a href="/runs/@Model.RerunSourceRunId">Run #@Model.RerunSourceRunId</a>. You can change data enrichment options before starting.
+        </div>
+    }
+
+    <section class="card">
+        <h2 class="card-title">Run Google Places Search</h2>
+        @Html.ValidationSummary(false)
+        <form method="post" action="/search" class="form-grid" id="search-form">
+            @Html.AntiForgeryToken()
+            <input asp-for="RerunSourceRunId" type="hidden" />
+            <div class="form-row">
+                <label asp-for="SeedKeyword">Seed Keyword</label>
+                <input asp-for="SeedKeyword" required />
+            </div>
+            <div class="form-row">
+                <label asp-for="LocationName">Location Name</label>
+                <input asp-for="LocationName" required />
+            </div>
+            @if (Model.CenterLat.HasValue && Model.CenterLng.HasValue)
+            {
+                <div class="form-row">
+                    <label asp-for="CenterLat">Center Latitude</label>
+                    <input asp-for="CenterLat" readonly />
+                </div>
+                <div class="form-row">
+                    <label asp-for="CenterLng">Center Longitude</label>
+                    <input asp-for="CenterLng" readonly />
+                </div>
+            }
+            else
+            {
+                <input asp-for="CenterLat" type="hidden" />
+                <input asp-for="CenterLng" type="hidden" />
+            }
+            <div class="form-row">
+                <label for="RadiusKm">Radius</label>
+                <input id="RadiusKm" name="RadiusKm" type="range" min="1" max="100" step="1" value="@Math.Max(1, Model.RadiusMeters / 1000)" />
+                <span id="RadiusKmDisplay" class="muted">@Math.Max(1, Model.RadiusMeters / 1000) KM</span>
+                <input asp-for="RadiusMeters" type="hidden" />
+            </div>
+            <div class="form-row">
+                <label asp-for="ResultLimit">Search Depth</label>
+                <input asp-for="ResultLimit" min="1" max="20" />
+            </div>
+            <div class="inline-group">
+                <input asp-for="FetchEnhancedGoogleData" type="checkbox" />
+                <label asp-for="FetchEnhancedGoogleData">Get Enhanced Google Data (Description, Topics, Other Categories)</label>
+            </div>
+            <div class="inline-group">
+                <input asp-for="FetchGoogleReviews" type="checkbox" />
+                <label asp-for="FetchGoogleReviews">Get Google Reviews</label>
+            </div>
+            <div class="inline-group">
+                <input asp-for="FetchGoogleUpdates" type="checkbox" />
+                <label asp-for="FetchGoogleUpdates">Get Google Updates</label>
+            </div>
+            <div class="inline-group">
+                <input asp-for="FetchGoogleQuestionsAndAnswers" type="checkbox" />
+                <label asp-for="FetchGoogleQuestionsAndAnswers">Get Google Question &amp; Answers</label>
+            </div>
+            <div>
+                <button type="submit" id="run-search-btn">Run Search</button>
+            </div>
+        </form>
+    </section>
+</div>
+
+<div id="search-loading-overlay" class="loading-overlay is-hidden" role="dialog" aria-live="polite" aria-modal="true" aria-label="Search is running">
+    <div class="loading-modal">
+        <div class="loading-spinner" aria-hidden="true"></div>
+        <h3>Running Search</h3>
+        <p>Please wait while we gather places and enrichment data.</p>
+    </div>
+</div>
+
 <script>
     (() => {
         const kmSlider = document.getElementById("RadiusKm");
         const metersInput = document.getElementById("RadiusMeters");
         const kmDisplay = document.getElementById("RadiusKmDisplay");
+        const form = document.getElementById("search-form");
+        const runButton = document.getElementById("run-search-btn");
+        const loadingOverlay = document.getElementById("search-loading-overlay");
         if (!kmSlider || !metersInput || !kmDisplay) return;
 
         const syncFromKm = () => {
@@ -32,11 +105,23 @@
             kmDisplay.textContent = `${km} KM`;
         };
 
+        const showLoadingState = () => {
+            if (runButton instanceof HTMLButtonElement) {
+                runButton.disabled = true;
+                runButton.textContent = "Running...";
+            }
+            if (loadingOverlay) {
+                loadingOverlay.classList.remove("is-hidden");
+            }
+        };
+
+        if (form instanceof HTMLFormElement) {
+            form.addEventListener("submit", () => {
+                showLoadingState();
+            });
+        }
+
         kmSlider.addEventListener("input", syncFromKm);
         syncFromKm();
     })();
 </script>
-<div>
-    <h3>Status Log</h3>
-    <p>Latest action: @(TempData["Status"] ?? "Ready")</p>
-</div>

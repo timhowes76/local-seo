@@ -44,6 +44,7 @@ builder.Services.AddScoped<ILoginService, LoginService>();
 builder.Services.AddScoped<IGooglePlacesClient, GooglePlacesClient>();
 builder.Services.AddScoped<ISearchIngestionService, SearchIngestionService>();
 builder.Services.AddScoped<IAdminMaintenanceService, AdminMaintenanceService>();
+builder.Services.AddScoped<IAdminSettingsService, AdminSettingsService>();
 builder.Services.AddScoped<IEmailSender, SendGridEmailSender>();
 builder.Services.AddScoped<ICodeHasher, CodeHasher>();
 builder.Services.AddScoped<IReviewsProviderResolver, ReviewsProviderResolver>();

@@ -11,13 +11,38 @@ namespace LocalSeo.Web.Controllers;
 public class SearchController(ISearchIngestionService ingestionService, IOptions<PlacesOptions> placesOptions) : Controller
 {
     [HttpGet("/search")]
-    public IActionResult Index()
+    public async Task<IActionResult> Index(long? rerunId, CancellationToken ct)
     {
-        return View(new SearchFormModel
+        var model = new SearchFormModel
         {
             RadiusMeters = placesOptions.Value.DefaultRadiusMeters,
             ResultLimit = placesOptions.Value.DefaultResultLimit
-        });
+        };
+
+        if (rerunId.HasValue)
+        {
+            var run = await ingestionService.GetRunAsync(rerunId.Value, ct);
+            if (run is not null)
+            {
+                model.SeedKeyword = run.SeedKeyword;
+                model.LocationName = run.LocationName;
+                model.RadiusMeters = run.RadiusMeters ?? placesOptions.Value.DefaultRadiusMeters;
+                model.ResultLimit = run.ResultLimit;
+                model.FetchEnhancedGoogleData = run.FetchDetailedData;
+                model.FetchGoogleReviews = run.FetchGoogleReviews;
+                model.FetchGoogleUpdates = run.FetchGoogleUpdates;
+                model.FetchGoogleQuestionsAndAnswers = run.FetchGoogleQuestionsAndAnswers;
+                model.CenterLat = run.CenterLat;
+                model.CenterLng = run.CenterLng;
+                model.RerunSourceRunId = run.SearchRunId;
+            }
+            else
+            {
+                TempData["Status"] = $"Run #{rerunId.Value} was not found. Defaults loaded.";
+            }
+        }
+
+        return View(model);
     }
 
     [HttpPost("/search")]
@@ -29,8 +54,7 @@ public class SearchController(ISearchIngestionService ingestionService, IOptions
         try
         {
             var runId = await ingestionService.RunAsync(model, ct);
-            TempData["Status"] = $"Search complete. Run #{runId}";
-            return RedirectToAction("Index", new { runId });
+            return RedirectToAction("Details", "Runs", new { id = runId });
         }
         catch (InvalidOperationException ex)
         {

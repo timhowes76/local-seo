@@ -12,6 +12,12 @@ public sealed class DataForSeoOptions
     public string MyBusinessInfoTaskPostPath { get; set; } = "/v3/business_data/google/my_business_info/task_post";
     public string MyBusinessInfoTaskGetPathFormat { get; set; } = "/v3/business_data/google/my_business_info/task_get/{0}";
     public string MyBusinessInfoTasksReadyPath { get; set; } = "/v3/business_data/google/my_business_info/tasks_ready";
+    public string MyBusinessUpdatesTaskPostPath { get; set; } = "/v3/business_data/google/my_business_updates/task_post";
+    public string MyBusinessUpdatesTaskGetPathFormat { get; set; } = "/v3/business_data/google/my_business_updates/task_get/{0}";
+    public string MyBusinessUpdatesTasksReadyPath { get; set; } = "/v3/business_data/google/my_business_updates/tasks_ready";
+    public string QuestionsAndAnswersTaskPostPath { get; set; } = "/v3/business_data/google/questions_and_answers/task_post";
+    public string QuestionsAndAnswersTaskGetPathFormat { get; set; } = "/v3/business_data/google/questions_and_answers/task_get/{0}";
+    public string QuestionsAndAnswersTasksReadyPath { get; set; } = "/v3/business_data/google/questions_and_answers/tasks_ready";
     public string LanguageCode { get; set; } = "en";
     public int Depth { get; set; } = 100;
     public string SortBy { get; set; } = "newest";

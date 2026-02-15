@@ -3,22 +3,51 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Local SEO Tool</title>
+    <title>@(ViewData["Title"] as string ?? "Local SEO Tool")</title>
     <link rel="stylesheet" href="/css/site.css" />
 </head>
 <body>
-<header>
-    <a href="/search">Search</a> | <a href="/runs">Runs</a> | <a href="/places">Places</a> | <a href="/admin">Admin</a>
-    @if (User.Identity?.IsAuthenticated == true)
-    {
-        <form method="post" action="/logout" style="display:inline">
-            @Html.AntiForgeryToken()
-            <button type="submit">Logout (@User.Identity?.Name)</button>
-        </form>
-    }
-</header>
-<main>
-    @RenderBody()
-</main>
+@{
+    var isAuthenticated = User.Identity?.IsAuthenticated == true;
+    var pageTitle = (ViewData["Title"] as string) ?? (ViewContext.RouteData.Values["controller"]?.ToString() ?? "Dashboard");
+    var currentController = (ViewContext.RouteData.Values["controller"]?.ToString() ?? string.Empty).ToLowerInvariant();
+}
+
+@if (isAuthenticated)
+{
+    <div class="dashboard-shell">
+        <aside class="sidebar">
+            <div class="sidebar-brand">Local SEO Tool</div>
+            <nav class="sidebar-nav">
+                <a class="sidebar-link @(currentController == "search" ? "is-active" : null)" href="/search">Search</a>
+                <a class="sidebar-link @(currentController == "runs" ? "is-active" : null)" href="/runs">Runs</a>
+                <a class="sidebar-link @(currentController == "places" ? "is-active" : null)" href="/places">Places</a>
+                <a class="sidebar-link @(currentController == "admin" ? "is-active" : null)" href="/admin">Admin</a>
+            </nav>
+        </aside>
+
+        <div class="main-shell">
+            <header class="topbar">
+                <h1 class="topbar-title">@pageTitle</h1>
+                <div class="topbar-actions">
+                    <span class="topbar-user">@User.Identity?.Name</span>
+                    <form method="post" action="/logout">
+                        @Html.AntiForgeryToken()
+                        <button type="submit" class="btn btn-secondary">Logout</button>
+                    </form>
+                </div>
+            </header>
+            <main class="content-shell">
+                @RenderBody()
+            </main>
+        </div>
+    </div>
+}
+else
+{
+    <main class="auth-shell">
+        @RenderBody()
+    </main>
+}
 </body>
 </html>

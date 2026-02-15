@@ -1,6 +1,18 @@
 namespace LocalSeo.Web.Models;
 
-public sealed record SearchRun(long SearchRunId, string SeedKeyword, string LocationName, decimal? CenterLat, decimal? CenterLng, int? RadiusMeters, int ResultLimit, DateTime RanAtUtc);
+public sealed record SearchRun(
+    long SearchRunId,
+    string SeedKeyword,
+    string LocationName,
+    decimal? CenterLat,
+    decimal? CenterLng,
+    int? RadiusMeters,
+    int ResultLimit,
+    bool FetchDetailedData,
+    bool FetchGoogleReviews,
+    bool FetchGoogleUpdates,
+    bool FetchGoogleQuestionsAndAnswers,
+    DateTime RanAtUtc);
 public sealed record PlaceSnapshotRow(
     long PlaceSnapshotId,
     long SearchRunId,
@@ -17,10 +29,13 @@ public sealed record PlaceSnapshotRow(
     decimal? Lng,
     string? FormattedAddress,
     string? WebsiteUri,
+    int? QuestionAnswerCount,
     int? ReviewsLast90,
     decimal? AvgPerMonth12m,
     decimal? Trend90Pct,
     int? DaysSinceLastReview,
+    int? DaysSinceLastUpdate,
+    string? UpdateStatusLabel,
     string? StatusLabel,
     int? MomentumScore);
 public sealed record PlaceHistoryRow(long SearchRunId, int RankPosition, decimal? Rating, int? UserRatingCount, DateTime CapturedAtUtc);
@@ -54,12 +69,27 @@ public sealed record DataForSeoTaskRow(
     DateTime? CallbackReceivedAtUtc,
     string? CallbackTaskId,
     string? LastError);
-public sealed record RunDetailsViewModel(SearchRun Run, IReadOnlyList<PlaceSnapshotRow> Snapshots);
+public sealed record RunDetailsViewModel(
+    SearchRun Run,
+    IReadOnlyList<PlaceSnapshotRow> Snapshots,
+    IReadOnlyList<RunTaskProgressRow> TaskProgress);
+
+public sealed record RunTaskProgressRow(
+    string TaskType,
+    string Label,
+    int TotalPlaces,
+    int DueCount,
+    int ProcessingCount,
+    int CompletedCount,
+    int ErrorCount);
 
 public sealed class PlaceDetailsViewModel
 {
     public string PlaceId { get; init; } = string.Empty;
     public string? DisplayName { get; init; }
+    public string? SearchLocationName { get; init; }
+    public string? ContextSeedKeyword { get; init; }
+    public string? ContextLocationName { get; init; }
     public string? FormattedAddress { get; init; }
     public string? PrimaryType { get; init; }
     public string? PrimaryCategory { get; init; }
@@ -78,13 +108,18 @@ public sealed class PlaceDetailsViewModel
     public int? ActiveRankPosition { get; init; }
     public decimal? ActiveRating { get; init; }
     public int? ActiveUserRatingCount { get; init; }
+    public int? QuestionAnswerCount { get; init; }
     public DateTime? ActiveCapturedAtUtc { get; init; }
     public long? MapRunId { get; init; }
     public decimal? RunCenterLat { get; init; }
     public decimal? RunCenterLng { get; init; }
     public IReadOnlyList<PlaceReviewRow> Reviews { get; init; } = [];
+    public IReadOnlyList<PlaceUpdateRow> Updates { get; init; } = [];
+    public IReadOnlyList<PlaceQuestionAnswerRow> QuestionsAndAnswers { get; init; } = [];
     public IReadOnlyList<PlaceHistoryRow> History { get; init; } = [];
+    public IReadOnlyList<PlaceDataTaskStatusRow> DataTaskStatuses { get; init; } = [];
     public PlaceReviewVelocityDetailsDto? ReviewVelocity { get; init; }
+    public PlaceUpdateVelocityDetailsDto? UpdateVelocity { get; init; }
 }
 
 public sealed record PlaceVelocityListItemDto(
@@ -140,8 +175,65 @@ public sealed class SearchFormModel
     public string LocationName { get; set; } = string.Empty;
     public int RadiusMeters { get; set; } = 5000;
     public int ResultLimit { get; set; } = 20;
-    public bool FetchReviews { get; set; }
+    public bool FetchEnhancedGoogleData { get; set; }
+    public bool FetchGoogleReviews { get; set; }
+    public bool FetchGoogleUpdates { get; set; }
+    public bool FetchGoogleQuestionsAndAnswers { get; set; }
+    public decimal? CenterLat { get; set; }
+    public decimal? CenterLng { get; set; }
+    public long? RerunSourceRunId { get; set; }
 }
+
+public sealed record PlaceUpdateRow(
+    string UpdateKey,
+    string? PostText,
+    string? Url,
+    IReadOnlyList<string> ImageUrls,
+    DateTime? PostDateUtc,
+    IReadOnlyList<PlaceUpdateLinkRow> Links,
+    DateTime LastSeenUtc);
+
+public sealed record PlaceUpdateLinkRow(string? Type, string? Title, string? Url);
+
+public sealed record PlaceQuestionAnswerRow(
+    string QaKey,
+    string? QuestionText,
+    DateTime? QuestionTimestampUtc,
+    string? QuestionProfileName,
+    string? AnswerText,
+    DateTime? AnswerTimestampUtc,
+    string? AnswerProfileName,
+    DateTime LastSeenUtc);
+
+public sealed record PlaceDataTaskStatusRow(
+    string TaskType,
+    string Label,
+    string? Status,
+    long? DataForSeoTaskRowId,
+    DateTime? LastRunAtUtc,
+    string LastRunAgeLabel,
+    bool IsReady,
+    bool CanRefresh,
+    int RefreshThresholdHours);
+
+public sealed record PlaceUpdateVelocityDetailsDto(
+    string PlaceId,
+    DateTime? AsOfUtc,
+    int? UpdatesLast90,
+    int? UpdatesLast180,
+    int? UpdatesLast270,
+    int? UpdatesLast365,
+    int? Prev90,
+    decimal? Trend90Pct,
+    int? DaysSinceLastUpdate,
+    DateTime? LastUpdateTimestampUtc,
+    string? StatusLabel,
+    IReadOnlyList<MonthlyUpdateCountDto> MonthlySeries,
+    IReadOnlyList<YearUpdateBreakdownDto> YearBreakdown);
+
+public sealed record MonthlyUpdateCountDto(int Year, int Month, int UpdateCount);
+
+public sealed record YearUpdateBreakdownDto(int Year, int UpdateCount);
 
 public sealed class LoginEmailModel
 {
@@ -152,6 +244,14 @@ public sealed class LoginCodeModel
 {
     public string Email { get; set; } = string.Empty;
     public string Code { get; set; } = string.Empty;
+}
+
+public sealed class AdminSettingsModel
+{
+    public int EnhancedGoogleDataRefreshHours { get; set; } = 24;
+    public int GoogleReviewsRefreshHours { get; set; } = 24;
+    public int GoogleUpdatesRefreshHours { get; set; } = 24;
+    public int GoogleQuestionsAndAnswersRefreshHours { get; set; } = 24;
 }
 
 public sealed record GooglePlace(

@@ -1,13 +1,81 @@
 @model IReadOnlyList<SearchRun>
-<h2>Last 20 Runs</h2>
-<table>
-<thead><tr><th>ID</th><th>Keyword</th><th>Location</th><th>Ran</th><th>Details</th></tr></thead>
-<tbody>
-@foreach (var r in Model)
-{
-    <tr>
-        <td>@r.SearchRunId</td><td>@r.SeedKeyword</td><td>@r.LocationName</td><td>@r.RanAtUtc</td><td><a href="/runs/@r.SearchRunId">View</a></td>
-    </tr>
+@{
+    ViewData["Title"] = "Runs";
 }
-</tbody>
-</table>
+
+<div class="page-stack">
+    <section class="card">
+        <h2 class="card-title">Recent Runs</h2>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Keyword</th>
+                        <th>Location</th>
+                        <th>Search Depth</th>
+                        <th>Get Enahnced Google Data</th>
+                        <th>Get Google Reviews</th>
+                        <th>Get Google Updates</th>
+                        <th>Get Google Question &amp; Answers</th>
+                        <th>Ran</th>
+                        <th>Details</th>
+                    </tr>
+                </thead>
+                <tbody>
+                @foreach (var r in Model)
+                {
+                    <tr>
+                        <td>@r.SearchRunId</td>
+                        <td>@r.SeedKeyword</td>
+                        <td>@r.LocationName</td>
+                        <td>@r.ResultLimit</td>
+                        <td>
+                            @if (r.FetchDetailedData)
+                            {
+                                <span class="status-pill status-healthy">Yes</span>
+                            }
+                            else
+                            {
+                                <span class="status-pill status-noreviews">No</span>
+                            }
+                        </td>
+                        <td>
+                            @if (r.FetchGoogleReviews)
+                            {
+                                <span class="status-pill status-healthy">Yes</span>
+                            }
+                            else
+                            {
+                                <span class="status-pill status-noreviews">No</span>
+                            }
+                        </td>
+                        <td>
+                            @if (r.FetchGoogleUpdates)
+                            {
+                                <span class="status-pill status-healthy">Yes</span>
+                            }
+                            else
+                            {
+                                <span class="status-pill status-noreviews">No</span>
+                            }
+                        </td>
+                        <td>
+                            @if (r.FetchGoogleQuestionsAndAnswers)
+                            {
+                                <span class="status-pill status-healthy">Yes</span>
+                            }
+                            else
+                            {
+                                <span class="status-pill status-noreviews">No</span>
+                            }
+                        </td>
+                        <td>@r.RanAtUtc</td>
+                        <td><a href="/runs/@r.SearchRunId">View</a></td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    </section>
+</div>

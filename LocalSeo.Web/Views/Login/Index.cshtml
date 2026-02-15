@@ -1,29 +1,44 @@
 @{
+    ViewData["Title"] = "Kontrolit Local Seo Login";
     var step = (string?)ViewBag.Step ?? "request";
     var email = (string?)ViewBag.Email ?? "";
+    var message = (string?)ViewBag.Message;
 }
-<h2>Login</h2>
-@if (ViewBag.Message != null)
-{
-    <p>@ViewBag.Message</p>
-}
-@if (step == "verify")
-{
-    <form method="post" action="/login/verify">
-        @Html.AntiForgeryToken()
-        <input type="hidden" name="Email" value="@email" />
-        <label>Email: @email</label><br />
-        <label>6-digit code</label>
-        <input name="Code" maxlength="6" />
-        <button type="submit">Verify</button>
-    </form>
-}
-else
-{
-    <form method="post" action="/login/request">
-        @Html.AntiForgeryToken()
-        <label>Email</label>
-        <input name="Email" type="email" required />
-        <button type="submit">Send Code</button>
-    </form>
-}
+<div class="login-card card">
+    <h2 class="card-title">Kontrolit Local Seo Login</h2>
+
+    @if (!string.IsNullOrWhiteSpace(message))
+    {
+        <div class="notice">@message</div>
+    }
+
+    @if (step == "verify")
+    {
+        <p class="muted">Enter the 6-digit code sent to <strong>@email</strong>.</p>
+        <form method="post" action="/login/verify" class="form-grid">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="Email" value="@email" />
+            <div class="form-row">
+                <label for="code-input">6-digit code</label>
+                <input id="code-input" name="Code" type="text" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" required />
+            </div>
+            <div class="login-actions">
+                <button type="submit">Verify</button>
+            </div>
+        </form>
+    }
+    else
+    {
+        <p class="muted">Sign in with your email to receive a one-time code.</p>
+        <form method="post" action="/login/request" class="form-grid">
+            @Html.AntiForgeryToken()
+            <div class="form-row">
+                <label for="email-input">Email</label>
+                <div class="login-inline">
+                    <input id="email-input" name="Email" type="email" autocomplete="email" required />
+                    <button type="submit">Send Code</button>
+                </div>
+            </div>
+        </form>
+    }
+</div>

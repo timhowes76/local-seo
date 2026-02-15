@@ -1,118 +1,160 @@
 @model IReadOnlyList<DataForSeoTaskRow>
 @{
+    ViewData["Title"] = "DataForSEO Tasks";
     var selectedTaskType = (ViewBag.TaskType as string ?? "all").ToLowerInvariant();
-}
-<h2>DataForSEO Tasks</h2>
-
-@if (TempData["Status"] != null)
-{
-    <div>@TempData["Status"]</div>
+    var statusMessage = TempData["Status"] as string;
 }
 
-<p><a href="/admin">Back to Admin</a></p>
-
-<form method="get" action="/admin/dataforseo-tasks">
-    <label for="taskTypeFilter">Task Type</label>
-    <select id="taskTypeFilter" name="taskType">
-        @if (selectedTaskType == "all")
-        {
-            <option value="all" selected>All</option>
-        }
-        else
-        {
-            <option value="all">All</option>
-        }
-        @if (selectedTaskType == "my_business_info")
-        {
-            <option value="my_business_info" selected>my_business_info</option>
-        }
-        else
-        {
-            <option value="my_business_info">my_business_info</option>
-        }
-        @if (selectedTaskType == "reviews")
-        {
-            <option value="reviews" selected>reviews</option>
-        }
-        else
-        {
-            <option value="reviews">reviews</option>
-        }
-    </select>
-    <button type="submit">Apply Filter</button>
-</form>
-
-<form method="post" action="/admin/dataforseo-tasks/refresh?taskType=@selectedTaskType">
-    @Html.AntiForgeryToken()
-    <button type="submit">Refresh Statuses (Tasks Ready)</button>
-</form>
-
-<form method="post" action="/admin/dataforseo-tasks/delete-errors?taskType=@selectedTaskType" onsubmit="return confirm('Delete all Error rows for the current filter?');">
-    @Html.AntiForgeryToken()
-    <button type="submit">Delete Error Rows</button>
-</form>
-
-@if (Model.Count == 0)
-{
-    <p>No DataForSEO tasks found.</p>
-}
-else
-{
-    <table>
-    <thead>
-        <tr>
-            <th>ID</th>
-            <th>Task ID</th>
-            <th>Task Type</th>
-            <th>Place ID</th>
-            <th>Location</th>
-            <th>Status</th>
-            <th>Task Code</th>
-            <th>Task Message</th>
-            <th>Endpoint</th>
-            <th>Created</th>
-            <th>Last Checked</th>
-            <th>Ready</th>
-            <th>Populated</th>
-            <th>Callback At</th>
-            <th>Callback Task ID</th>
-            <th>Last Import Count</th>
-            <th>Error</th>
-            <th>Action</th>
-        </tr>
-    </thead>
-    <tbody>
-    @foreach (var row in Model)
+<div class="page-stack">
+    @if (!string.IsNullOrWhiteSpace(statusMessage))
     {
-        <tr>
-            <td>@row.DataForSeoReviewTaskId</td>
-            <td><code>@row.DataForSeoTaskId</code></td>
-            <td>@row.TaskType</td>
-            <td><code>@row.PlaceId</code></td>
-            <td>@(row.LocationName ?? "N/A")</td>
-            <td>@row.Status</td>
-            <td>@(row.TaskStatusCode?.ToString() ?? "N/A")</td>
-            <td>@(row.TaskStatusMessage ?? "N/A")</td>
-            <td>@(row.Endpoint ?? "N/A")</td>
-            <td>@row.CreatedAtUtc.ToString("u")</td>
-            <td>@(row.LastCheckedUtc?.ToString("u") ?? "N/A")</td>
-            <td>@(row.ReadyAtUtc?.ToString("u") ?? "N/A")</td>
-            <td>@(row.PopulatedAtUtc?.ToString("u") ?? "N/A")</td>
-            <td>@(row.CallbackReceivedAtUtc?.ToString("u") ?? "N/A")</td>
-            <td>@(row.CallbackTaskId ?? "N/A")</td>
-            <td>@(row.LastPopulateReviewCount?.ToString() ?? "N/A")</td>
-            <td>@(row.LastError ?? "N/A")</td>
-            <td>
-                @if (string.Equals(row.Status, "Ready", StringComparison.OrdinalIgnoreCase))
-                {
-                    <form method="post" action="/admin/dataforseo-tasks/@row.DataForSeoReviewTaskId/populate?taskType=@selectedTaskType">
-                        @Html.AntiForgeryToken()
-                        <button type="submit">Populate Results</button>
-                    </form>
-                }
-            </td>
-        </tr>
+        <div class="notice">@statusMessage</div>
     }
-    </tbody>
-    </table>
-}
+
+    <section class="card">
+        <div class="toolbar">
+            <a href="/admin" class="btn btn-secondary">Back to Admin</a>
+            <form method="get" action="/admin/dataforseo-tasks" class="inline-group">
+                <label for="taskTypeFilter">Task Type</label>
+                <select id="taskTypeFilter" name="taskType">
+                    @if (selectedTaskType == "all")
+                    {
+                        <option value="all" selected>All</option>
+                    }
+                    else
+                    {
+                        <option value="all">All</option>
+                    }
+                    @if (selectedTaskType == "my_business_info")
+                    {
+                        <option value="my_business_info" selected>my_business_info</option>
+                    }
+                    else
+                    {
+                        <option value="my_business_info">my_business_info</option>
+                    }
+                    @if (selectedTaskType == "my_business_updates")
+                    {
+                        <option value="my_business_updates" selected>my_business_updates</option>
+                    }
+                    else
+                    {
+                        <option value="my_business_updates">my_business_updates</option>
+                    }
+                    @if (selectedTaskType == "reviews")
+                    {
+                        <option value="reviews" selected>reviews</option>
+                    }
+                    else
+                    {
+                        <option value="reviews">reviews</option>
+                    }
+                    @if (selectedTaskType == "questions_and_answers")
+                    {
+                        <option value="questions_and_answers" selected>questions_and_answers</option>
+                    }
+                    else
+                    {
+                        <option value="questions_and_answers">questions_and_answers</option>
+                    }
+                </select>
+                <button type="submit" class="btn btn-secondary">Apply Filter</button>
+            </form>
+            <form method="post" action="/admin/dataforseo-tasks/refresh?taskType=@selectedTaskType">
+                @Html.AntiForgeryToken()
+                <button type="submit" class="btn btn-secondary">Refresh Statuses</button>
+            </form>
+            <form method="post" action="/admin/dataforseo-tasks/populate-ready?taskType=@selectedTaskType" onsubmit="return confirm('Populate results for all Ready tasks in the current filter?');">
+                @Html.AntiForgeryToken()
+                <button type="submit">Populate All Ready</button>
+            </form>
+            <form method="post" action="/admin/dataforseo-tasks/delete-errors?taskType=@selectedTaskType" onsubmit="return confirm('Delete all Error rows for the current filter?');">
+                @Html.AntiForgeryToken()
+                <button type="submit">Delete Error Rows</button>
+            </form>
+        </div>
+    </section>
+
+    <section class="card">
+        <h2 class="card-title">Task List</h2>
+        @if (Model.Count == 0)
+        {
+            <p class="muted">No DataForSEO tasks found.</p>
+        }
+        else
+        {
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Task ID</th>
+                            <th>Task Type</th>
+                            <th>Place ID</th>
+                            <th>Location</th>
+                            <th>Status</th>
+                            <th>Task Code</th>
+                            <th>Task Message</th>
+                            <th>Endpoint</th>
+                            <th>Created</th>
+                            <th>Last Checked</th>
+                            <th>Ready</th>
+                            <th>Populated</th>
+                            <th>Callback At</th>
+                            <th>Callback Task ID</th>
+                            <th>Last Import Count</th>
+                            <th>Error</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    @foreach (var row in Model)
+                    {
+                        var statusText = string.Equals(row.Status, "NoData", StringComparison.OrdinalIgnoreCase)
+                            ? "No Data"
+                            : row.Status;
+                        var statusClass = row.Status.ToLowerInvariant() switch
+                        {
+                            "ready" => "status-ready",
+                            "error" => "status-error",
+                            "nodata" => "status-nodata",
+                            "pending" => "status-pending",
+                            "created" => "status-pending",
+                            "populated" => "status-healthy",
+                            _ => "status-noreviews"
+                        };
+                        <tr>
+                            <td>@row.DataForSeoReviewTaskId</td>
+                            <td><code>@row.DataForSeoTaskId</code></td>
+                            <td>@row.TaskType</td>
+                            <td><code>@row.PlaceId</code></td>
+                            <td>@(row.LocationName ?? "N/A")</td>
+                            <td><span class="status-pill @statusClass">@statusText</span></td>
+                            <td>@(row.TaskStatusCode?.ToString() ?? "N/A")</td>
+                            <td>@(row.TaskStatusMessage ?? "N/A")</td>
+                            <td>@(row.Endpoint ?? "N/A")</td>
+                            <td>@row.CreatedAtUtc.ToString("u")</td>
+                            <td>@(row.LastCheckedUtc?.ToString("u") ?? "N/A")</td>
+                            <td>@(row.ReadyAtUtc?.ToString("u") ?? "N/A")</td>
+                            <td>@(row.PopulatedAtUtc?.ToString("u") ?? "N/A")</td>
+                            <td>@(row.CallbackReceivedAtUtc?.ToString("u") ?? "N/A")</td>
+                            <td>@(row.CallbackTaskId ?? "N/A")</td>
+                            <td>@(row.LastPopulateReviewCount?.ToString() ?? "N/A")</td>
+                            <td>@(row.LastError ?? "N/A")</td>
+                            <td>
+                                @if (string.Equals(row.Status, "Ready", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    <form method="post" action="/admin/dataforseo-tasks/@row.DataForSeoReviewTaskId/populate?taskType=@selectedTaskType">
+                                        @Html.AntiForgeryToken()
+                                        <button type="submit" class="btn btn-secondary">Populate Results</button>
+                                    </form>
+                                }
+                            </td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </section>
+</div>

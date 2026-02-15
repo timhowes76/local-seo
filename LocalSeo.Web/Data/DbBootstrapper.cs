@@ -18,9 +18,21 @@ BEGIN
     CenterLng decimal(9,6) NULL,
     RadiusMeters int NULL,
     ResultLimit int NOT NULL,
+    FetchDetailedData bit NOT NULL CONSTRAINT DF_SearchRun_FetchDetailedData DEFAULT(0),
+    FetchGoogleReviews bit NOT NULL CONSTRAINT DF_SearchRun_FetchGoogleReviews DEFAULT(0),
+    FetchGoogleUpdates bit NOT NULL CONSTRAINT DF_SearchRun_FetchGoogleUpdates DEFAULT(0),
+    FetchGoogleQuestionsAndAnswers bit NOT NULL CONSTRAINT DF_SearchRun_FetchGoogleQuestionsAndAnswers DEFAULT(0),
     RanAtUtc datetime2(0) NOT NULL CONSTRAINT DF_SearchRun_RanAtUtc DEFAULT SYSUTCDATETIME()
   );
 END;
+IF COL_LENGTH('dbo.SearchRun', 'FetchDetailedData') IS NULL
+  ALTER TABLE dbo.SearchRun ADD FetchDetailedData bit NOT NULL CONSTRAINT DF_SearchRun_FetchDetailedData_Alt DEFAULT(0);
+IF COL_LENGTH('dbo.SearchRun', 'FetchGoogleReviews') IS NULL
+  ALTER TABLE dbo.SearchRun ADD FetchGoogleReviews bit NOT NULL CONSTRAINT DF_SearchRun_FetchGoogleReviews_Alt DEFAULT(0);
+IF COL_LENGTH('dbo.SearchRun', 'FetchGoogleUpdates') IS NULL
+  ALTER TABLE dbo.SearchRun ADD FetchGoogleUpdates bit NOT NULL CONSTRAINT DF_SearchRun_FetchGoogleUpdates_Alt DEFAULT(0);
+IF COL_LENGTH('dbo.SearchRun', 'FetchGoogleQuestionsAndAnswers') IS NULL
+  ALTER TABLE dbo.SearchRun ADD FetchGoogleQuestionsAndAnswers bit NOT NULL CONSTRAINT DF_SearchRun_FetchGoogleQuestionsAndAnswers_Alt DEFAULT(0);
 IF OBJECT_ID('dbo.Place','U') IS NULL
 BEGIN
   CREATE TABLE dbo.Place(
@@ -36,6 +48,7 @@ BEGIN
     WebsiteUri nvarchar(500) NULL,
     Description nvarchar(750) NULL,
     PhotoCount int NULL,
+    QuestionAnswerCount int NULL,
     IsServiceAreaBusiness bit NULL,
     BusinessStatus nvarchar(50) NULL,
     SearchLocationName nvarchar(200) NULL,
@@ -66,6 +79,8 @@ BEGIN
 END;
 IF COL_LENGTH('dbo.Place', 'PhotoCount') IS NULL
   ALTER TABLE dbo.Place ADD PhotoCount int NULL;
+IF COL_LENGTH('dbo.Place', 'QuestionAnswerCount') IS NULL
+  ALTER TABLE dbo.Place ADD QuestionAnswerCount int NULL;
 IF COL_LENGTH('dbo.Place', 'IsServiceAreaBusiness') IS NULL
   ALTER TABLE dbo.Place ADD IsServiceAreaBusiness bit NULL;
 IF COL_LENGTH('dbo.Place', 'BusinessStatus') IS NULL
@@ -181,6 +196,130 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_PlaceReview_Place_Review
   CREATE INDEX IX_PlaceReview_Place_ReviewTimestampUtc ON dbo.PlaceReview(PlaceId, ReviewTimestampUtc DESC) INCLUDE (Rating, OwnerTimestampUtc);
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_PlaceReview_Place_OwnerTimestampUtc' AND object_id=OBJECT_ID('dbo.PlaceReview'))
   CREATE INDEX IX_PlaceReview_Place_OwnerTimestampUtc ON dbo.PlaceReview(PlaceId, OwnerTimestampUtc DESC) INCLUDE (ReviewTimestampUtc);
+IF OBJECT_ID('dbo.PlaceUpdate','U') IS NULL
+BEGIN
+  CREATE TABLE dbo.PlaceUpdate(
+    PlaceUpdateId bigint IDENTITY(1,1) PRIMARY KEY,
+    PlaceId nvarchar(128) NOT NULL FOREIGN KEY REFERENCES dbo.Place(PlaceId),
+    UpdateKey nvarchar(128) NOT NULL,
+    PostText nvarchar(max) NULL,
+    Url nvarchar(1500) NULL,
+    ImagesUrlJson nvarchar(max) NULL,
+    PostDateUtc datetime2(0) NULL,
+    LinksJson nvarchar(max) NULL,
+    SourceTaskId nvarchar(64) NULL,
+    RawJson nvarchar(max) NULL,
+    FirstSeenUtc datetime2(0) NOT NULL CONSTRAINT DF_PlaceUpdate_FirstSeenUtc DEFAULT SYSUTCDATETIME(),
+    LastSeenUtc datetime2(0) NOT NULL CONSTRAINT DF_PlaceUpdate_LastSeenUtc DEFAULT SYSUTCDATETIME()
+  );
+END;
+IF COL_LENGTH('dbo.PlaceUpdate', 'UpdateKey') IS NULL
+  ALTER TABLE dbo.PlaceUpdate ADD UpdateKey nvarchar(128) NOT NULL CONSTRAINT DF_PlaceUpdate_UpdateKey DEFAULT '';
+IF COL_LENGTH('dbo.PlaceUpdate', 'PostText') IS NULL
+  ALTER TABLE dbo.PlaceUpdate ADD PostText nvarchar(max) NULL;
+IF COL_LENGTH('dbo.PlaceUpdate', 'Url') IS NULL
+  ALTER TABLE dbo.PlaceUpdate ADD Url nvarchar(1500) NULL;
+IF COL_LENGTH('dbo.PlaceUpdate', 'ImagesUrlJson') IS NULL
+  ALTER TABLE dbo.PlaceUpdate ADD ImagesUrlJson nvarchar(max) NULL;
+IF COL_LENGTH('dbo.PlaceUpdate', 'PostDateUtc') IS NULL
+  ALTER TABLE dbo.PlaceUpdate ADD PostDateUtc datetime2(0) NULL;
+IF COL_LENGTH('dbo.PlaceUpdate', 'LinksJson') IS NULL
+  ALTER TABLE dbo.PlaceUpdate ADD LinksJson nvarchar(max) NULL;
+IF COL_LENGTH('dbo.PlaceUpdate', 'SourceTaskId') IS NULL
+  ALTER TABLE dbo.PlaceUpdate ADD SourceTaskId nvarchar(64) NULL;
+IF COL_LENGTH('dbo.PlaceUpdate', 'RawJson') IS NULL
+  ALTER TABLE dbo.PlaceUpdate ADD RawJson nvarchar(max) NULL;
+IF COL_LENGTH('dbo.PlaceUpdate', 'FirstSeenUtc') IS NULL
+  ALTER TABLE dbo.PlaceUpdate ADD FirstSeenUtc datetime2(0) NOT NULL CONSTRAINT DF_PlaceUpdate_FirstSeenUtc_Alt DEFAULT SYSUTCDATETIME();
+IF COL_LENGTH('dbo.PlaceUpdate', 'LastSeenUtc') IS NULL
+  ALTER TABLE dbo.PlaceUpdate ADD LastSeenUtc datetime2(0) NOT NULL CONSTRAINT DF_PlaceUpdate_LastSeenUtc_Alt DEFAULT SYSUTCDATETIME();
+IF EXISTS (SELECT 1 FROM sys.indexes WHERE name='UX_PlaceUpdate_Place_UpdateKey' AND object_id=OBJECT_ID('dbo.PlaceUpdate'))
+  DROP INDEX UX_PlaceUpdate_Place_UpdateKey ON dbo.PlaceUpdate;
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='UX_PlaceUpdate_Place_UpdateKey_NotBlank' AND object_id=OBJECT_ID('dbo.PlaceUpdate'))
+  CREATE UNIQUE INDEX UX_PlaceUpdate_Place_UpdateKey_NotBlank ON dbo.PlaceUpdate(PlaceId, UpdateKey) WHERE UpdateKey IS NOT NULL AND UpdateKey <> N'';
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_PlaceUpdate_Place_PostDateUtc' AND object_id=OBJECT_ID('dbo.PlaceUpdate'))
+  CREATE INDEX IX_PlaceUpdate_Place_PostDateUtc ON dbo.PlaceUpdate(PlaceId, PostDateUtc DESC) INCLUDE (LastSeenUtc, Url);
+IF OBJECT_ID('dbo.PlaceQuestionAnswer','U') IS NULL
+BEGIN
+  CREATE TABLE dbo.PlaceQuestionAnswer(
+    PlaceQuestionAnswerId bigint IDENTITY(1,1) PRIMARY KEY,
+    PlaceId nvarchar(128) NOT NULL FOREIGN KEY REFERENCES dbo.Place(PlaceId),
+    QaKey nvarchar(128) NOT NULL,
+    QuestionText nvarchar(max) NULL,
+    QuestionTimestampUtc datetime2(0) NULL,
+    QuestionProfileName nvarchar(300) NULL,
+    AnswerText nvarchar(max) NULL,
+    AnswerTimestampUtc datetime2(0) NULL,
+    AnswerProfileName nvarchar(300) NULL,
+    SourceTaskId nvarchar(64) NULL,
+    RawJson nvarchar(max) NULL,
+    FirstSeenUtc datetime2(0) NOT NULL CONSTRAINT DF_PlaceQuestionAnswer_FirstSeenUtc DEFAULT SYSUTCDATETIME(),
+    LastSeenUtc datetime2(0) NOT NULL CONSTRAINT DF_PlaceQuestionAnswer_LastSeenUtc DEFAULT SYSUTCDATETIME()
+  );
+END;
+IF COL_LENGTH('dbo.PlaceQuestionAnswer', 'QaKey') IS NULL
+  ALTER TABLE dbo.PlaceQuestionAnswer ADD QaKey nvarchar(128) NOT NULL CONSTRAINT DF_PlaceQuestionAnswer_QaKey DEFAULT '';
+IF COL_LENGTH('dbo.PlaceQuestionAnswer', 'QuestionText') IS NULL
+  ALTER TABLE dbo.PlaceQuestionAnswer ADD QuestionText nvarchar(max) NULL;
+IF COL_LENGTH('dbo.PlaceQuestionAnswer', 'QuestionTimestampUtc') IS NULL
+  ALTER TABLE dbo.PlaceQuestionAnswer ADD QuestionTimestampUtc datetime2(0) NULL;
+IF COL_LENGTH('dbo.PlaceQuestionAnswer', 'QuestionProfileName') IS NULL
+  ALTER TABLE dbo.PlaceQuestionAnswer ADD QuestionProfileName nvarchar(300) NULL;
+IF COL_LENGTH('dbo.PlaceQuestionAnswer', 'AnswerText') IS NULL
+  ALTER TABLE dbo.PlaceQuestionAnswer ADD AnswerText nvarchar(max) NULL;
+IF COL_LENGTH('dbo.PlaceQuestionAnswer', 'AnswerTimestampUtc') IS NULL
+  ALTER TABLE dbo.PlaceQuestionAnswer ADD AnswerTimestampUtc datetime2(0) NULL;
+IF COL_LENGTH('dbo.PlaceQuestionAnswer', 'AnswerProfileName') IS NULL
+  ALTER TABLE dbo.PlaceQuestionAnswer ADD AnswerProfileName nvarchar(300) NULL;
+IF COL_LENGTH('dbo.PlaceQuestionAnswer', 'SourceTaskId') IS NULL
+  ALTER TABLE dbo.PlaceQuestionAnswer ADD SourceTaskId nvarchar(64) NULL;
+IF COL_LENGTH('dbo.PlaceQuestionAnswer', 'RawJson') IS NULL
+  ALTER TABLE dbo.PlaceQuestionAnswer ADD RawJson nvarchar(max) NULL;
+IF COL_LENGTH('dbo.PlaceQuestionAnswer', 'FirstSeenUtc') IS NULL
+  ALTER TABLE dbo.PlaceQuestionAnswer ADD FirstSeenUtc datetime2(0) NOT NULL CONSTRAINT DF_PlaceQuestionAnswer_FirstSeenUtc_Alt DEFAULT SYSUTCDATETIME();
+IF COL_LENGTH('dbo.PlaceQuestionAnswer', 'LastSeenUtc') IS NULL
+  ALTER TABLE dbo.PlaceQuestionAnswer ADD LastSeenUtc datetime2(0) NOT NULL CONSTRAINT DF_PlaceQuestionAnswer_LastSeenUtc_Alt DEFAULT SYSUTCDATETIME();
+IF EXISTS (SELECT 1 FROM sys.indexes WHERE name='UX_PlaceQuestionAnswer_Place_QaKey' AND object_id=OBJECT_ID('dbo.PlaceQuestionAnswer'))
+  DROP INDEX UX_PlaceQuestionAnswer_Place_QaKey ON dbo.PlaceQuestionAnswer;
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='UX_PlaceQuestionAnswer_Place_QaKey_NotBlank' AND object_id=OBJECT_ID('dbo.PlaceQuestionAnswer'))
+  CREATE UNIQUE INDEX UX_PlaceQuestionAnswer_Place_QaKey_NotBlank ON dbo.PlaceQuestionAnswer(PlaceId, QaKey) WHERE QaKey IS NOT NULL AND QaKey <> N'';
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_PlaceQuestionAnswer_Place_QuestionTimestampUtc' AND object_id=OBJECT_ID('dbo.PlaceQuestionAnswer'))
+  CREATE INDEX IX_PlaceQuestionAnswer_Place_QuestionTimestampUtc ON dbo.PlaceQuestionAnswer(PlaceId, QuestionTimestampUtc DESC) INCLUDE (AnswerTimestampUtc, LastSeenUtc);
+;WITH parsed AS (
+  SELECT
+    u.PlaceUpdateId,
+    COALESCE(
+      CAST(TRY_CAST(JSON_VALUE(u.RawJson, '$.timestamp') AS datetimeoffset(0)) AS datetime2(0)),
+      CASE
+        WHEN TRY_CONVERT(bigint, JSON_VALUE(u.RawJson, '$.timestamp')) BETWEEN 1000000000 AND 9999999999
+          THEN DATEADD(second, TRY_CONVERT(int, TRY_CONVERT(bigint, JSON_VALUE(u.RawJson, '$.timestamp'))), CAST('1970-01-01T00:00:00' AS datetime2(0)))
+        WHEN TRY_CONVERT(bigint, JSON_VALUE(u.RawJson, '$.timestamp')) BETWEEN 1000000000000 AND 9999999999999
+          THEN DATEADD(second, TRY_CONVERT(int, TRY_CONVERT(bigint, JSON_VALUE(u.RawJson, '$.timestamp')) / 1000), CAST('1970-01-01T00:00:00' AS datetime2(0)))
+        ELSE NULL
+      END,
+      CAST(TRY_CAST(JSON_VALUE(u.RawJson, '$.post_date') AS datetimeoffset(0)) AS datetime2(0)),
+      CAST(TRY_CAST(JSON_VALUE(u.RawJson, '$.date_posted') AS datetimeoffset(0)) AS datetime2(0)),
+      CAST(TRY_CAST(JSON_VALUE(u.RawJson, '$.posted_at') AS datetimeoffset(0)) AS datetime2(0)),
+      CAST(TRY_CAST(JSON_VALUE(u.RawJson, '$.date') AS datetimeoffset(0)) AS datetime2(0)),
+      TRY_CONVERT(datetime2(0), JSON_VALUE(u.RawJson, '$.timestamp'), 112),
+      TRY_CONVERT(datetime2(0), JSON_VALUE(u.RawJson, '$.post_date'), 112),
+      TRY_CONVERT(datetime2(0), JSON_VALUE(u.RawJson, '$.date_posted'), 112),
+      TRY_CONVERT(datetime2(0), JSON_VALUE(u.RawJson, '$.posted_at'), 112),
+      TRY_CONVERT(datetime2(0), JSON_VALUE(u.RawJson, '$.date'), 112)
+    ) AS ParsedPostDateUtc
+  FROM dbo.PlaceUpdate u
+  WHERE u.RawJson IS NOT NULL
+)
+UPDATE u
+SET u.PostDateUtc = p.ParsedPostDateUtc
+FROM dbo.PlaceUpdate u
+JOIN parsed p ON p.PlaceUpdateId = u.PlaceUpdateId
+WHERE p.ParsedPostDateUtc IS NOT NULL
+  AND (
+    u.PostDateUtc IS NULL
+    OR u.PostDateUtc < '2005-01-01'
+    OR u.PostDateUtc > DATEADD(day, 1, SYSUTCDATETIME())
+  );
 IF OBJECT_ID('dbo.PlaceReviewVelocityStats','U') IS NULL
 BEGIN
   CREATE TABLE dbo.PlaceReviewVelocityStats(
@@ -364,6 +503,55 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='UX_DataForSeoReviewTask_Tas
   CREATE UNIQUE INDEX UX_DataForSeoReviewTask_TaskId ON dbo.DataForSeoReviewTask(DataForSeoTaskId);
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_DataForSeoReviewTask_Status_Created' AND object_id=OBJECT_ID('dbo.DataForSeoReviewTask'))
   CREATE INDEX IX_DataForSeoReviewTask_Status_Created ON dbo.DataForSeoReviewTask(Status, CreatedAtUtc DESC);
+IF COL_LENGTH('dbo.DataForSeoReviewTask', 'Status') IS NOT NULL
+   AND COL_LENGTH('dbo.DataForSeoReviewTask', 'TaskStatusMessage') IS NOT NULL
+   AND COL_LENGTH('dbo.DataForSeoReviewTask', 'LastError') IS NOT NULL
+BEGIN
+  EXEC(N'
+UPDATE dbo.DataForSeoReviewTask
+SET
+  Status=''NoData'',
+  LastError=NULL
+WHERE Status=''Error''
+  AND (
+    TaskStatusMessage LIKE ''%No Search Results%''
+    OR LastError LIKE ''%No Search Results%''
+  );');
+END;
+IF OBJECT_ID('dbo.AppSettings','U') IS NULL
+BEGIN
+  CREATE TABLE dbo.AppSettings(
+    AppSettingsId int NOT NULL PRIMARY KEY,
+    EnhancedGoogleDataRefreshHours int NOT NULL CONSTRAINT DF_AppSettings_EnhancedGoogleDataRefreshHours DEFAULT(24),
+    GoogleReviewsRefreshHours int NOT NULL CONSTRAINT DF_AppSettings_GoogleReviewsRefreshHours DEFAULT(24),
+    GoogleUpdatesRefreshHours int NOT NULL CONSTRAINT DF_AppSettings_GoogleUpdatesRefreshHours DEFAULT(24),
+    GoogleQuestionsAndAnswersRefreshHours int NOT NULL CONSTRAINT DF_AppSettings_GoogleQuestionsAndAnswersRefreshHours DEFAULT(24),
+    UpdatedAtUtc datetime2(0) NOT NULL CONSTRAINT DF_AppSettings_UpdatedAtUtc DEFAULT SYSUTCDATETIME()
+  );
+END;
+IF COL_LENGTH('dbo.AppSettings', 'EnhancedGoogleDataRefreshHours') IS NULL
+  ALTER TABLE dbo.AppSettings ADD EnhancedGoogleDataRefreshHours int NOT NULL CONSTRAINT DF_AppSettings_EnhancedGoogleDataRefreshHours_Alt DEFAULT(24);
+IF COL_LENGTH('dbo.AppSettings', 'GoogleReviewsRefreshHours') IS NULL
+  ALTER TABLE dbo.AppSettings ADD GoogleReviewsRefreshHours int NOT NULL CONSTRAINT DF_AppSettings_GoogleReviewsRefreshHours_Alt DEFAULT(24);
+IF COL_LENGTH('dbo.AppSettings', 'GoogleUpdatesRefreshHours') IS NULL
+  ALTER TABLE dbo.AppSettings ADD GoogleUpdatesRefreshHours int NOT NULL CONSTRAINT DF_AppSettings_GoogleUpdatesRefreshHours_Alt DEFAULT(24);
+IF COL_LENGTH('dbo.AppSettings', 'GoogleQuestionsAndAnswersRefreshHours') IS NULL
+  ALTER TABLE dbo.AppSettings ADD GoogleQuestionsAndAnswersRefreshHours int NOT NULL CONSTRAINT DF_AppSettings_GoogleQuestionsAndAnswersRefreshHours_Alt DEFAULT(24);
+IF COL_LENGTH('dbo.AppSettings', 'UpdatedAtUtc') IS NULL
+  ALTER TABLE dbo.AppSettings ADD UpdatedAtUtc datetime2(0) NOT NULL CONSTRAINT DF_AppSettings_UpdatedAtUtc_Alt DEFAULT SYSUTCDATETIME();
+EXEC(N'
+MERGE dbo.AppSettings AS target
+USING (SELECT CAST(1 AS int) AS AppSettingsId) AS source
+ON target.AppSettingsId = source.AppSettingsId
+WHEN MATCHED THEN UPDATE SET
+  EnhancedGoogleDataRefreshHours = CASE WHEN target.EnhancedGoogleDataRefreshHours IS NULL OR target.EnhancedGoogleDataRefreshHours < 1 THEN 24 ELSE target.EnhancedGoogleDataRefreshHours END,
+  GoogleReviewsRefreshHours = CASE WHEN target.GoogleReviewsRefreshHours IS NULL OR target.GoogleReviewsRefreshHours < 1 THEN 24 ELSE target.GoogleReviewsRefreshHours END,
+  GoogleUpdatesRefreshHours = CASE WHEN target.GoogleUpdatesRefreshHours IS NULL OR target.GoogleUpdatesRefreshHours < 1 THEN 24 ELSE target.GoogleUpdatesRefreshHours END,
+  GoogleQuestionsAndAnswersRefreshHours = CASE WHEN target.GoogleQuestionsAndAnswersRefreshHours IS NULL OR target.GoogleQuestionsAndAnswersRefreshHours < 1 THEN 24 ELSE target.GoogleQuestionsAndAnswersRefreshHours END
+WHEN NOT MATCHED THEN
+  INSERT(AppSettingsId, EnhancedGoogleDataRefreshHours, GoogleReviewsRefreshHours, GoogleUpdatesRefreshHours, GoogleQuestionsAndAnswersRefreshHours, UpdatedAtUtc)
+  VALUES(1, 24, 24, 24, 24, SYSUTCDATETIME());
+');
 IF OBJECT_ID('dbo.LoginCode','U') IS NULL
 BEGIN
   CREATE TABLE dbo.LoginCode(

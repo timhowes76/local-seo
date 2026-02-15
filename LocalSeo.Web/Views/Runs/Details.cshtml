@@ -1,54 +1,13 @@
 @using System.Text.Json
 @inject Microsoft.Extensions.Options.IOptions<LocalSeo.Web.Options.GoogleOptions> GoogleOptions
 @model RunDetailsViewModel
-<h2>Run @Model.Run.SearchRunId snapshots</h2>
-<div><strong>Keyword:</strong> @Model.Run.SeedKeyword</div>
-<div><strong>Location:</strong> @Model.Run.LocationName</div>
-
-<table>
-<thead><tr><th>Rank</th><th>Name</th><th>Primary Category</th><th>Photos</th><th>Telephone</th><th>Website</th><th>Avg Rating</th><th>Total Reviews</th><th>Reviews 90d</th><th>Avg/mo (12m)</th><th>Days last review</th><th>Review Status</th><th>Captured</th><th>Details</th></tr></thead>
-<tbody>
-@foreach (var s in Model.Snapshots)
-{
-    <tr>
-        <td>@s.RankPosition</td>
-        <td>@s.DisplayName</td>
-        <td>@(string.IsNullOrWhiteSpace(s.PrimaryCategory) ? "N/A" : s.PrimaryCategory)</td>
-        <td>@(s.PhotoCount?.ToString() ?? "N/A")</td>
-        <td>
-            @if (!string.IsNullOrWhiteSpace(s.NationalPhoneNumber))
-            {
-                <a href="tel:@s.NationalPhoneNumber">@s.NationalPhoneNumber</a>
-            }
-            else
-            {
-                <span>N/A</span>
-            }
-        </td>
-        <td>
-            @if (!string.IsNullOrWhiteSpace(s.WebsiteUri))
-            {
-                <a href="@s.WebsiteUri" target="_blank" rel="noopener noreferrer">Website</a>
-            }
-            else
-            {
-                <span>N/A</span>
-            }
-        </td>
-        <td>@(s.Rating?.ToString() ?? "N/A")</td>
-        <td>@(s.UserRatingCount?.ToString() ?? "N/A")</td>
-        <td>@(s.ReviewsLast90?.ToString() ?? "0")</td>
-        <td>@(s.AvgPerMonth12m?.ToString("0.0") ?? "0.0")</td>
-        <td>@(s.DaysSinceLastReview?.ToString() ?? "N/A")</td>
-        <td><span class="status-pill status-@((s.StatusLabel ?? "noreviews").ToLowerInvariant())">@(s.StatusLabel ?? "NoReviews")</span></td>
-        <td>@s.CapturedAtUtc</td>
-        <td><a href="/places/@s.PlaceId?runId=@Model.Run.SearchRunId">View</a></td>
-    </tr>
-}
-</tbody>
-</table>
-
 @{
+    ViewData["Title"] = $"Run {Model.Run.SearchRunId}";
+    string StatusCss(string? value, string fallback)
+    {
+        var key = (value ?? fallback).Trim().ToLowerInvariant().Replace(" ", string.Empty);
+        return $"status-{key}";
+    }
     var apiKey = GoogleOptions.Value.ApiKey;
     var mapPoints = Model.Snapshots
         .Where(x => x.Lat.HasValue && x.Lng.HasValue)
@@ -64,108 +23,523 @@
             detailsUrl = $"/places/{x.PlaceId}?runId={Model.Run.SearchRunId}"
         })
         .ToList();
+    var capturedStampUtc = Model.Snapshots.FirstOrDefault()?.CapturedAtUtc;
 }
 
-@if (string.IsNullOrWhiteSpace(apiKey))
-{
-    <p>Map unavailable because Google API key is not configured.</p>
-}
-else
-{
-    <h3>Search Center Map</h3>
-    <div id="run-map" style="width:100%;height:500px;margin-top:12px;"></div>
-    <script>
-        const runCenter = {
-            lat: @((Model.Run.CenterLat?.ToString(System.Globalization.CultureInfo.InvariantCulture)) ?? "null"),
-            lng: @((Model.Run.CenterLng?.ToString(System.Globalization.CultureInfo.InvariantCulture)) ?? "null")
-        };
-        const businessPins = @Html.Raw(JsonSerializer.Serialize(mapPoints));
+<div class="page-stack">
+    <section class="card">
+        <div class="card-header">
+            <h2 class="card-title">Run @Model.Run.SearchRunId</h2>
+            <a href="/search?rerunId=@Model.Run.SearchRunId" class="btn">Rerun</a>
+        </div>
+        <div><strong>Keyword:</strong> @Model.Run.SeedKeyword</div>
+        <div><strong>Location:</strong> @Model.Run.LocationName</div>
+        <div><strong>Search Depth:</strong> @Model.Run.ResultLimit</div>
+        <div><strong>Get Enhanced Google Data:</strong> @(Model.Run.FetchDetailedData ? "Yes" : "No")</div>
+        <div><strong>Get Google Reviews:</strong> @(Model.Run.FetchGoogleReviews ? "Yes" : "No")</div>
+        <div><strong>Get Google Updates:</strong> @(Model.Run.FetchGoogleUpdates ? "Yes" : "No")</div>
+        <div><strong>Get Google Question &amp; Answers:</strong> @(Model.Run.FetchGoogleQuestionsAndAnswers ? "Yes" : "No")</div>
+        <div><strong>Captured:</strong> @(capturedStampUtc?.ToString("u") ?? "N/A")</div>
+    </section>
 
-        function escapeHtml(value) {
-            if (value === null || value === undefined) return "";
-            return String(value)
-                .replaceAll("&", "&amp;")
-                .replaceAll("<", "&lt;")
-                .replaceAll(">", "&gt;")
-                .replaceAll("\"", "&quot;")
-                .replaceAll("'", "&#39;");
+    @if (Model.TaskProgress.Count > 0)
+    {
+        <section class="card">
+            <h2 class="card-title">Data Task Progress</h2>
+            <div class="stats-grid">
+                @foreach (var p in Model.TaskProgress)
+                {
+                    var hasErrors = p.ErrorCount > 0;
+                    var isComplete = p.DueCount > 0 && p.CompletedCount >= p.DueCount && !hasErrors;
+                    var isNotDue = p.DueCount == 0;
+                    var stateClass = hasErrors ? "status-error"
+                        : isComplete ? "status-healthy"
+                        : isNotDue ? "status-nodata"
+                        : "status-pending";
+                    var headline = hasErrors
+                        ? $"{p.Label} Errors {p.ErrorCount}"
+                        : isComplete
+                            ? $"{p.Label} Complete"
+                            : isNotDue
+                                ? $"{p.Label} Not Due"
+                                : $"{p.Label} Processing {p.ProcessingCount} of {p.TotalPlaces}";
+                    <div class="stat-card">
+                        <span class="stat-label">@p.Label</span>
+                        <div class="toolbar">
+                            <span class="status-pill @stateClass">@headline</span>
+                        </div>
+                        <div class="muted">Finished: @p.CompletedCount of @p.DueCount</div>
+                        @if (p.ErrorCount > 0)
+                        {
+                            <div class="muted">Errors: @p.ErrorCount</div>
+                        }
+                    </div>
+                }
+            </div>
+        </section>
+    }
+
+    <section class="card">
+        <h2 class="card-title">Snapshots</h2>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Rank</th>
+                        <th>Name</th>
+                        <th>Primary Category</th>
+                        <th>Photos</th>
+                        <th>Telephone</th>
+                        <th>Website</th>
+                        <th>Avg Rating</th>
+                        <th>Total Reviews</th>
+                        <th>Number of Q&amp;As</th>
+                        <th>Reviews 90d</th>
+                        <th>Avg/mo (12m)</th>
+                        <th>Days last review</th>
+                        <th>Days last update</th>
+                        <th>Review Status</th>
+                        <th>Update Status</th>
+                        <th>Details</th>
+                    </tr>
+                </thead>
+                <tbody>
+                @foreach (var s in Model.Snapshots)
+                {
+                    <tr>
+                        <td>@s.RankPosition</td>
+                        <td>@(s.DisplayName ?? "N/A")</td>
+                        <td>@(string.IsNullOrWhiteSpace(s.PrimaryCategory) ? "N/A" : s.PrimaryCategory)</td>
+                        <td>@(s.PhotoCount?.ToString() ?? "N/A")</td>
+                        <td>
+                            @if (!string.IsNullOrWhiteSpace(s.NationalPhoneNumber))
+                            {
+                                <a href="tel:@s.NationalPhoneNumber">@s.NationalPhoneNumber</a>
+                            }
+                            else
+                            {
+                                <span>N/A</span>
+                            }
+                        </td>
+                        <td>
+                            @if (!string.IsNullOrWhiteSpace(s.WebsiteUri))
+                            {
+                                <a href="@s.WebsiteUri" target="_blank" rel="noopener noreferrer">Website</a>
+                            }
+                            else
+                            {
+                                <span>N/A</span>
+                            }
+                        </td>
+                        <td>@(s.Rating?.ToString() ?? "N/A")</td>
+                        <td>@(s.UserRatingCount?.ToString() ?? "N/A")</td>
+                        <td>@(s.QuestionAnswerCount?.ToString() ?? "0")</td>
+                        <td>@(s.ReviewsLast90?.ToString() ?? "0")</td>
+                        <td>@(s.AvgPerMonth12m?.ToString("0.0") ?? "0.0")</td>
+                        <td>@(s.DaysSinceLastReview?.ToString() ?? "N/A")</td>
+                        <td>@(s.DaysSinceLastUpdate?.ToString() ?? "N/A")</td>
+                        <td><span class="status-pill @StatusCss(s.StatusLabel, "noreviews")">@(s.StatusLabel ?? "NoReviews")</span></td>
+                        <td><span class="status-pill @StatusCss(s.UpdateStatusLabel, "noupdates")">@(s.UpdateStatusLabel ?? "NoUpdates")</span></td>
+                        <td><a href="/places/@s.PlaceId?runId=@Model.Run.SearchRunId">View</a></td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="card">
+        <h2 class="card-title">Search Center Map</h2>
+        @if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            <p class="muted">Map unavailable because Google API key is not configured.</p>
         }
+        else
+        {
+            <div class="map-shell">
+                <div id="run-map" class="map-large"></div>
+                <aside id="run-map-overlap-panel" class="map-overlap-panel is-hidden" aria-label="Businesses at this location">
+                    <div class="map-overlap-header">
+                        <h3 id="run-map-overlap-title">Businesses at this location</h3>
+                        <button type="button" id="run-map-overlap-close" class="btn btn-secondary">Close</button>
+                    </div>
+                    <div id="run-map-overlap-list" class="map-overlap-list"></div>
+                </aside>
+            </div>
+            <p class="muted">Blue marker = search center. Red markers = businesses.</p>
+            <script>
+                const runCenter = {
+                    lat: @((Model.Run.CenterLat?.ToString(System.Globalization.CultureInfo.InvariantCulture)) ?? "null"),
+                    lng: @((Model.Run.CenterLng?.ToString(System.Globalization.CultureInfo.InvariantCulture)) ?? "null")
+                };
+                const businessPins = @Html.Raw(JsonSerializer.Serialize(mapPoints));
+                const OVERLAP_THRESHOLD_METERS = 2;
 
-        function initRunMap() {
-            const hasCenter = runCenter.lat !== null && runCenter.lng !== null;
-            const fallbackCenter = hasCenter ? { lat: runCenter.lat, lng: runCenter.lng } : { lat: 0, lng: 0 };
+                function escapeHtml(value) {
+                    if (value === null || value === undefined) return "";
+                    return String(value)
+                        .replaceAll("&", "&amp;")
+                        .replaceAll("<", "&lt;")
+                        .replaceAll(">", "&gt;")
+                        .replaceAll("\"", "&quot;")
+                        .replaceAll("'", "&#39;");
+                }
 
-            const map = new google.maps.Map(document.getElementById("run-map"), {
-                center: fallbackCenter,
-                zoom: 12
-            });
+                function distanceMeters(aLat, aLng, bLat, bLng) {
+                    const toRad = Math.PI / 180;
+                    const dLat = (bLat - aLat) * toRad;
+                    const dLng = (bLng - aLng) * toRad;
+                    const lat1 = aLat * toRad;
+                    const lat2 = bLat * toRad;
+                    const sinDLat = Math.sin(dLat / 2);
+                    const sinDLng = Math.sin(dLng / 2);
+                    const h = (sinDLat * sinDLat) + (Math.cos(lat1) * Math.cos(lat2) * sinDLng * sinDLng);
+                    return 6371000 * (2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h)));
+                }
 
-            const bounds = new google.maps.LatLngBounds();
-            const infoWindow = new google.maps.InfoWindow();
+                function buildBuckets(pins, thresholdMeters) {
+                    const buckets = [];
+                    const pinBucketIds = new Array(pins.length).fill(-1);
 
-            const myLocationIcon = {
-                path: "M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zm8.94 3A8.994 8.994 0 0 0 13 3.06V1h-2v2.06A8.994 8.994 0 0 0 3.06 11H1v2h2.06A8.994 8.994 0 0 0 11 20.94V23h2v-2.06A8.994 8.994 0 0 0 20.94 13H23v-2h-2.06zM12 19a7 7 0 1 1 0-14 7 7 0 0 1 0 14z",
-                fillColor: "#1a73e8",
-                fillOpacity: 1,
-                strokeColor: "#0b3d91",
-                strokeWeight: 1,
-                scale: 1.15,
-                anchor: new google.maps.Point(12, 12)
-            };
+                    for (let i = 0; i < pins.length; i++) {
+                        const pin = pins[i];
+                        let foundBucket = null;
+                        for (const bucket of buckets) {
+                            if (distanceMeters(pin.lat, pin.lng, bucket.anchor.lat, bucket.anchor.lng) <= thresholdMeters) {
+                                foundBucket = bucket;
+                                break;
+                            }
+                        }
 
-            const placeIcon = {
-                path: "M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z",
-                fillColor: "#e53935",
-                fillOpacity: 1,
-                strokeColor: "#7f0000",
-                strokeWeight: 1,
-                scale: 1.2,
-                anchor: new google.maps.Point(12, 24)
-            };
+                        if (!foundBucket) {
+                            foundBucket = {
+                                id: buckets.length,
+                                anchor: { lat: pin.lat, lng: pin.lng },
+                                pinIndexes: []
+                            };
+                            buckets.push(foundBucket);
+                        }
 
-            if (hasCenter) {
-                const centerPosition = { lat: runCenter.lat, lng: runCenter.lng };
-                new google.maps.Marker({
-                    map: map,
-                    position: centerPosition,
-                    icon: myLocationIcon,
-                    title: "Search Center"
-                });
-                bounds.extend(centerPosition);
-            }
+                        foundBucket.pinIndexes.push(i);
+                        pinBucketIds[i] = foundBucket.id;
+                    }
 
-            for (const pin of businessPins) {
-                const position = { lat: pin.lat, lng: pin.lng };
-                const marker = new google.maps.Marker({
-                    map: map,
-                    position: position,
-                    icon: placeIcon,
-                    title: pin.displayName || "Business"
-                });
+                    return { buckets, pinBucketIds };
+                }
 
-                marker.addListener("click", () => {
-                    const content = `
-                        <div style="min-width:240px;line-height:1.35;">
-                            <div style="font-size:2em;font-weight:700;">${escapeHtml(pin.displayName || "N/A")}</div>
-                            <div style="margin-top:4px;">
-                                ${escapeHtml(pin.rating ?? "N/A")}
-                                <span style="color:#fbbc04;" aria-label="star">★</span>
-                                (${escapeHtml(pin.userRatingCount ?? "N/A")})
-                                - ${escapeHtml(pin.primaryCategory || "N/A")}
-                            </div>
-                            <div style="margin-top:8px;"><a href="${escapeHtml(pin.detailsUrl)}">View</a></div>
-                        </div>`;
-                    infoWindow.setContent(content);
-                    infoWindow.open({ map, anchor: marker });
-                });
+                function createDotIcon(fillColor, strokeColor, scale, strokeWeight) {
+                    return {
+                        path: google.maps.SymbolPath.CIRCLE,
+                        scale,
+                        fillColor,
+                        fillOpacity: 1,
+                        strokeColor,
+                        strokeWeight
+                    };
+                }
 
-                bounds.extend(position);
-            }
+                function buildSpiderOffsets(count) {
+                    const offsets = [];
+                    if (count <= 8) {
+                        const radius = 42;
+                        for (let i = 0; i < count; i++) {
+                            const angle = (2 * Math.PI * i) / count;
+                            offsets.push({
+                                x: radius * Math.cos(angle),
+                                y: radius * Math.sin(angle)
+                            });
+                        }
+                        return offsets;
+                    }
 
-            if (!bounds.isEmpty()) {
-                map.fitBounds(bounds);
-            }
+                    let angle = 0;
+                    let radius = 24;
+                    for (let i = 0; i < count; i++) {
+                        angle += 0.72;
+                        radius += 4.4;
+                        offsets.push({
+                            x: radius * Math.cos(angle),
+                            y: radius * Math.sin(angle)
+                        });
+                    }
+                    return offsets;
+                }
+
+                function initRunMap() {
+                    const hasCenter = runCenter.lat !== null && runCenter.lng !== null;
+                    const map = new google.maps.Map(document.getElementById("run-map"), {
+                        center: hasCenter ? { lat: runCenter.lat, lng: runCenter.lng } : { lat: 0, lng: 0 },
+                        zoom: 12
+                    });
+                    const bounds = new google.maps.LatLngBounds();
+                    const infoWindow = new google.maps.InfoWindow();
+                    const overlapPanel = document.getElementById("run-map-overlap-panel");
+                    const overlapTitle = document.getElementById("run-map-overlap-title");
+                    const overlapList = document.getElementById("run-map-overlap-list");
+                    const overlapCloseButton = document.getElementById("run-map-overlap-close");
+
+                    const overlay = new google.maps.OverlayView();
+                    overlay.onAdd = function () { };
+                    overlay.draw = function () { };
+                    overlay.onRemove = function () { };
+                    overlay.setMap(map);
+
+                    const { buckets, pinBucketIds } = buildBuckets(businessPins, OVERLAP_THRESHOLD_METERS);
+                    const markerRecords = [];
+                    const recordsByBucket = new Map();
+                    let activeSpider = null;
+                    let activeBucketId = null;
+                    let activeRecordId = null;
+
+                    function setRecordHighlight(record, isHighlighted) {
+                        record.marker.setIcon(isHighlighted ? record.highlightIcon : record.defaultIcon);
+                    }
+
+                    function clearRecordHighlights() {
+                        for (const record of markerRecords) {
+                            setRecordHighlight(record, false);
+                        }
+                    }
+
+                    function setActiveListItem(recordId) {
+                        activeRecordId = recordId;
+                        if (!(overlapList instanceof HTMLElement)) return;
+                        for (const item of overlapList.querySelectorAll(".map-overlap-item")) {
+                            item.classList.toggle("is-active", item.dataset.recordId === String(recordId));
+                        }
+                    }
+
+                    function getInfoHtml(pin) {
+                        return `
+                            <div class="map-info">
+                                <div class="map-info-title">${escapeHtml(pin.displayName || "N/A")}</div>
+                                <div class="map-info-subtitle">
+                                    ${escapeHtml(pin.rating ?? "N/A")} (${escapeHtml(pin.userRatingCount ?? "N/A")}) - ${escapeHtml(pin.primaryCategory || "N/A")}
+                                </div>
+                                <div class="map-info-link"><a href="${escapeHtml(pin.detailsUrl)}">View</a></div>
+                            </div>`;
+                    }
+
+                    function closeOverlap() {
+                        if (activeSpider) {
+                            for (const leg of activeSpider.legs) {
+                                leg.setMap(null);
+                            }
+                            for (const record of activeSpider.records) {
+                                record.marker.setPosition(record.originalPosition);
+                                record.marker.setZIndex(undefined);
+                            }
+                        }
+                        activeSpider = null;
+                        activeBucketId = null;
+                        activeRecordId = null;
+                        clearRecordHighlights();
+                        if (overlapPanel instanceof HTMLElement) {
+                            overlapPanel.classList.add("is-hidden");
+                        }
+                        if (overlapList instanceof HTMLElement) {
+                            overlapList.innerHTML = "";
+                        }
+                    }
+
+                    function openInfo(record) {
+                        infoWindow.setContent(getInfoHtml(record.pin));
+                        infoWindow.open({ map, anchor: record.marker });
+                        clearRecordHighlights();
+                        setRecordHighlight(record, true);
+                        setActiveListItem(record.id);
+                    }
+
+                    function offsetLatLng(centerLatLng, xPixels, yPixels) {
+                        const projection = overlay.getProjection();
+                        if (projection) {
+                            const centerPoint = projection.fromLatLngToDivPixel(centerLatLng);
+                            if (centerPoint) {
+                                const targetPoint = new google.maps.Point(centerPoint.x + xPixels, centerPoint.y + yPixels);
+                                const latLng = projection.fromDivPixelToLatLng(targetPoint);
+                                if (latLng) {
+                                    return latLng;
+                                }
+                            }
+                        }
+
+                        const metersPerPixel = (156543.03392 * Math.cos(centerLatLng.lat() * Math.PI / 180)) / Math.pow(2, map.getZoom());
+                        const distance = Math.sqrt((xPixels * xPixels) + (yPixels * yPixels)) * metersPerPixel;
+                        const angleRad = Math.atan2(yPixels, xPixels);
+                        const heading = (angleRad * 180 / Math.PI + 360) % 360;
+                        return google.maps.geometry.spherical.computeOffset(centerLatLng, distance, heading);
+                    }
+
+                    function renderOverlapPanel(bucketId) {
+                        if (!(overlapPanel instanceof HTMLElement) || !(overlapTitle instanceof HTMLElement) || !(overlapList instanceof HTMLElement)) {
+                            return;
+                        }
+
+                        const records = recordsByBucket.get(bucketId) ?? [];
+                        overlapTitle.textContent = `Businesses at this location (${records.length})`;
+                        overlapList.innerHTML = "";
+
+                        records.forEach((record) => {
+                            const item = document.createElement("button");
+                            item.type = "button";
+                            item.className = "map-overlap-item";
+                            item.dataset.recordId = String(record.id);
+                            item.innerHTML = `
+                                <div class="map-overlap-item-name">${escapeHtml(record.pin.displayName || "N/A")}</div>
+                                <div class="map-overlap-item-meta">${escapeHtml(record.pin.primaryCategory || "N/A")} - ${escapeHtml(record.pin.rating ?? "N/A")} (${escapeHtml(record.pin.userRatingCount ?? "N/A")})</div>
+                            `;
+
+                            item.addEventListener("mouseenter", () => {
+                                clearRecordHighlights();
+                                setRecordHighlight(record, true);
+                            });
+                            item.addEventListener("mouseleave", () => {
+                                clearRecordHighlights();
+                                const active = markerRecords.find(x => x.id === activeRecordId);
+                                if (active) {
+                                    setRecordHighlight(active, true);
+                                }
+                            });
+                            item.addEventListener("click", () => {
+                                openInfo(record);
+                            });
+
+                            overlapList.appendChild(item);
+                        });
+
+                        overlapPanel.classList.remove("is-hidden");
+                    }
+
+                    function spiderfyBucket(bucketId) {
+                        closeOverlap();
+
+                        const records = recordsByBucket.get(bucketId) ?? [];
+                        if (records.length <= 1) {
+                            return;
+                        }
+
+                        const bucket = buckets.find(b => b.id === bucketId);
+                        if (!bucket) {
+                            return;
+                        }
+
+                        const center = new google.maps.LatLng(bucket.anchor.lat, bucket.anchor.lng);
+                        const offsets = buildSpiderOffsets(records.length);
+                        const legs = [];
+
+                        records.forEach((record, idx) => {
+                            const offset = offsets[idx];
+                            const targetLatLng = offsetLatLng(center, offset.x, offset.y);
+                            record.marker.setPosition(targetLatLng);
+                            record.marker.setZIndex(10000 + idx);
+
+                            legs.push(new google.maps.Polyline({
+                                map,
+                                path: [center, targetLatLng],
+                                strokeColor: "#64748b",
+                                strokeOpacity: 0.85,
+                                strokeWeight: 1.4,
+                                clickable: false
+                            }));
+                        });
+
+                        activeBucketId = bucketId;
+                        activeSpider = { bucketId, records, legs };
+                        renderOverlapPanel(bucketId);
+                    }
+
+                    if (hasCenter) {
+                        const centerPosition = { lat: runCenter.lat, lng: runCenter.lng };
+                        new google.maps.Marker({
+                            map,
+                            position: centerPosition,
+                            title: "Search Center",
+                            icon: {
+                                path: google.maps.SymbolPath.CIRCLE,
+                                scale: 11,
+                                fillColor: "#1a73e8",
+                                fillOpacity: 1,
+                                strokeColor: "#0b3d91",
+                                strokeWeight: 2
+                            }
+                        });
+                        bounds.extend(centerPosition);
+                    }
+
+                    businessPins.forEach((pin, index) => {
+                        const position = { lat: pin.lat, lng: pin.lng };
+                        const defaultIcon = createDotIcon("#e53935", "#7f0000", 11, 2);
+                        const highlightIcon = createDotIcon("#e53935", "#1e3a8a", 14, 3);
+                        const marker = new google.maps.Marker({
+                            map,
+                            position,
+                            title: pin.displayName || "Business",
+                            icon: defaultIcon
+                        });
+
+                        const record = {
+                            id: index,
+                            pin,
+                            marker,
+                            bucketId: pinBucketIds[index],
+                            originalPosition: new google.maps.LatLng(position.lat, position.lng),
+                            defaultIcon,
+                            highlightIcon
+                        };
+                        markerRecords.push(record);
+
+                        if (!recordsByBucket.has(record.bucketId)) {
+                            recordsByBucket.set(record.bucketId, []);
+                        }
+                        recordsByBucket.get(record.bucketId).push(record);
+
+                        marker.addListener("click", () => {
+                            const bucketRecords = recordsByBucket.get(record.bucketId) ?? [];
+                            if (bucketRecords.length <= 1) {
+                                closeOverlap();
+                                openInfo(record);
+                                return;
+                            }
+
+                            if (activeBucketId !== record.bucketId) {
+                                spiderfyBucket(record.bucketId);
+                            }
+
+                            openInfo(record);
+                        });
+
+                        bounds.extend(position);
+                    });
+
+                    if (overlapCloseButton instanceof HTMLButtonElement) {
+                        overlapCloseButton.addEventListener("click", () => {
+                            closeOverlap();
+                            infoWindow.close();
+                        });
+                    }
+
+                    map.addListener("click", () => {
+                        closeOverlap();
+                    });
+                    map.addListener("dragstart", () => {
+                        closeOverlap();
+                    });
+                    map.addListener("zoom_changed", () => {
+                        closeOverlap();
+                    });
+                    document.addEventListener("keydown", (event) => {
+                        if (event.key === "Escape") {
+                            closeOverlap();
+                            infoWindow.close();
+                        }
+                    });
+
+                    if (!bounds.isEmpty()) {
+                        map.fitBounds(bounds);
+                    }
+                }
+            </script>
+            <script async defer src="https://maps.googleapis.com/maps/api/js?key=@System.Uri.EscapeDataString(apiKey)&libraries=geometry&callback=initRunMap"></script>
         }
-    </script>
-    <script async defer src="https://maps.googleapis.com/maps/api/js?key=@System.Uri.EscapeDataString(apiKey)&callback=initRunMap"></script>
-}
+    </section>
+</div>

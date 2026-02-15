@@ -1,51 +1,170 @@
 @using System.Text.Json
 @inject Microsoft.Extensions.Options.IOptions<LocalSeo.Web.Options.GoogleOptions> GoogleOptions
 @model PlaceDetailsViewModel
+@{
+    var displayNameForTitle = string.IsNullOrWhiteSpace(Model.DisplayName) ? "Location Details" : Model.DisplayName!;
+    var hasRunContext = !string.IsNullOrWhiteSpace(Model.ContextSeedKeyword) && !string.IsNullOrWhiteSpace(Model.ContextLocationName);
+    var pageHeading = hasRunContext
+        ? $"{displayNameForTitle} ({Model.ContextSeedKeyword} in {Model.ContextLocationName})"
+        : displayNameForTitle;
+    ViewData["Title"] = pageHeading;
+    var statusMessage = TempData["Status"] as string;
+    var requestedRunId = ViewBag.RequestedRunId as long?;
+    PlaceDataTaskStatusRow? GetTask(string taskType) =>
+        Model.DataTaskStatuses.FirstOrDefault(x => string.Equals(x.TaskType, taskType, StringComparison.OrdinalIgnoreCase));
+    bool IsNoDataStatus(string? status) =>
+        string.Equals(status, "NoData", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(status, "CompletedNoData", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(status, "CompletedNoReviews", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(status, "CompletedNoUpdates", StringComparison.OrdinalIgnoreCase);
+    bool IsNeverRun(string? status) =>
+        string.Equals(status, "Never", StringComparison.OrdinalIgnoreCase);
+    string DataStatusText(string? status) => (status ?? string.Empty) switch
+    {
+        "NoData" => "No Data",
+        "CompletedNoData" => "No Data",
+        "CompletedNoReviews" => "No Data",
+        "CompletedNoUpdates" => "No Data",
+        "Never" => "Never Run",
+        _ => string.IsNullOrWhiteSpace(status) ? "N/A" : status
+    };
 
-<h2>Location Details</h2>
-@if (ViewBag.RequestedRunId != null)
-{
-    <p><a href="/runs/@ViewBag.RequestedRunId">Back to Run @ViewBag.RequestedRunId</a></p>
+    string DataStatusClass(string? status) => (status ?? string.Empty).ToLowerInvariant() switch
+    {
+        "ready" => "status-ready",
+        "error" => "status-error",
+        "nodata" => "status-nodata",
+        "pending" => "status-pending",
+        "created" => "status-pending",
+        "populated" => "status-healthy",
+        "completednoreviews" => "status-nodata",
+        "completednodata" => "status-nodata",
+        "completednoupdates" => "status-nodata",
+        "never" => "status-noreviews",
+        _ => "status-noreviews"
+    };
+
+    var enhancedTask = GetTask("my_business_info");
+    var reviewsTask = GetTask("reviews");
+    var updatesTask = GetTask("my_business_updates");
+    var reviewsNoData = IsNoDataStatus(reviewsTask?.Status);
+    var reviewsNeverRun = IsNeverRun(reviewsTask?.Status);
+    var updatesNoData = IsNoDataStatus(updatesTask?.Status);
+    var updatesNeverRun = IsNeverRun(updatesTask?.Status);
+    var enhancedNeverRun = IsNeverRun(enhancedTask?.Status);
 }
 
-<div><strong>Name:</strong> @(Model.DisplayName ?? "N/A")</div>
-<div><strong>Address:</strong> @(Model.FormattedAddress ?? "N/A")</div>
-<div><strong>Primary Category:</strong> @(Model.PrimaryCategory ?? Model.PrimaryType ?? "N/A")</div>
-<div><strong>Telephone:</strong> @(Model.NationalPhoneNumber ?? "N/A")</div>
-<div>
-    <strong>Website:</strong>
-    @if (!string.IsNullOrWhiteSpace(Model.WebsiteUri))
+<div class="page-stack">
+    @if (!string.IsNullOrWhiteSpace(statusMessage))
     {
-        <a href="@Model.WebsiteUri" target="_blank" rel="noopener noreferrer">@Model.WebsiteUri</a>
+        <div class="notice">@statusMessage</div>
     }
-    else
+    @if (ViewBag.RequestedRunId != null)
     {
-        <span>N/A</span>
+        <p><a href="/runs/@ViewBag.RequestedRunId">Back to Run @ViewBag.RequestedRunId</a></p>
     }
-</div>
-<div><strong>Rating:</strong> @(Model.ActiveRating?.ToString() ?? "N/A")</div>
-<div><strong>Number of Reviews:</strong> @(Model.ActiveUserRatingCount?.ToString() ?? "N/A")</div>
+    <div class="details-top-grid">
+        <section class="card">
+            <h2 class="card-title">Overview</h2>
+            <div><strong>Name:</strong> @(Model.DisplayName ?? "N/A")</div>
+            <div><strong>Address:</strong> @(Model.FormattedAddress ?? "N/A")</div>
+            <div><strong>Primary Category:</strong> @(Model.PrimaryCategory ?? Model.PrimaryType ?? "N/A")</div>
+            <div><strong>Telephone:</strong> @(Model.NationalPhoneNumber ?? "N/A")</div>
+            <div>
+                <strong>Website:</strong>
+                @if (!string.IsNullOrWhiteSpace(Model.WebsiteUri))
+                {
+                    <a href="@Model.WebsiteUri" target="_blank" rel="noopener noreferrer">@Model.WebsiteUri</a>
+                }
+                else
+                {
+                    <span>N/A</span>
+                }
+            </div>
+            <div><strong>Rating:</strong> @(Model.ActiveRating?.ToString() ?? "N/A")</div>
+            <div><strong>Number of Reviews:</strong> @(Model.ActiveUserRatingCount?.ToString() ?? "N/A")</div>
+            <div><strong>Number of Question &amp; Answers:</strong> @(Model.QuestionAnswerCount?.ToString() ?? "0")</div>
+        </section>
+
+        <section class="card">
+            <h2 class="card-title">Data</h2>
+            @if (Model.DataTaskStatuses.Count == 0)
+            {
+                <p class="muted">No DataForSEO task history for this place yet.</p>
+            }
+            else
+            {
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Data Point</th>
+                            <th>Last Run</th>
+                            <th>Status</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var row in Model.DataTaskStatuses)
+                        {
+                            <tr>
+                                <td>@row.Label</td>
+                                <td>
+                                    @row.LastRunAgeLabel
+                                    <div class="muted">Refresh window: @row.RefreshThresholdHours h</div>
+                                </td>
+                                <td>
+                                    <span class="status-pill @DataStatusClass(row.Status)">@DataStatusText(row.Status)</span>
+                                </td>
+                                <td>
+                                    <div class="toolbar">
+                                        @if (row.IsReady && row.DataForSeoTaskRowId.HasValue)
+                                        {
+                                            <form method="post" action="/places/@Model.PlaceId/data/populate?runId=@requestedRunId">
+                                                @Html.AntiForgeryToken()
+                                                <input type="hidden" name="taskRowId" value="@row.DataForSeoTaskRowId.Value" />
+                                                <button type="submit" class="btn btn-secondary">Grab Data</button>
+                                            </form>
+                                        }
+                                        @if (row.CanRefresh)
+                                        {
+                                            <form method="post" action="/places/@Model.PlaceId/data/refresh?runId=@requestedRunId">
+                                                @Html.AntiForgeryToken()
+                                                <input type="hidden" name="taskType" value="@row.TaskType" />
+                                                <button type="submit">Refresh</button>
+                                            </form>
+                                        }
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </section>
+    </div>
 
 @{
     var apiKey = GoogleOptions.Value.ApiKey;
     var hasBusinessCoords = Model.Lat.HasValue && Model.Lng.HasValue;
     var hasRunCenter = Model.RunCenterLat.HasValue && Model.RunCenterLng.HasValue;
     var velocity = Model.ReviewVelocity;
+    var updateVelocity = Model.UpdateVelocity;
 }
 
-<h3>Map</h3>
+<section class="card">
+<h2 class="card-title">Map</h2>
 @if (string.IsNullOrWhiteSpace(apiKey))
 {
-    <p>Map unavailable because Google API key is not configured.</p>
+    <p class="muted">Map unavailable because Google API key is not configured.</p>
 }
 else if (!hasBusinessCoords && !hasRunCenter)
 {
-    <p>Map unavailable because coordinates are missing.</p>
+    <p class="muted">Map unavailable because coordinates are missing.</p>
 }
 else
 {
-    <div id="place-details-map" style="width:100%;height:300px;margin-top:8px;"></div>
-    <p style="margin-top:6px;">
+    <div id="place-details-map" class="map-medium"></div>
+    <p class="muted">
         <strong>Legend:</strong> Red marker = business location.
         @if (hasRunCenter)
         {
@@ -84,11 +203,11 @@ else
                     title: "Business Location",
                     icon: {
                         path: google.maps.SymbolPath.CIRCLE,
-                        scale: 7,
+                        scale: 11,
                         fillColor: "#e53935",
                         fillOpacity: 1,
                         strokeColor: "#7f0000",
-                        strokeWeight: 1
+                        strokeWeight: 2
                     }
                 });
                 bounds.extend(businessPoint);
@@ -102,11 +221,11 @@ else
                     title: "Run Center",
                     icon: {
                         path: google.maps.SymbolPath.CIRCLE,
-                        scale: 7,
+                        scale: 11,
                         fillColor: "#1a73e8",
                         fillOpacity: 1,
                         strokeColor: "#0b3d91",
-                        strokeWeight: 1
+                        strokeWeight: 2
                     }
                 });
                 bounds.extend(centerPoint);
@@ -122,11 +241,24 @@ else
     </script>
     <script async defer src="https://maps.googleapis.com/maps/api/js?key=@System.Uri.EscapeDataString(apiKey)&callback=initPlaceDetailsMap"></script>
 }
+</section>
 
-<h3>Review Velocity</h3>
+<section class="card">
+<h2 class="card-title">Review Velocity</h2>
 @if (velocity is null || string.Equals(velocity.StatusLabel, "NoReviews", StringComparison.OrdinalIgnoreCase))
 {
-    <p>No reviews captured yet for this place.</p>
+    @if (reviewsNoData)
+    {
+        <p class="muted">Google Review collection returned <strong>No Data</strong> for this place, so there are no reviews to import right now.</p>
+    }
+    else if (reviewsNeverRun)
+    {
+        <p class="muted">Google Review collection has never been run for this place yet.</p>
+    }
+    else
+    {
+        <p class="muted">No reviews captured yet for this place.</p>
+    }
 }
 else
 {
@@ -161,18 +293,81 @@ else
         </tbody>
     </table>
 }
+</section>
 
-<div style="margin-top:16px;">
-    <button type="button" data-tab-button="details" class="details-tab-button" style="margin-right:6px;">Detail</button>
-    <button type="button" data-tab-button="reviews" class="details-tab-button" style="margin-right:6px;">Reviews</button>
-    <button type="button" data-tab-button="rank-history" class="details-tab-button" style="margin-right:6px;">Rank History</button>
+<section class="card">
+<h2 class="card-title">Updates Velocity</h2>
+@if (updateVelocity is null || string.Equals(updateVelocity.StatusLabel, "NoUpdates", StringComparison.OrdinalIgnoreCase))
+{
+    @if (updatesNoData)
+    {
+        <p class="muted">Google Updates collection returned <strong>No Data</strong> for this place, so there are no updates to import right now.</p>
+    }
+    else if (updatesNeverRun)
+    {
+        <p class="muted">Google Updates collection has never been run for this place yet.</p>
+    }
+    else
+    {
+        <p class="muted">No updates captured yet for this place.</p>
+    }
+}
+else
+{
+    var updates3m = Math.Max(0, updateVelocity.UpdatesLast90 ?? 0);
+    var updates6m = Math.Max(0, (updateVelocity.UpdatesLast180 ?? 0) - (updateVelocity.UpdatesLast90 ?? 0));
+    var updates9m = Math.Max(0, (updateVelocity.UpdatesLast270 ?? 0) - (updateVelocity.UpdatesLast180 ?? 0));
+    var updates12m = Math.Max(0, (updateVelocity.UpdatesLast365 ?? 0) - (updateVelocity.UpdatesLast270 ?? 0));
+
+    <table>
+        <thead><tr><th>Last update</th><th>3m</th><th>6m</th><th>9m</th><th>12m</th><th>Status</th></tr></thead>
+        <tbody>
+            <tr>
+                <td>@(updateVelocity.DaysSinceLastUpdate?.ToString() ?? "N/A") day(s) ago</td>
+                <td>@updates3m</td>
+                <td>@updates6m</td>
+                <td>@updates9m</td>
+                <td>@updates12m</td>
+                <td><span class="status-pill status-@((updateVelocity.StatusLabel ?? "healthy").ToLowerInvariant())">@updateVelocity.StatusLabel</span></td>
+            </tr>
+        </tbody>
+    </table>
+}
+</section>
+
+<div class="details-tab-buttons">
+    <button type="button" data-tab-button="details" class="details-tab-button">Detail</button>
+    <button type="button" data-tab-button="reviews" class="details-tab-button">Reviews</button>
+    <button type="button" data-tab-button="updates" class="details-tab-button">Updates</button>
+    <button type="button" data-tab-button="questions-answers" class="details-tab-button">Questions &amp; Answers</button>
+    <button type="button" data-tab-button="rank-history" class="details-tab-button">Rank History</button>
     <button type="button" data-tab-button="tech" class="details-tab-button">Tech</button>
 </div>
 
-<div id="tab-details" class="details-tab-panel" style="margin-top:12px;">
+<div id="tab-details" class="details-tab-panel card">
     <h3>Detail</h3>
-    <div><strong>Description:</strong> @(Model.Description ?? "N/A")</div>
-    <div><strong>Business Status:</strong> @(Model.BusinessStatus ?? "N/A")</div>
+    @if (enhancedNeverRun)
+    {
+        <p class="muted">Google Enhanced Data collection has never been run for this place yet.</p>
+    }
+    @{
+        var descriptionText = Model.Description?.Trim() ?? string.Empty;
+        var descriptionCharCount = descriptionText.Length;
+        var descriptionCharsRemaining = Math.Max(0, 750 - descriptionCharCount);
+    }
+    <h4>Description</h4>
+    @if (string.IsNullOrWhiteSpace(descriptionText))
+    {
+        <p>N/A</p>
+    }
+    else
+    {
+        <p>@descriptionText</p>
+    }
+    <p class="muted">Could use @descriptionCharsRemaining more characters (Google limit: 750).</p>
+
+    <h4>Business Status</h4>
+    <p>@(Model.BusinessStatus ?? "N/A")</p>
 
     <h4>Opening Hours</h4>
     @if (Model.RegularOpeningHours.Count == 0)
@@ -220,11 +415,22 @@ else
     }
 </div>
 
-<div id="tab-reviews" class="details-tab-panel" style="margin-top:12px;display:none;">
+<div id="tab-reviews" class="details-tab-panel card is-hidden">
     <h3>Reviews</h3>
     @if (Model.Reviews.Count == 0)
     {
-        <p>No stored reviews yet.</p>
+        @if (reviewsNoData)
+        {
+            <p>No stored reviews yet. Google Review collection reported <strong>No Data</strong> for this place.</p>
+        }
+        else if (reviewsNeverRun)
+        {
+            <p>No stored reviews yet. Google Review collection has never been run for this place.</p>
+        }
+        else
+        {
+            <p>No stored reviews yet.</p>
+        }
     }
     else
     {
@@ -274,37 +480,44 @@ else
             .ToList();
         var monthlyJson = JsonSerializer.Serialize(
             cumulativeSeries.Select(m => new { label = m.label, value = m.total }));
-        <div id="reviews-over-time-chart" style="width:100%;height:320px;border:1px solid #ddd;margin-top:8px;"></div>
+        <div id="reviews-over-time-chart" class="chart-panel"></div>
         <script>
             (() => {
                 const data = @Html.Raw(monthlyJson);
                 const host = document.getElementById("reviews-over-time-chart");
                 if (!host || !data || data.length === 0) return;
 
-                const width = Math.max(640, host.clientWidth || 640);
-                const height = 320;
-                const margin = { top: 20, right: 24, bottom: 56, left: 56 };
-                const plotW = width - margin.left - margin.right;
-                const plotH = height - margin.top - margin.bottom;
-                const maxY = Math.max(1, ...data.map(d => d.value));
-                const xStep = data.length > 1 ? plotW / (data.length - 1) : 0;
-                const yPos = (v) => margin.top + plotH - ((v / maxY) * plotH);
-                const xPos = (i) => margin.left + (xStep * i);
-                const points = data.map((d, i) => `${xPos(i)},${yPos(d.value)}`).join(" ");
+                const renderReviewsOverTimeChart = () => {
+                    const tabReviews = document.getElementById("tab-reviews");
+                    if (tabReviews?.classList.contains("is-hidden")) return;
 
-                const xTicks = data.map((d, i) => {
-                    if (i % Math.max(1, Math.floor(data.length / 8)) !== 0 && i !== data.length - 1) return "";
-                    return `<text x="${xPos(i)}" y="${height - 24}" text-anchor="middle" font-size="11" fill="#555">${d.label}</text>`;
-                }).join("");
+                    const measuredWidth = host.clientWidth || host.parentElement?.clientWidth || 0;
+                    if (measuredWidth < 320) return;
 
-                const yTicks = Array.from({ length: 5 }, (_, i) => Math.round((maxY / 4) * (4 - i)));
-                const yTickLines = yTicks.map(v => {
-                    const y = yPos(v);
-                    return `<line x1="${margin.left}" y1="${y}" x2="${width - margin.right}" y2="${y}" stroke="#eee"/><text x="${margin.left - 8}" y="${y + 4}" text-anchor="end" font-size="11" fill="#555">${v}</text>`;
-                }).join("");
+                    const width = Math.max(960, Math.floor(measuredWidth));
+                    const height = 320;
+                    const margin = { top: 20, right: 24, bottom: 56, left: 56 };
+                    const plotW = width - margin.left - margin.right;
+                    const plotH = height - margin.top - margin.bottom;
+                    const maxY = Math.max(1, ...data.map(d => d.value));
+                    const xStep = data.length > 1 ? plotW / (data.length - 1) : 0;
+                    const yPos = (v) => margin.top + plotH - ((v / maxY) * plotH);
+                    const xPos = (i) => margin.left + (xStep * i);
+                    const points = data.map((d, i) => `${xPos(i)},${yPos(d.value)}`).join(" ");
 
-                host.innerHTML = `
-<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="Reviews over time total reviews chart">
+                    const xTicks = data.map((d, i) => {
+                        if (i % Math.max(1, Math.floor(data.length / 8)) !== 0 && i !== data.length - 1) return "";
+                        return `<text x="${xPos(i)}" y="${height - 24}" text-anchor="middle" font-size="11" fill="#555">${d.label}</text>`;
+                    }).join("");
+
+                    const yTicks = Array.from({ length: 5 }, (_, i) => Math.round((maxY / 4) * (4 - i)));
+                    const yTickLines = yTicks.map(v => {
+                        const y = yPos(v);
+                        return `<line x1="${margin.left}" y1="${y}" x2="${width - margin.right}" y2="${y}" stroke="#eee"/><text x="${margin.left - 8}" y="${y + 4}" text-anchor="end" font-size="11" fill="#555">${v}</text>`;
+                    }).join("");
+
+                    host.innerHTML = `
+<svg width="100%" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="Reviews over time total reviews chart">
   <rect x="0" y="0" width="${width}" height="${height}" fill="#fff"/>
   ${yTickLines}
   <line x1="${margin.left}" y1="${margin.top + plotH}" x2="${width - margin.right}" y2="${margin.top + plotH}" stroke="#333"/>
@@ -315,6 +528,11 @@ else
   <text x="${width / 2}" y="${height - 6}" text-anchor="middle" font-size="12" fill="#333">Time</text>
   <text x="16" y="${margin.top + (plotH / 2)}" text-anchor="middle" font-size="12" fill="#333" transform="rotate(-90 16 ${margin.top + (plotH / 2)})">Total Reviews</text>
 </svg>`;
+                };
+
+                window.renderReviewsOverTimeChart = renderReviewsOverTimeChart;
+                window.addEventListener("resize", renderReviewsOverTimeChart);
+                renderReviewsOverTimeChart();
             })();
         </script>
     }
@@ -343,7 +561,198 @@ else
     }
 </div>
 
-<div id="tab-rank-history" class="details-tab-panel" style="margin-top:12px;display:none;">
+<div id="tab-updates" class="details-tab-panel card is-hidden">
+    <h3>Updates</h3>
+    @if (Model.Updates.Count == 0)
+    {
+        @if (updatesNoData)
+        {
+            <p>No stored updates yet. Google Updates collection reported <strong>No Data</strong> for this place.</p>
+        }
+        else if (updatesNeverRun)
+        {
+            <p>No stored updates yet. Google Updates collection has never been run for this place.</p>
+        }
+        else
+        {
+            <p>No stored updates yet.</p>
+        }
+    }
+    else
+    {
+        <table>
+        <thead><tr><th>When</th><th>Post</th><th>URL</th><th>Images</th><th>Links</th></tr></thead>
+        <tbody>
+        @foreach (var u in Model.Updates)
+        {
+            <tr>
+                <td>@(u.PostDateUtc?.ToString("u") ?? u.LastSeenUtc.ToString("u"))</td>
+                <td>@(u.PostText ?? "N/A")</td>
+                <td>
+                    @if (!string.IsNullOrWhiteSpace(u.Url))
+                    {
+                        <a href="@u.Url" target="_blank" rel="noopener noreferrer">Open</a>
+                    }
+                    else
+                    {
+                        <span>N/A</span>
+                    }
+                </td>
+                <td>@u.ImageUrls.Count</td>
+                <td>
+                    @if (u.Links.Count == 0)
+                    {
+                        <span>N/A</span>
+                    }
+                    else
+                    {
+                        foreach (var link in u.Links)
+                        {
+                            var label = string.IsNullOrWhiteSpace(link.Title)
+                                ? (string.IsNullOrWhiteSpace(link.Type) ? "Link" : link.Type)
+                                : link.Title;
+                            if (!string.IsNullOrWhiteSpace(link.Url))
+                            {
+                                <a href="@link.Url" target="_blank" rel="noopener noreferrer">@label</a><br />
+                            }
+                            else
+                            {
+                                <span>@label</span><br />
+                            }
+                        }
+                    }
+                </td>
+            </tr>
+        }
+        </tbody>
+        </table>
+    }
+
+    <h4>Updates over time</h4>
+    @if (updateVelocity is null || updateVelocity.MonthlySeries.Count == 0)
+    {
+        <p>No monthly update data available.</p>
+    }
+    else
+    {
+        var runningTotalUpdates = 0;
+        var cumulativeUpdateSeries = updateVelocity.MonthlySeries
+            .OrderBy(m => m.Year)
+            .ThenBy(m => m.Month)
+            .Select(m => new
+            {
+                label = $"{m.Year}-{m.Month:00}",
+                total = (runningTotalUpdates += m.UpdateCount)
+            })
+            .ToList();
+        var updatesMonthlyJson = JsonSerializer.Serialize(cumulativeUpdateSeries.Select(m => new { label = m.label, value = m.total }));
+        <div id="updates-over-time-chart" class="chart-panel"></div>
+        <script>
+            (() => {
+                const data = @Html.Raw(updatesMonthlyJson);
+                const host = document.getElementById("updates-over-time-chart");
+                if (!host || !data || data.length === 0) return;
+
+                const renderUpdatesOverTimeChart = () => {
+                    const tabUpdates = document.getElementById("tab-updates");
+                    if (tabUpdates?.classList.contains("is-hidden")) return;
+
+                    const measuredWidth = host.clientWidth || host.parentElement?.clientWidth || 0;
+                    if (measuredWidth < 320) return;
+
+                    const width = Math.max(960, Math.floor(measuredWidth));
+                    const height = 320;
+                    const margin = { top: 20, right: 24, bottom: 56, left: 56 };
+                    const plotW = width - margin.left - margin.right;
+                    const plotH = height - margin.top - margin.bottom;
+                    const maxY = Math.max(1, ...data.map(d => d.value));
+                    const xStep = data.length > 1 ? plotW / (data.length - 1) : 0;
+                    const yPos = (v) => margin.top + plotH - ((v / maxY) * plotH);
+                    const xPos = (i) => margin.left + (xStep * i);
+                    const points = data.map((d, i) => `${xPos(i)},${yPos(d.value)}`).join(" ");
+
+                    const xTicks = data.map((d, i) => {
+                        if (i % Math.max(1, Math.floor(data.length / 8)) !== 0 && i !== data.length - 1) return "";
+                        return `<text x="${xPos(i)}" y="${height - 24}" text-anchor="middle" font-size="11" fill="#555">${d.label}</text>`;
+                    }).join("");
+
+                    const yTicks = Array.from({ length: 5 }, (_, i) => Math.round((maxY / 4) * (4 - i)));
+                    const yTickLines = yTicks.map(v => {
+                        const y = yPos(v);
+                        return `<line x1="${margin.left}" y1="${y}" x2="${width - margin.right}" y2="${y}" stroke="#eee"/><text x="${margin.left - 8}" y="${y + 4}" text-anchor="end" font-size="11" fill="#555">${v}</text>`;
+                    }).join("");
+
+                    host.innerHTML = `
+<svg width="100%" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="Updates over time total updates chart">
+  <rect x="0" y="0" width="${width}" height="${height}" fill="#fff"/>
+  ${yTickLines}
+  <line x1="${margin.left}" y1="${margin.top + plotH}" x2="${width - margin.right}" y2="${margin.top + plotH}" stroke="#333"/>
+  <line x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${margin.top + plotH}" stroke="#333"/>
+  ${xTicks}
+  <polyline points="${points}" fill="none" stroke="#b0b0b0" stroke-width="1"/>
+  ${data.map((d, i) => `<circle cx="${xPos(i)}" cy="${yPos(d.value)}" r="4" fill="#1a73e8"><title>${d.label}: ${d.value}</title></circle>`).join("")}
+  <text x="${width / 2}" y="${height - 6}" text-anchor="middle" font-size="12" fill="#333">Time</text>
+  <text x="16" y="${margin.top + (plotH / 2)}" text-anchor="middle" font-size="12" fill="#333" transform="rotate(-90 16 ${margin.top + (plotH / 2)})">Total Updates</text>
+</svg>`;
+                };
+
+                window.renderUpdatesOverTimeChart = renderUpdatesOverTimeChart;
+                window.addEventListener("resize", renderUpdatesOverTimeChart);
+                renderUpdatesOverTimeChart();
+            })();
+        </script>
+    }
+
+    <h4>Year Breakdown</h4>
+    @if (updateVelocity is null || updateVelocity.YearBreakdown.Count == 0)
+    {
+        <p>No yearly update data available.</p>
+    }
+    else
+    {
+        <table>
+            <thead><tr><th>Year</th><th>Updates</th></tr></thead>
+            <tbody>
+            @foreach (var y in updateVelocity.YearBreakdown)
+            {
+                <tr>
+                    <td>@y.Year</td>
+                    <td>@y.UpdateCount</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    }
+</div>
+
+<div id="tab-questions-answers" class="details-tab-panel card is-hidden">
+    <h3>Questions &amp; Answers</h3>
+    @if (Model.QuestionsAndAnswers.Count == 0)
+    {
+        <p>No stored question/answer rows yet.</p>
+    }
+    else
+    {
+        <table>
+            <thead><tr><th>Question Time</th><th>Question By</th><th>Question</th><th>Answer Time</th><th>Answer By</th><th>Answer</th></tr></thead>
+            <tbody>
+            @foreach (var qa in Model.QuestionsAndAnswers)
+            {
+                <tr>
+                    <td>@(qa.QuestionTimestampUtc?.ToString("u") ?? qa.LastSeenUtc.ToString("u"))</td>
+                    <td>@(qa.QuestionProfileName ?? "N/A")</td>
+                    <td>@(qa.QuestionText ?? "N/A")</td>
+                    <td>@(qa.AnswerTimestampUtc?.ToString("u") ?? "N/A")</td>
+                    <td>@(qa.AnswerProfileName ?? "N/A")</td>
+                    <td>@(qa.AnswerText ?? "N/A")</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    }
+</div>
+
+<div id="tab-rank-history" class="details-tab-panel card is-hidden">
     <h3>Rank History</h3>
     <h4>Recent History</h4>
     <table>
@@ -363,7 +772,7 @@ else
     </table>
 </div>
 
-<div id="tab-tech" class="details-tab-panel" style="margin-top:12px;display:none;">
+<div id="tab-tech" class="details-tab-panel card is-hidden">
     <h3>Tech</h3>
     <div><strong>PlaceId:</strong> @Model.PlaceId</div>
     <div><strong>Lat:</strong> @(Model.Lat?.ToString() ?? "N/A")</div>
@@ -380,8 +789,22 @@ else
 
         const showTab = (tabKey) => {
             panels.forEach(panel => {
-                panel.style.display = panel.id === `tab-${tabKey}` ? "" : "none";
+                if (panel.id === `tab-${tabKey}`) {
+                    panel.classList.remove("is-hidden");
+                } else {
+                    panel.classList.add("is-hidden");
+                }
             });
+            buttons.forEach(button => {
+                const key = button.getAttribute("data-tab-button");
+                button.classList.toggle("is-active", key === tabKey);
+            });
+            if (tabKey === "reviews" && typeof window.renderReviewsOverTimeChart === "function") {
+                window.renderReviewsOverTimeChart();
+            }
+            if (tabKey === "updates" && typeof window.renderUpdatesOverTimeChart === "function") {
+                window.renderUpdatesOverTimeChart();
+            }
         };
 
         buttons.forEach(button => {
@@ -395,3 +818,4 @@ else
         showTab("details");
     })();
 </script>
+</div>

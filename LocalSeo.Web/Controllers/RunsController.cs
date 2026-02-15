@@ -20,6 +20,7 @@ public class RunsController(ISearchIngestionService ingestionService) : Controll
             return NotFound();
 
         var snapshots = await ingestionService.GetRunSnapshotsAsync(id, ct);
-        return View(new RunDetailsViewModel(run, snapshots));
+        var taskProgress = await ingestionService.GetRunTaskProgressAsync(run, ct);
+        return View(new RunDetailsViewModel(run, snapshots, taskProgress));
     }
 }

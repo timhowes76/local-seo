@@ -9,9 +9,9 @@ namespace LocalSeo.Web.Controllers;
 public class PlacesApiController(IReviewVelocityService reviewVelocityService) : ControllerBase
 {
     [HttpGet("/api/places")]
-    public async Task<IActionResult> GetPlaces([FromQuery] string? sort, [FromQuery] string? direction, CancellationToken ct)
+    public async Task<IActionResult> GetPlaces([FromQuery] string? sort, [FromQuery] string? direction, [FromQuery] string? keyword, [FromQuery] string? location, CancellationToken ct)
     {
-        var rows = await reviewVelocityService.GetPlaceVelocityListAsync(sort, direction, ct);
+        var rows = await reviewVelocityService.GetPlaceVelocityListAsync(sort, direction, keyword, location, ct);
         return Ok(rows);
     }
 

@@ -1,16 +1,33 @@
-<h2>Admin</h2>
-
-@if (TempData["Status"] != null)
-{
-    <div>@TempData["Status"]</div>
+@{
+    ViewData["Title"] = "Admin";
+    var statusMessage = TempData["Status"] as string;
 }
 
-<p><a href="/admin/dataforseo-tasks">DataForSEO Tasks</a></p>
+<div class="page-stack">
+    @if (!string.IsNullOrWhiteSpace(statusMessage))
+    {
+        <div class="notice">@statusMessage</div>
+    }
 
-<p>Clear all stored run history from the app database.</p>
-<p>This deletes all rows from <code>DataForSeoReviewTask</code>, <code>PlaceReview</code>, <code>SearchRun</code>, <code>PlaceSnapshot</code>, and <code>Place</code>.</p>
+    <section class="card">
+        <h2 class="card-title">DataForSEO</h2>
+        <p class="muted">Monitor async task lifecycle and import status.</p>
+        <a href="/admin/dataforseo-tasks" class="btn btn-secondary">Open DataForSEO Tasks</a>
+    </section>
 
-<form method="post" action="/admin/clear-runs" onsubmit="return confirm('Clear all run data? This cannot be undone.');">
-    @Html.AntiForgeryToken()
-    <button type="submit">Clear All Run Data</button>
-</form>
+    <section class="card">
+        <h2 class="card-title">Settings</h2>
+        <p class="muted">Configure refresh windows for place-level DataForSEO collection actions.</p>
+        <a href="/admin/settings" class="btn btn-secondary">Open Settings</a>
+    </section>
+
+    <section class="card">
+        <h2 class="card-title">Maintenance</h2>
+        <p>Clear all stored run history from the app database.</p>
+        <p class="muted">This deletes rows from <code>DataForSeoReviewTask</code>, <code>PlaceReview</code>, <code>SearchRun</code>, <code>PlaceSnapshot</code>, and <code>Place</code>.</p>
+        <form method="post" action="/admin/clear-runs" onsubmit="return confirm('Clear all run data? This cannot be undone.');">
+            @Html.AntiForgeryToken()
+            <button type="submit">Clear All Run Data</button>
+        </form>
+    </section>
+</div>

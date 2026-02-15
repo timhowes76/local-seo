@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Globalization;
 using LocalSeo.Web.Models;
 using LocalSeo.Web.Options;
 using Microsoft.Extensions.Options;
@@ -12,6 +13,7 @@ public interface IGooglePlacesClient
     Task<IReadOnlyList<GooglePlace>> SearchAsync(string seedKeyword, string locationName, decimal? centerLat, decimal? centerLng, int radiusMeters, int limit, CancellationToken ct);
     Task<GooglePlace?> GetPlaceDetailsAsync(string placeId, CancellationToken ct);
     Task<(decimal Lat, decimal Lng, string? CanonicalLocationName)?> GeocodeAsync(string locationName, string? countryCode, CancellationToken ct);
+    Task<string?> ReverseGeocodeCanonicalLocationAsync(decimal lat, decimal lng, string? countryCode, CancellationToken ct);
 }
 
 public sealed class GooglePlacesClient(IHttpClientFactory factory, IOptions<GoogleOptions> options, ILogger<GooglePlacesClient> logger) : IGooglePlacesClient
@@ -217,6 +219,48 @@ public sealed class GooglePlacesClient(IHttpClientFactory factory, IOptions<Goog
         var lng = (decimal)lngNode.GetDouble();
         var canonical = BuildCanonicalLocationName(first);
         return (lat, lng, canonical);
+    }
+
+    public async Task<string?> ReverseGeocodeCanonicalLocationAsync(decimal lat, decimal lng, string? countryCode, CancellationToken ct)
+    {
+        var apiKey = options.Value.ApiKey;
+        if (string.IsNullOrWhiteSpace(apiKey))
+            throw new InvalidOperationException("Google API key missing.");
+
+        var latStr = lat.ToString("0.######", CultureInfo.InvariantCulture);
+        var lngStr = lng.ToString("0.######", CultureInfo.InvariantCulture);
+        var query = $"latlng={Uri.EscapeDataString($"{latStr},{lngStr}")}";
+        if (!string.IsNullOrWhiteSpace(countryCode))
+            query += $"&components={Uri.EscapeDataString($"country:{countryCode}")}";
+        var url = $"https://maps.googleapis.com/maps/api/geocode/json?{query}&key={Uri.EscapeDataString(apiKey)}";
+
+        var client = factory.CreateClient();
+        using var resp = await client.GetAsync(url, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            var bodyText = await resp.Content.ReadAsStringAsync(ct);
+            throw new HttpRequestException($"Google reverse geocoding error {(int)resp.StatusCode}: {bodyText}");
+        }
+
+        await using var stream = await resp.Content.ReadAsStreamAsync(ct);
+        var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct);
+        var root = doc.RootElement;
+        var status = root.TryGetProperty("status", out var statusNode) ? statusNode.GetString() : null;
+
+        if (!string.Equals(status, "OK", StringComparison.OrdinalIgnoreCase))
+        {
+            if (string.Equals(status, "ZERO_RESULTS", StringComparison.OrdinalIgnoreCase))
+                return null;
+
+            var errorMessage = root.TryGetProperty("error_message", out var err) ? err.GetString() : null;
+            throw new InvalidOperationException($"Google reverse geocoding failed with status '{status}'{(string.IsNullOrWhiteSpace(errorMessage) ? string.Empty : $": {errorMessage}")}.");
+        }
+
+        if (!root.TryGetProperty("results", out var results) || results.ValueKind != JsonValueKind.Array || results.GetArrayLength() == 0)
+            return null;
+
+        var first = results[0];
+        return BuildCanonicalLocationName(first);
     }
 
     private static bool IsTransient(HttpStatusCode statusCode)

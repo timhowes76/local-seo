@@ -1,43 +1,102 @@
 @model IReadOnlyList<PlaceVelocityListItemDto>
 @{
+    ViewData["Title"] = "Places";
+    var currentSort = (string?)ViewBag.Sort;
+    var currentDirection = (string?)ViewBag.Direction;
+    var keywordFilter = ((string?)ViewBag.Keyword ?? string.Empty).Trim();
+    var locationFilter = ((string?)ViewBag.Location ?? string.Empty).Trim();
+
+    var totalReviewsDir = string.Equals(currentSort, "totalReviews", StringComparison.OrdinalIgnoreCase) && string.Equals(currentDirection, "desc", StringComparison.OrdinalIgnoreCase) ? "asc" : "desc";
     var reviewsDir = string.Equals((string?)ViewBag.Sort, "reviewsLast90", StringComparison.OrdinalIgnoreCase) && string.Equals((string?)ViewBag.Direction, "desc", StringComparison.OrdinalIgnoreCase) ? "asc" : "desc";
-    var trendDir = string.Equals((string?)ViewBag.Sort, "trend90Pct", StringComparison.OrdinalIgnoreCase) && string.Equals((string?)ViewBag.Direction, "desc", StringComparison.OrdinalIgnoreCase) ? "asc" : "desc";
     var daysDir = string.Equals((string?)ViewBag.Sort, "daysSinceLastReview", StringComparison.OrdinalIgnoreCase) && string.Equals((string?)ViewBag.Direction, "desc", StringComparison.OrdinalIgnoreCase) ? "asc" : "desc";
+    var statusDir = string.Equals(currentSort, "needsAttention", StringComparison.OrdinalIgnoreCase) && string.Equals(currentDirection, "asc", StringComparison.OrdinalIgnoreCase) ? "desc" : "asc";
+    var placeCount = Model.Count;
+    var totalReviews = Model.Sum(x => x.UserRatingCount ?? 0);
+    var totalReviews90d = Model.Sum(x => x.ReviewsLast90 ?? 0);
+    var needsAttentionCount = Model.Count(x =>
+        string.Equals(x.StatusLabel, "Stalled", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(x.StatusLabel, "Slowing", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(x.StatusLabel, "NoReviews", StringComparison.OrdinalIgnoreCase));
 }
 
-<h2>Places</h2>
-<table>
-    <thead>
-        <tr>
-            <th>Place</th>
-            <th>Avg Rating</th>
-            <th>Total Reviews</th>
-            <th><a href="/places?sort=reviewsLast90&direction=@reviewsDir">Reviews 90d</a></th>
-            <th>Avg/mo (12m)</th>
-            <th><a href="/places?sort=trend90Pct&direction=@trendDir">Trend (90d)</a></th>
-            <th><a href="/places?sort=daysSinceLastReview&direction=@daysDir">Days since last review</a></th>
-            <th><a href="/places?sort=needsAttention&direction=asc">Status</a></th>
-            <th>Momentum</th>
-            <th>Details</th>
-        </tr>
-    </thead>
-    <tbody>
-    @foreach (var row in Model)
-    {
-        var trend = row.Trend90Pct.HasValue ? $"{row.Trend90Pct.Value:+0.##;-0.##;0}%" : "N/A";
-        var trendArrow = !row.Trend90Pct.HasValue ? "→" : row.Trend90Pct.Value > 0 ? "↑" : row.Trend90Pct.Value < 0 ? "↓" : "→";
-        <tr>
-            <td>@(row.DisplayName ?? row.PlaceId)</td>
-            <td>@(row.Rating?.ToString("0.0") ?? "N/A")</td>
-            <td>@(row.UserRatingCount?.ToString() ?? "N/A")</td>
-            <td>@(row.ReviewsLast90?.ToString() ?? "0")</td>
-            <td>@(row.AvgPerMonth12m?.ToString("0.0") ?? "0.0")</td>
-            <td>@trendArrow @trend</td>
-            <td>@(row.DaysSinceLastReview?.ToString() ?? "N/A")</td>
-            <td><span class="status-pill status-@((row.StatusLabel ?? "NoReviews").ToLowerInvariant())">@(row.StatusLabel ?? "NoReviews")</span></td>
-            <td>@(row.MomentumScore?.ToString() ?? "N/A")</td>
-            <td><a href="/places/@row.PlaceId">View</a></td>
-        </tr>
-    }
-    </tbody>
-</table>
+<div class="page-stack">
+    <section class="stats-grid">
+        <article class="stat-card">
+            <span class="stat-label">Tracked Places</span>
+            <span class="stat-value">@placeCount</span>
+        </article>
+        <article class="stat-card">
+            <span class="stat-label">Total Reviews</span>
+            <span class="stat-value">@totalReviews</span>
+        </article>
+        <article class="stat-card">
+            <span class="stat-label">Reviews (90d)</span>
+            <span class="stat-value">@totalReviews90d</span>
+        </article>
+        <article class="stat-card">
+            <span class="stat-label">Needs Attention</span>
+            <span class="stat-value">@needsAttentionCount</span>
+        </article>
+    </section>
+
+    <section class="card">
+        <h2 class="card-title">Places</h2>
+        <form method="get" action="/places" class="toolbar">
+            <input type="hidden" name="sort" value="@currentSort" />
+            <input type="hidden" name="direction" value="@currentDirection" />
+            <label for="keywordFilter">Keyword</label>
+            <input id="keywordFilter" name="keyword" type="text" value="@keywordFilter" />
+            <label for="locationFilter">Location</label>
+            <input id="locationFilter" name="location" type="text" value="@locationFilter" />
+            <button type="submit" class="btn btn-secondary">Apply</button>
+            <a href="/places" class="btn btn-secondary">Clear</a>
+        </form>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Place</th>
+                        <th>Avg Rating</th>
+                        <th>
+                            <a asp-controller="Places" asp-action="Index" asp-route-sort="totalReviews" asp-route-direction="@totalReviewsDir" asp-route-keyword="@keywordFilter" asp-route-location="@locationFilter">
+                                Total Reviews
+                            </a>
+                        </th>
+                        <th>
+                            <a asp-controller="Places" asp-action="Index" asp-route-sort="reviewsLast90" asp-route-direction="@reviewsDir" asp-route-keyword="@keywordFilter" asp-route-location="@locationFilter">
+                                Reviews 90d
+                            </a>
+                        </th>
+                        <th>Avg/mo (12m)</th>
+                        <th>
+                            <a asp-controller="Places" asp-action="Index" asp-route-sort="daysSinceLastReview" asp-route-direction="@daysDir" asp-route-keyword="@keywordFilter" asp-route-location="@locationFilter">
+                                Days since last review
+                            </a>
+                        </th>
+                        <th>
+                            <a asp-controller="Places" asp-action="Index" asp-route-sort="needsAttention" asp-route-direction="@statusDir" asp-route-keyword="@keywordFilter" asp-route-location="@locationFilter">
+                                Status
+                            </a>
+                        </th>
+                        <th>Details</th>
+                    </tr>
+                </thead>
+                <tbody>
+                @foreach (var row in Model)
+                {
+                    <tr>
+                        <td>@(row.DisplayName ?? row.PlaceId)</td>
+                        <td>@(row.Rating?.ToString("0.0") ?? "N/A")</td>
+                        <td>@(row.UserRatingCount?.ToString() ?? "N/A")</td>
+                        <td>@(row.ReviewsLast90?.ToString() ?? "0")</td>
+                        <td>@(row.AvgPerMonth12m?.ToString("0.0") ?? "0.0")</td>
+                        <td>@(row.DaysSinceLastReview?.ToString() ?? "N/A")</td>
+                        <td><span class="status-pill status-@((row.StatusLabel ?? "NoReviews").ToLowerInvariant())">@(row.StatusLabel ?? "NoReviews")</span></td>
+                        <td><a href="/places/@row.PlaceId">View</a></td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    </section>
+</div>

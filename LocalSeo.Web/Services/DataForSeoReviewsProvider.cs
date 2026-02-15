@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Net.Http.Headers;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -20,6 +21,8 @@ public sealed class DataForSeoReviewsProvider(
 {
     private const string TaskTypeReviews = "reviews";
     private const string TaskTypeMyBusinessInfo = "my_business_info";
+    private const string TaskTypeMyBusinessUpdates = "my_business_updates";
+    private const string TaskTypeQuestionsAndAnswers = "questions_and_answers";
 
     public async Task FetchAndStoreReviewsAsync(
         string placeId,
@@ -28,45 +31,100 @@ public sealed class DataForSeoReviewsProvider(
         decimal? centerLat,
         decimal? centerLng,
         int? radiusMeters,
+        bool fetchGoogleReviews,
+        bool fetchMyBusinessInfo,
+        bool fetchGoogleUpdates,
+        bool fetchGoogleQuestionsAndAnswers,
         CancellationToken ct)
     {
+        if (!fetchGoogleReviews && !fetchMyBusinessInfo && !fetchGoogleUpdates && !fetchGoogleQuestionsAndAnswers)
+            return;
+
         var cfg = options.Value;
         if (string.IsNullOrWhiteSpace(cfg.Login) || string.IsNullOrWhiteSpace(cfg.Password))
         {
-            await LogTaskFailureAsync(placeId, locationName, TaskTypeReviews, "DataForSEO credentials are not configured.", ct);
-            await LogTaskFailureAsync(placeId, locationName, TaskTypeMyBusinessInfo, "DataForSEO credentials are not configured.", ct);
+            if (fetchGoogleReviews)
+                await LogTaskFailureAsync(placeId, locationName, TaskTypeReviews, "DataForSEO credentials are not configured.", ct);
+            if (fetchMyBusinessInfo)
+                await LogTaskFailureAsync(placeId, locationName, TaskTypeMyBusinessInfo, "DataForSEO credentials are not configured.", ct);
+            if (fetchGoogleUpdates)
+                await LogTaskFailureAsync(placeId, locationName, TaskTypeMyBusinessUpdates, "DataForSEO credentials are not configured.", ct);
+            if (fetchGoogleQuestionsAndAnswers)
+                await LogTaskFailureAsync(placeId, locationName, TaskTypeQuestionsAndAnswers, "DataForSEO credentials are not configured.", ct);
             logger.LogWarning("DataForSEO credentials are not configured; skipping review fetch for place {PlaceId}.", placeId);
             return;
         }
 
-        try
+        if (fetchGoogleReviews)
         {
-            await CreateAndTrackTaskAsync(
-                placeId,
-                locationName,
-                TaskTypeReviews,
-                () => CreateReviewsTaskAsync(placeId, reviewCount, locationName, centerLat, centerLng, radiusMeters, cfg, ct),
-                ct);
-        }
-        catch (Exception ex) when (!ct.IsCancellationRequested)
-        {
-            await LogTaskFailureAsync(placeId, locationName, TaskTypeReviews, ex.Message, ct);
-            logger.LogWarning(ex, "DataForSEO reviews task creation failed for place {PlaceId}.", placeId);
+            try
+            {
+                await CreateAndTrackTaskAsync(
+                    placeId,
+                    locationName,
+                    TaskTypeReviews,
+                    () => CreateReviewsTaskAsync(placeId, reviewCount, locationName, centerLat, centerLng, radiusMeters, cfg, ct),
+                    ct);
+            }
+            catch (Exception ex) when (!ct.IsCancellationRequested)
+            {
+                await LogTaskFailureAsync(placeId, locationName, TaskTypeReviews, ex.Message, ct);
+                logger.LogWarning(ex, "DataForSEO reviews task creation failed for place {PlaceId}.", placeId);
+            }
         }
 
-        try
+        if (fetchMyBusinessInfo)
         {
-            await CreateAndTrackTaskAsync(
-                placeId,
-                locationName,
-                TaskTypeMyBusinessInfo,
-                () => CreateMyBusinessInfoTaskAsync(placeId, locationName, cfg, ct),
-                ct);
+            try
+            {
+                await CreateAndTrackTaskAsync(
+                    placeId,
+                    locationName,
+                    TaskTypeMyBusinessInfo,
+                    () => CreateMyBusinessInfoTaskAsync(placeId, locationName, cfg, ct),
+                    ct);
+            }
+            catch (Exception ex) when (!ct.IsCancellationRequested)
+            {
+                await LogTaskFailureAsync(placeId, locationName, TaskTypeMyBusinessInfo, ex.Message, ct);
+                logger.LogWarning(ex, "DataForSEO my_business_info task creation failed for place {PlaceId}.", placeId);
+            }
         }
-        catch (Exception ex) when (!ct.IsCancellationRequested)
+
+        if (fetchGoogleUpdates)
         {
-            await LogTaskFailureAsync(placeId, locationName, TaskTypeMyBusinessInfo, ex.Message, ct);
-            logger.LogWarning(ex, "DataForSEO my_business_info task creation failed for place {PlaceId}.", placeId);
+            try
+            {
+                await CreateAndTrackTaskAsync(
+                    placeId,
+                    locationName,
+                    TaskTypeMyBusinessUpdates,
+                    () => CreateMyBusinessUpdatesTaskAsync(placeId, locationName, cfg, ct),
+                    ct);
+            }
+            catch (Exception ex) when (!ct.IsCancellationRequested)
+            {
+                await LogTaskFailureAsync(placeId, locationName, TaskTypeMyBusinessUpdates, ex.Message, ct);
+                logger.LogWarning(ex, "DataForSEO my_business_updates task creation failed for place {PlaceId}.", placeId);
+            }
+        }
+
+        if (fetchGoogleQuestionsAndAnswers)
+        {
+            try
+            {
+                await CreateAndTrackTaskAsync(
+                    placeId,
+                    locationName,
+                    TaskTypeQuestionsAndAnswers,
+                    () => CreateQuestionsAndAnswersTaskAsync(placeId, locationName, cfg, ct),
+                    ct);
+            }
+            catch (Exception ex) when (!ct.IsCancellationRequested)
+            {
+                await LogTaskFailureAsync(placeId, locationName, TaskTypeQuestionsAndAnswers, ex.Message, ct);
+                logger.LogWarning(ex, "DataForSEO questions_and_answers task creation failed for place {PlaceId}.", placeId);
+            }
         }
 
         try
@@ -95,7 +153,9 @@ public sealed class DataForSeoReviewsProvider(
             return;
         }
 
-        var status = createdTask.StatusCode is >= 20000 and < 30000 ? "Created" : "Error";
+        var status = IsNoDataStatus(createdTask.StatusCode, createdTask.StatusMessage)
+            ? "NoData"
+            : createdTask.StatusCode is >= 20000 and < 30000 ? "Created" : "Error";
         var endpoint = GetTaskGetPath(options.Value, createdTask.TaskId, taskType);
 
         await UpsertTaskRowAsync(
@@ -212,7 +272,6 @@ SELECT TOP (@Take)
 FROM dbo.DataForSeoReviewTask
 WHERE @TaskType IS NULL OR COALESCE(TaskType, 'reviews') = @TaskType
 ORDER BY
-  CASE WHEN COALESCE(TaskType, 'reviews') = 'my_business_info' THEN 0 ELSE 1 END,
   DataForSeoReviewTaskId DESC;",
             new { Take = Math.Clamp(take, 1, 2000), TaskType = normalizedTaskType }, cancellationToken: ct));
         return rows.ToList();
@@ -239,7 +298,7 @@ WHERE Status='Error'
             return 0;
 
         var readyMapsByType = new Dictionary<string, Dictionary<string, ReadyTaskInfo>>(StringComparer.OrdinalIgnoreCase);
-        foreach (var taskType in new[] { TaskTypeReviews, TaskTypeMyBusinessInfo })
+        foreach (var taskType in new[] { TaskTypeReviews, TaskTypeMyBusinessInfo, TaskTypeMyBusinessUpdates, TaskTypeQuestionsAndAnswers })
         {
             try
             {
@@ -257,7 +316,7 @@ WHERE Status='Error'
         var candidates = (await conn.QueryAsync<TaskTrackingCandidate>(new CommandDefinition(@"
 SELECT DataForSeoReviewTaskId, DataForSeoTaskId, COALESCE(TaskType, 'reviews') AS TaskType, Status
 FROM dbo.DataForSeoReviewTask
-WHERE Status NOT IN ('Populated','CompletedNoReviews','CompletedNoData')
+WHERE Status NOT IN ('Populated','CompletedNoReviews','CompletedNoData','CompletedNoUpdates','NoData')
 ORDER BY DataForSeoReviewTaskId DESC;", cancellationToken: ct))).ToList();
         var existingTaskKeys = candidates
             .Select(x => $"{NormalizeTaskType(x.TaskType)}|{x.DataForSeoTaskId}")
@@ -382,24 +441,29 @@ WHERE DataForSeoReviewTaskId=@Id;", new { Id = dataForSeoReviewTaskId }, cancell
 
         if (rawSnapshot.StatusCode >= 40000)
         {
+            var status = IsNoDataStatus(rawSnapshot.StatusCode, rawSnapshot.StatusMessage) ? "NoData" : "Error";
             await conn.ExecuteAsync(new CommandDefinition(@"
 UPDATE dbo.DataForSeoReviewTask
 SET
-  Status='Error',
+  Status=@Status,
   TaskStatusCode=@TaskStatusCode,
   TaskStatusMessage=@TaskStatusMessage,
   LastCheckedUtc=SYSUTCDATETIME(),
   LastAttemptedPopulateUtc=SYSUTCDATETIME(),
-  LastError=@TaskStatusMessage
+  LastError=CASE WHEN @Status='Error' THEN @TaskStatusMessage ELSE NULL END
 WHERE DataForSeoReviewTaskId=@DataForSeoReviewTaskId;",
                 new
                 {
                     task.DataForSeoReviewTaskId,
+                    Status = status,
                     TaskStatusCode = rawSnapshot.StatusCode,
                     TaskStatusMessage = rawSnapshot.StatusMessage
                 }, cancellationToken: ct));
 
-            return new DataForSeoPopulateResult(false, rawSnapshot.StatusMessage ?? "Task failed.", 0);
+            return new DataForSeoPopulateResult(
+                status == "NoData",
+                status == "NoData" ? "Task completed with no data (No Search Results)." : rawSnapshot.StatusMessage ?? "Task failed.",
+                0);
         }
 
         if (taskType == TaskTypeMyBusinessInfo)
@@ -407,7 +471,7 @@ WHERE DataForSeoReviewTaskId=@DataForSeoReviewTaskId;",
             var infoSnapshot = ParseMyBusinessInfoSnapshot(rawSnapshot.Body);
             if (!infoSnapshot.HasPayload)
             {
-                var status = infoSnapshot.IsCompleted ? "CompletedNoData" : "Pending";
+                var status = infoSnapshot.IsCompleted ? "NoData" : "Pending";
                 await conn.ExecuteAsync(new CommandDefinition(@"
 UPDATE dbo.DataForSeoReviewTask
 SET
@@ -417,8 +481,8 @@ SET
   LastCheckedUtc=SYSUTCDATETIME(),
   LastAttemptedPopulateUtc=SYSUTCDATETIME(),
   LastPopulateReviewCount=0,
-  ReadyAtUtc=CASE WHEN @Status='CompletedNoData' THEN COALESCE(ReadyAtUtc, SYSUTCDATETIME()) ELSE ReadyAtUtc END,
-  PopulatedAtUtc=CASE WHEN @Status='CompletedNoData' THEN SYSUTCDATETIME() ELSE PopulatedAtUtc END,
+  ReadyAtUtc=CASE WHEN @Status='NoData' THEN COALESCE(ReadyAtUtc, SYSUTCDATETIME()) ELSE ReadyAtUtc END,
+  PopulatedAtUtc=CASE WHEN @Status='NoData' THEN SYSUTCDATETIME() ELSE PopulatedAtUtc END,
   LastError=NULL
 WHERE DataForSeoReviewTaskId=@DataForSeoReviewTaskId;",
                     new
@@ -429,7 +493,7 @@ WHERE DataForSeoReviewTaskId=@DataForSeoReviewTaskId;",
                         TaskStatusMessage = infoSnapshot.StatusMessage
                     }, cancellationToken: ct));
 
-                var msg = infoSnapshot.IsCompleted ? "Task completed but had no business info payload." : "Task is not ready yet.";
+                var msg = infoSnapshot.IsCompleted ? "Task completed with no data." : "Task is not ready yet.";
                 return new DataForSeoPopulateResult(infoSnapshot.IsCompleted, msg, 0);
             }
 
@@ -461,10 +525,128 @@ WHERE DataForSeoReviewTaskId=@DataForSeoReviewTaskId;",
             return new DataForSeoPopulateResult(true, "Upserted detailed business info.", infoUpserted);
         }
 
+        if (taskType == TaskTypeMyBusinessUpdates)
+        {
+            var updatesSnapshot = ParseMyBusinessUpdatesSnapshot(rawSnapshot.Body);
+            if (updatesSnapshot.Updates.Count == 0)
+            {
+                var status = updatesSnapshot.IsCompleted ? "NoData" : "Pending";
+                await conn.ExecuteAsync(new CommandDefinition(@"
+UPDATE dbo.DataForSeoReviewTask
+SET
+  Status=@Status,
+  TaskStatusCode=@TaskStatusCode,
+  TaskStatusMessage=@TaskStatusMessage,
+  LastCheckedUtc=SYSUTCDATETIME(),
+  LastAttemptedPopulateUtc=SYSUTCDATETIME(),
+  LastPopulateReviewCount=0,
+  ReadyAtUtc=CASE WHEN @Status='NoData' THEN COALESCE(ReadyAtUtc, SYSUTCDATETIME()) ELSE ReadyAtUtc END,
+  PopulatedAtUtc=CASE WHEN @Status='NoData' THEN SYSUTCDATETIME() ELSE PopulatedAtUtc END,
+  LastError=NULL
+WHERE DataForSeoReviewTaskId=@DataForSeoReviewTaskId;",
+                    new
+                    {
+                        task.DataForSeoReviewTaskId,
+                        Status = status,
+                        TaskStatusCode = updatesSnapshot.StatusCode,
+                        TaskStatusMessage = updatesSnapshot.StatusMessage
+                    }, cancellationToken: ct));
+
+                var msg = updatesSnapshot.IsCompleted ? "Task completed with no data." : "Task is not ready yet.";
+                return new DataForSeoPopulateResult(updatesSnapshot.IsCompleted, msg, 0);
+            }
+
+            await using var updatesTx = await conn.BeginTransactionAsync(ct);
+            var upsertedUpdates = await UpsertUpdatesAsync(conn, updatesTx, task.PlaceId, task.DataForSeoTaskId, updatesSnapshot.Updates.Values, ct);
+
+            await conn.ExecuteAsync(new CommandDefinition(@"
+UPDATE dbo.DataForSeoReviewTask
+SET
+  Status='Populated',
+  TaskStatusCode=@TaskStatusCode,
+  TaskStatusMessage=@TaskStatusMessage,
+  LastCheckedUtc=SYSUTCDATETIME(),
+  ReadyAtUtc=COALESCE(ReadyAtUtc, SYSUTCDATETIME()),
+  PopulatedAtUtc=SYSUTCDATETIME(),
+  LastAttemptedPopulateUtc=SYSUTCDATETIME(),
+  LastPopulateReviewCount=@LastPopulateReviewCount,
+  LastError=NULL
+WHERE DataForSeoReviewTaskId=@DataForSeoReviewTaskId;",
+                new
+                {
+                    task.DataForSeoReviewTaskId,
+                    TaskStatusCode = updatesSnapshot.StatusCode,
+                    TaskStatusMessage = updatesSnapshot.StatusMessage,
+                    LastPopulateReviewCount = upsertedUpdates
+                }, updatesTx, cancellationToken: ct));
+
+            await updatesTx.CommitAsync(ct);
+            return new DataForSeoPopulateResult(true, $"Upserted {upsertedUpdates} updates.", upsertedUpdates);
+        }
+
+        if (taskType == TaskTypeQuestionsAndAnswers)
+        {
+            var qaSnapshot = ParseQuestionsAndAnswersSnapshot(rawSnapshot.Body);
+            if (qaSnapshot.Items.Count == 0)
+            {
+                var status = qaSnapshot.IsCompleted ? "NoData" : "Pending";
+                await conn.ExecuteAsync(new CommandDefinition(@"
+UPDATE dbo.DataForSeoReviewTask
+SET
+  Status=@Status,
+  TaskStatusCode=@TaskStatusCode,
+  TaskStatusMessage=@TaskStatusMessage,
+  LastCheckedUtc=SYSUTCDATETIME(),
+  LastAttemptedPopulateUtc=SYSUTCDATETIME(),
+  LastPopulateReviewCount=0,
+  ReadyAtUtc=CASE WHEN @Status='NoData' THEN COALESCE(ReadyAtUtc, SYSUTCDATETIME()) ELSE ReadyAtUtc END,
+  PopulatedAtUtc=CASE WHEN @Status='NoData' THEN SYSUTCDATETIME() ELSE PopulatedAtUtc END,
+  LastError=NULL
+WHERE DataForSeoReviewTaskId=@DataForSeoReviewTaskId;",
+                    new
+                    {
+                        task.DataForSeoReviewTaskId,
+                        Status = status,
+                        TaskStatusCode = qaSnapshot.StatusCode,
+                        TaskStatusMessage = qaSnapshot.StatusMessage
+                    }, cancellationToken: ct));
+
+                var msg = qaSnapshot.IsCompleted ? "Task completed with no data." : "Task is not ready yet.";
+                return new DataForSeoPopulateResult(qaSnapshot.IsCompleted, msg, 0);
+            }
+
+            await using var qaTx = await conn.BeginTransactionAsync(ct);
+            var upsertedQa = await UpsertQuestionsAndAnswersAsync(conn, qaTx, task.PlaceId, task.DataForSeoTaskId, qaSnapshot.Items.Values, ct);
+
+            await conn.ExecuteAsync(new CommandDefinition(@"
+UPDATE dbo.DataForSeoReviewTask
+SET
+  Status='Populated',
+  TaskStatusCode=@TaskStatusCode,
+  TaskStatusMessage=@TaskStatusMessage,
+  LastCheckedUtc=SYSUTCDATETIME(),
+  ReadyAtUtc=COALESCE(ReadyAtUtc, SYSUTCDATETIME()),
+  PopulatedAtUtc=SYSUTCDATETIME(),
+  LastAttemptedPopulateUtc=SYSUTCDATETIME(),
+  LastPopulateReviewCount=@LastPopulateReviewCount,
+  LastError=NULL
+WHERE DataForSeoReviewTaskId=@DataForSeoReviewTaskId;",
+                new
+                {
+                    task.DataForSeoReviewTaskId,
+                    TaskStatusCode = qaSnapshot.StatusCode,
+                    TaskStatusMessage = qaSnapshot.StatusMessage,
+                    LastPopulateReviewCount = upsertedQa
+                }, qaTx, cancellationToken: ct));
+
+            await qaTx.CommitAsync(ct);
+            return new DataForSeoPopulateResult(true, $"Upserted {upsertedQa} question/answer row(s).", upsertedQa);
+        }
+
         var reviewSnapshot = ParseTaskGetSnapshot(rawSnapshot.Body);
         if (reviewSnapshot.Reviews.Count == 0)
         {
-            var status = reviewSnapshot.IsCompleted ? "CompletedNoReviews" : "Pending";
+            var status = reviewSnapshot.IsCompleted ? "NoData" : "Pending";
             await conn.ExecuteAsync(new CommandDefinition(@"
 UPDATE dbo.DataForSeoReviewTask
 SET
@@ -474,8 +656,8 @@ SET
   LastCheckedUtc=SYSUTCDATETIME(),
   LastAttemptedPopulateUtc=SYSUTCDATETIME(),
   LastPopulateReviewCount=0,
-  ReadyAtUtc=CASE WHEN @Status='CompletedNoReviews' THEN COALESCE(ReadyAtUtc, SYSUTCDATETIME()) ELSE ReadyAtUtc END,
-  PopulatedAtUtc=CASE WHEN @Status='CompletedNoReviews' THEN SYSUTCDATETIME() ELSE PopulatedAtUtc END,
+  ReadyAtUtc=CASE WHEN @Status='NoData' THEN COALESCE(ReadyAtUtc, SYSUTCDATETIME()) ELSE ReadyAtUtc END,
+  PopulatedAtUtc=CASE WHEN @Status='NoData' THEN SYSUTCDATETIME() ELSE PopulatedAtUtc END,
   LastError=NULL
 WHERE DataForSeoReviewTaskId=@DataForSeoReviewTaskId;",
                 new
@@ -486,7 +668,7 @@ WHERE DataForSeoReviewTaskId=@DataForSeoReviewTaskId;",
                     TaskStatusMessage = reviewSnapshot.StatusMessage
                 }, cancellationToken: ct));
 
-            var msg = reviewSnapshot.IsCompleted ? "Task completed but had no reviews to import." : "Task is not ready yet.";
+            var msg = reviewSnapshot.IsCompleted ? "Task completed with no data." : "Task is not ready yet.";
             return new DataForSeoPopulateResult(reviewSnapshot.IsCompleted, msg, 0);
         }
 
@@ -520,6 +702,51 @@ WHERE DataForSeoReviewTaskId=@DataForSeoReviewTaskId;",
         return new DataForSeoPopulateResult(true, $"Upserted {upserted} reviews.", upserted);
     }
 
+    public async Task<DataForSeoBulkPopulateResult> PopulateReadyTasksAsync(string? taskType, CancellationToken ct)
+    {
+        var normalizedTaskType = string.IsNullOrWhiteSpace(taskType) || string.Equals(taskType, "all", StringComparison.OrdinalIgnoreCase)
+            ? null
+            : NormalizeTaskType(taskType);
+
+        await using var conn = (Microsoft.Data.SqlClient.SqlConnection)await connectionFactory.OpenConnectionAsync(ct);
+        var readyTaskIds = (await conn.QueryAsync<long>(new CommandDefinition(@"
+SELECT DataForSeoReviewTaskId
+FROM dbo.DataForSeoReviewTask
+WHERE Status='Ready'
+  AND (@TaskType IS NULL OR COALESCE(TaskType, 'reviews') = @TaskType)
+ORDER BY DataForSeoReviewTaskId;", new { TaskType = normalizedTaskType }, cancellationToken: ct))).ToList();
+
+        var attempted = readyTaskIds.Count;
+        var succeeded = 0;
+        var failed = 0;
+        var reviewsUpserted = 0;
+
+        foreach (var taskId in readyTaskIds)
+        {
+            ct.ThrowIfCancellationRequested();
+            try
+            {
+                var result = await PopulateTaskAsync(taskId, ct);
+                if (result.Success)
+                {
+                    succeeded++;
+                    reviewsUpserted += Math.Max(0, result.ReviewsUpserted);
+                }
+                else
+                {
+                    failed++;
+                }
+            }
+            catch (Exception ex) when (!ct.IsCancellationRequested)
+            {
+                failed++;
+                logger.LogWarning(ex, "Bulk populate failed for DataForSEO task row id {TaskRowId}.", taskId);
+            }
+        }
+
+        return new DataForSeoBulkPopulateResult(attempted, succeeded, failed, reviewsUpserted);
+    }
+
     public async Task<DataForSeoPostbackResult> HandlePostbackAsync(string? taskIdFromQuery, string? tagFromQuery, string payloadJson, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(payloadJson))
@@ -543,7 +770,7 @@ ORDER BY DataForSeoReviewTaskId DESC;", new { PlaceId = tagFromQuery }, cancella
         var statusMessage = summary.TaskStatusMessage;
         var status = !statusCode.HasValue
             ? "Pending"
-            : statusCode is >= 20000 and < 30000 ? "Ready" : "Error";
+            : statusCode is >= 20000 and < 30000 ? "Ready" : IsNoDataStatus(statusCode, statusMessage) ? "NoData" : "Error";
         var endpoint = summary.Endpoint;
 
         var affected = await conn.ExecuteAsync(new CommandDefinition(@"
@@ -673,6 +900,118 @@ WHEN NOT MATCHED THEN
         return count;
     }
 
+    private async Task<int> UpsertUpdatesAsync(
+        Microsoft.Data.SqlClient.SqlConnection conn,
+        System.Data.Common.DbTransaction tx,
+        string placeId,
+        string sourceTaskId,
+        IEnumerable<UpdatePayload> updates,
+        CancellationToken ct)
+    {
+        var count = 0;
+        foreach (var update in updates)
+        {
+            await conn.ExecuteAsync(new CommandDefinition(@"
+MERGE dbo.PlaceUpdate AS target
+USING (SELECT @PlaceId AS PlaceId, @UpdateKey AS UpdateKey) AS source
+ON target.PlaceId = source.PlaceId AND target.UpdateKey = source.UpdateKey
+WHEN MATCHED THEN UPDATE SET
+  PostText=@PostText,
+  Url=@Url,
+  ImagesUrlJson=@ImagesUrlJson,
+  PostDateUtc=@PostDateUtc,
+  LinksJson=@LinksJson,
+  SourceTaskId=@SourceTaskId,
+  RawJson=@RawJson,
+  LastSeenUtc=SYSUTCDATETIME()
+WHEN NOT MATCHED THEN
+  INSERT(
+    PlaceId,UpdateKey,PostText,Url,ImagesUrlJson,PostDateUtc,LinksJson,SourceTaskId,RawJson,FirstSeenUtc,LastSeenUtc
+  )
+  VALUES(
+    @PlaceId,@UpdateKey,@PostText,@Url,@ImagesUrlJson,@PostDateUtc,@LinksJson,@SourceTaskId,@RawJson,SYSUTCDATETIME(),SYSUTCDATETIME()
+  );",
+                new
+                {
+                    PlaceId = placeId,
+                    update.UpdateKey,
+                    update.PostText,
+                    update.Url,
+                    update.ImagesUrlJson,
+                    update.PostDateUtc,
+                    update.LinksJson,
+                    SourceTaskId = sourceTaskId,
+                    update.RawJson
+                }, tx, cancellationToken: ct));
+            count++;
+        }
+
+        return count;
+    }
+
+    private async Task<int> UpsertQuestionsAndAnswersAsync(
+        Microsoft.Data.SqlClient.SqlConnection conn,
+        System.Data.Common.DbTransaction tx,
+        string placeId,
+        string sourceTaskId,
+        IEnumerable<QuestionAnswerPayload> items,
+        CancellationToken ct)
+    {
+        var count = 0;
+        foreach (var item in items)
+        {
+            await conn.ExecuteAsync(new CommandDefinition(@"
+MERGE dbo.PlaceQuestionAnswer AS target
+USING (SELECT @PlaceId AS PlaceId, @QaKey AS QaKey) AS source
+ON target.PlaceId = source.PlaceId AND target.QaKey = source.QaKey
+WHEN MATCHED THEN UPDATE SET
+  QuestionText=@QuestionText,
+  QuestionTimestampUtc=@QuestionTimestampUtc,
+  QuestionProfileName=@QuestionProfileName,
+  AnswerText=@AnswerText,
+  AnswerTimestampUtc=@AnswerTimestampUtc,
+  AnswerProfileName=@AnswerProfileName,
+  SourceTaskId=@SourceTaskId,
+  RawJson=@RawJson,
+  LastSeenUtc=SYSUTCDATETIME()
+WHEN NOT MATCHED THEN
+  INSERT(
+    PlaceId,QaKey,QuestionText,QuestionTimestampUtc,QuestionProfileName,AnswerText,AnswerTimestampUtc,AnswerProfileName,SourceTaskId,RawJson,FirstSeenUtc,LastSeenUtc
+  )
+  VALUES(
+    @PlaceId,@QaKey,@QuestionText,@QuestionTimestampUtc,@QuestionProfileName,@AnswerText,@AnswerTimestampUtc,@AnswerProfileName,@SourceTaskId,@RawJson,SYSUTCDATETIME(),SYSUTCDATETIME()
+  );",
+                new
+                {
+                    PlaceId = placeId,
+                    item.QaKey,
+                    item.QuestionText,
+                    item.QuestionTimestampUtc,
+                    item.QuestionProfileName,
+                    item.AnswerText,
+                    item.AnswerTimestampUtc,
+                    item.AnswerProfileName,
+                    SourceTaskId = sourceTaskId,
+                    item.RawJson
+                }, tx, cancellationToken: ct));
+            count++;
+        }
+
+        await conn.ExecuteAsync(new CommandDefinition(@"
+UPDATE p
+SET p.QuestionAnswerCount = qa.Cnt
+FROM dbo.Place p
+OUTER APPLY (
+    SELECT COUNT(1) AS Cnt
+    FROM dbo.PlaceQuestionAnswer x
+    WHERE x.PlaceId = p.PlaceId
+) qa
+WHERE p.PlaceId=@PlaceId;",
+            new { PlaceId = placeId }, tx, cancellationToken: ct));
+
+        return count;
+    }
+
     private async Task<int> UpsertPlaceBusinessInfoAsync(
         Microsoft.Data.SqlClient.SqlConnection conn,
         System.Data.Common.DbTransaction tx,
@@ -781,7 +1120,7 @@ WHERE PlaceId=@PlaceId;",
             new MyBusinessInfoTaskPostItem(
                 placeId,
                 string.IsNullOrWhiteSpace(cfg.LanguageCode) ? null : cfg.LanguageCode.Trim(),
-                2)
+                null)
         };
         var payloadJson = JsonSerializer.Serialize(
             requestPayload,
@@ -801,7 +1140,7 @@ WHERE PlaceId=@PlaceId;",
                 new MyBusinessInfoKeywordTaskPostItem(
                     $"place_id:{placeId}",
                     string.IsNullOrWhiteSpace(cfg.LanguageCode) ? null : cfg.LanguageCode.Trim(),
-                    2)
+                    null)
             };
             var fallbackJson = JsonSerializer.Serialize(
                 fallbackPayload,
@@ -815,18 +1154,18 @@ WHERE PlaceId=@PlaceId;",
             created = await SendMyBusinessInfoTaskPostAsync(cfg, postUrl, fallbackJson, "keyword", ct);
         }
         if (created.StatusCode == 40501
-            && !string.IsNullOrWhiteSpace(created.StatusMessage)
-            && created.StatusMessage.Contains("location_name", StringComparison.OrdinalIgnoreCase)
-            && !string.IsNullOrWhiteSpace(normalizedLocationName))
+            && !string.IsNullOrWhiteSpace(normalizedLocationName)
+            && IsLocationNameFollowupCandidate(created.StatusMessage))
         {
-            // Compatibility fallback: keyword mode may also require explicit location_name.
+            // Compatibility fallback: some API responses use
+            // "Invalid Field: 'location_name'." for missing/required location_name.
             var fallbackWithLocationPayload = new[]
             {
                 new MyBusinessInfoKeywordWithLocationTaskPostItem(
                     $"place_id:{placeId}",
                     string.IsNullOrWhiteSpace(cfg.LanguageCode) ? null : cfg.LanguageCode.Trim(),
                     normalizedLocationName,
-                    2)
+                    null)
             };
             var fallbackWithLocationJson = JsonSerializer.Serialize(
                 fallbackWithLocationPayload,
@@ -841,6 +1180,114 @@ WHERE PlaceId=@PlaceId;",
         }
 
         return created;
+    }
+
+    private async Task<TaskCreationResult> CreateMyBusinessUpdatesTaskAsync(
+        string placeId,
+        string? locationName,
+        DataForSeoOptions cfg,
+        CancellationToken ct)
+    {
+        var requestItem = new Dictionary<string, object?>
+        {
+            ["keyword"] = $"place_id:{placeId}"
+        };
+        if (!string.IsNullOrWhiteSpace(cfg.LanguageCode))
+            requestItem["language_code"] = cfg.LanguageCode.Trim();
+        if (!string.IsNullOrWhiteSpace(locationName))
+            requestItem["location_name"] = locationName.Trim();
+        if (!string.IsNullOrWhiteSpace(cfg.PostbackUrl))
+            requestItem["postback_url"] = cfg.PostbackUrl.Trim();
+        requestItem["tag"] = placeId;
+
+        var requestPayload = new[] { requestItem };
+        using var request = CreateRequest(HttpMethod.Post, BuildApiUrl(cfg.BaseUrl, GetTaskPostPath(cfg, TaskTypeMyBusinessUpdates)), cfg);
+        request.Content = JsonContent.Create(requestPayload);
+
+        var client = httpClientFactory.CreateClient();
+        using var response = await client.SendAsync(request, ct);
+        var body = await response.Content.ReadAsStringAsync(ct);
+        if (!response.IsSuccessStatusCode)
+            throw new HttpRequestException($"DataForSEO my_business_updates task_post failed with status {(int)response.StatusCode}: {body}");
+
+        using var document = JsonDocument.Parse(body);
+        var root = document.RootElement;
+        if (!root.TryGetProperty("tasks", out var tasks) || tasks.ValueKind != JsonValueKind.Array || tasks.GetArrayLength() == 0)
+            return new TaskCreationResult(null, 0, "No tasks in response.");
+
+        var task = tasks[0];
+        var taskStatusCode = task.TryGetProperty("status_code", out var statusCodeNode) && statusCodeNode.TryGetInt32(out var code)
+            ? code
+            : 0;
+        var taskStatusMessage = task.TryGetProperty("status_message", out var statusMessageNode)
+            ? statusMessageNode.GetString()
+            : null;
+        var taskId = task.TryGetProperty("id", out var idNode) ? idNode.GetString() : null;
+
+        return new TaskCreationResult(taskId, taskStatusCode, taskStatusMessage);
+    }
+
+    private async Task<TaskCreationResult> CreateQuestionsAndAnswersTaskAsync(
+        string placeId,
+        string? locationName,
+        DataForSeoOptions cfg,
+        CancellationToken ct)
+    {
+        var requestItem = new Dictionary<string, object?>
+        {
+            ["keyword"] = $"place_id:{placeId}"
+        };
+        if (!string.IsNullOrWhiteSpace(cfg.LanguageCode))
+            requestItem["language_code"] = cfg.LanguageCode.Trim();
+        if (!string.IsNullOrWhiteSpace(locationName))
+            requestItem["location_name"] = locationName.Trim();
+        if (!string.IsNullOrWhiteSpace(cfg.PostbackUrl))
+            requestItem["postback_url"] = cfg.PostbackUrl.Trim();
+        requestItem["tag"] = placeId;
+
+        var requestPayload = new[] { requestItem };
+        using var request = CreateRequest(HttpMethod.Post, BuildApiUrl(cfg.BaseUrl, GetTaskPostPath(cfg, TaskTypeQuestionsAndAnswers)), cfg);
+        request.Content = JsonContent.Create(requestPayload);
+
+        var client = httpClientFactory.CreateClient();
+        using var response = await client.SendAsync(request, ct);
+        var body = await response.Content.ReadAsStringAsync(ct);
+        if (!response.IsSuccessStatusCode)
+            throw new HttpRequestException($"DataForSEO questions_and_answers task_post failed with status {(int)response.StatusCode}: {body}");
+
+        using var document = JsonDocument.Parse(body);
+        var root = document.RootElement;
+        if (!root.TryGetProperty("tasks", out var tasks) || tasks.ValueKind != JsonValueKind.Array || tasks.GetArrayLength() == 0)
+            return new TaskCreationResult(null, 0, "No tasks in response.");
+
+        var task = tasks[0];
+        var taskStatusCode = task.TryGetProperty("status_code", out var statusCodeNode) && statusCodeNode.TryGetInt32(out var code)
+            ? code
+            : 0;
+        var taskStatusMessage = task.TryGetProperty("status_message", out var statusMessageNode)
+            ? statusMessageNode.GetString()
+            : null;
+        var taskId = task.TryGetProperty("id", out var idNode) ? idNode.GetString() : null;
+
+        return new TaskCreationResult(taskId, taskStatusCode, taskStatusMessage);
+    }
+
+    private static bool IsLocationNameFollowupCandidate(string? statusMessage)
+    {
+        if (string.IsNullOrWhiteSpace(statusMessage))
+            return false;
+
+        var message = statusMessage.Trim();
+        return message.Contains("location_name", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsNoDataStatus(int? statusCode, string? statusMessage)
+    {
+        if (!string.IsNullOrWhiteSpace(statusMessage)
+            && statusMessage.Contains("No Search Results", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        return false;
     }
 
     private async Task<TaskCreationResult> SendMyBusinessInfoTaskPostAsync(
@@ -1049,6 +1496,80 @@ WHERE PlaceId=@PlaceId;",
         return new BusinessInfoTaskSnapshot(taskStatusCode, taskStatusMessage, isCompleted, payload.HasValues, payload);
     }
 
+    private static MyBusinessUpdatesTaskSnapshot ParseMyBusinessUpdatesSnapshot(string body)
+    {
+        var updates = new Dictionary<string, UpdatePayload>(StringComparer.Ordinal);
+        using var document = JsonDocument.Parse(body);
+        var root = document.RootElement;
+        if (!root.TryGetProperty("tasks", out var tasks) || tasks.ValueKind != JsonValueKind.Array || tasks.GetArrayLength() == 0)
+            return new MyBusinessUpdatesTaskSnapshot(0, "No tasks in response.", false, updates);
+
+        var task = tasks[0];
+        var taskStatusCode = task.TryGetProperty("status_code", out var statusCodeNode) && statusCodeNode.TryGetInt32(out var code)
+            ? code
+            : 0;
+        var taskStatusMessage = task.TryGetProperty("status_message", out var statusMessageNode)
+            ? statusMessageNode.GetString()
+            : null;
+        var resultCount = task.TryGetProperty("result_count", out var resultCountNode) && resultCountNode.TryGetInt32(out var cnt)
+            ? cnt
+            : 0;
+
+        if (task.TryGetProperty("result", out var resultArray) && resultArray.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var result in resultArray.EnumerateArray())
+            {
+                foreach (var item in EnumerateMyBusinessUpdatesCandidates(result))
+                {
+                    var payload = ParseMyBusinessUpdate(item);
+                    if (payload is null)
+                        continue;
+                    updates[payload.UpdateKey] = payload;
+                }
+            }
+        }
+
+        var isCompleted = taskStatusCode == 20000 && resultCount >= 0;
+        return new MyBusinessUpdatesTaskSnapshot(taskStatusCode, taskStatusMessage, isCompleted, updates);
+    }
+
+    private static QuestionsAndAnswersTaskSnapshot ParseQuestionsAndAnswersSnapshot(string body)
+    {
+        var items = new Dictionary<string, QuestionAnswerPayload>(StringComparer.Ordinal);
+        using var document = JsonDocument.Parse(body);
+        var root = document.RootElement;
+        if (!root.TryGetProperty("tasks", out var tasks) || tasks.ValueKind != JsonValueKind.Array || tasks.GetArrayLength() == 0)
+            return new QuestionsAndAnswersTaskSnapshot(0, "No tasks in response.", false, items);
+
+        var task = tasks[0];
+        var taskStatusCode = task.TryGetProperty("status_code", out var statusCodeNode) && statusCodeNode.TryGetInt32(out var code)
+            ? code
+            : 0;
+        var taskStatusMessage = task.TryGetProperty("status_message", out var statusMessageNode)
+            ? statusMessageNode.GetString()
+            : null;
+        var resultCount = task.TryGetProperty("result_count", out var resultCountNode) && resultCountNode.TryGetInt32(out var cnt)
+            ? cnt
+            : 0;
+
+        if (task.TryGetProperty("result", out var resultArray) && resultArray.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var result in resultArray.EnumerateArray())
+            {
+                foreach (var question in EnumerateQuestionsAndAnswersCandidates(result))
+                {
+                    foreach (var payload in ParseQuestionAnswerPayloads(question))
+                    {
+                        items[payload.QaKey] = payload;
+                    }
+                }
+            }
+        }
+
+        var isCompleted = taskStatusCode == 20000 && resultCount >= 0;
+        return new QuestionsAndAnswersTaskSnapshot(taskStatusCode, taskStatusMessage, isCompleted, items);
+    }
+
     private static IEnumerable<JsonElement> EnumerateBusinessInfoCandidates(JsonElement result)
     {
         if (result.TryGetProperty("items", out var items))
@@ -1075,6 +1596,159 @@ WHERE PlaceId=@PlaceId;",
             yield return result;
     }
 
+    private static IEnumerable<JsonElement> EnumerateMyBusinessUpdatesCandidates(JsonElement result)
+    {
+        if (!result.TryGetProperty("items", out var items))
+            yield break;
+
+        if (items.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in items.EnumerateArray())
+            {
+                if (item.ValueKind == JsonValueKind.Object)
+                    yield return item;
+            }
+            yield break;
+        }
+
+        if (items.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var nestedName in new[] { "updates", "posts", "items" })
+            {
+                if (!items.TryGetProperty(nestedName, out var nestedNode) || nestedNode.ValueKind != JsonValueKind.Array)
+                    continue;
+
+                foreach (var item in nestedNode.EnumerateArray())
+                {
+                    if (item.ValueKind == JsonValueKind.Object)
+                        yield return item;
+                }
+                yield break;
+            }
+
+            foreach (var property in items.EnumerateObject())
+            {
+                if (property.Value.ValueKind != JsonValueKind.Array)
+                    continue;
+
+                foreach (var item in property.Value.EnumerateArray())
+                {
+                    if (item.ValueKind == JsonValueKind.Object)
+                        yield return item;
+                }
+            }
+
+            yield return items;
+        }
+    }
+
+    private static IEnumerable<JsonElement> EnumerateQuestionsAndAnswersCandidates(JsonElement result)
+    {
+        if (!result.TryGetProperty("items", out var items))
+            yield break;
+
+        if (items.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in items.EnumerateArray())
+            {
+                if (item.ValueKind == JsonValueKind.Object)
+                    yield return item;
+            }
+            yield break;
+        }
+
+        if (items.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var nestedName in new[] { "questions", "items" })
+            {
+                if (!items.TryGetProperty(nestedName, out var nestedNode) || nestedNode.ValueKind != JsonValueKind.Array)
+                    continue;
+
+                foreach (var item in nestedNode.EnumerateArray())
+                {
+                    if (item.ValueKind == JsonValueKind.Object)
+                        yield return item;
+                }
+                yield break;
+            }
+
+            foreach (var property in items.EnumerateObject())
+            {
+                if (property.Value.ValueKind != JsonValueKind.Array)
+                    continue;
+
+                foreach (var item in property.Value.EnumerateArray())
+                {
+                    if (item.ValueKind == JsonValueKind.Object)
+                        yield return item;
+                }
+            }
+
+            yield return items;
+        }
+    }
+
+    private static IEnumerable<QuestionAnswerPayload> ParseQuestionAnswerPayloads(JsonElement question)
+    {
+        var questionText = GetString(question, "question_text") ?? GetString(question, "text");
+        var questionTimestampUtc = ParseTimestampFromProperty(question, "timestamp");
+        var questionProfileName = GetString(question, "profile_name");
+        var questionIdentity = GetString(question, "question_id")
+            ?? GetString(question, "id")
+            ?? string.Empty;
+
+        var answers = new List<(string? AnswerText, DateTime? AnswerTimestampUtc, string? AnswerProfileName, string RawJson)>();
+        if (question.TryGetProperty("items", out var answersNode) && answersNode.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var answer in answersNode.EnumerateArray())
+            {
+                if (answer.ValueKind != JsonValueKind.Object)
+                    continue;
+
+                answers.Add((
+                    GetString(answer, "answer_text") ?? GetString(answer, "text"),
+                    ParseTimestampFromProperty(answer, "timestamp"),
+                    GetString(answer, "profile_name"),
+                    answer.GetRawText()));
+            }
+        }
+
+        if (answers.Count == 0)
+        {
+            var seedNoAnswer = $"{questionIdentity}|{questionText}|{questionTimestampUtc:O}|{questionProfileName}|no-answer";
+            if (string.IsNullOrWhiteSpace(seedNoAnswer.Replace("|", string.Empty, StringComparison.Ordinal)))
+                yield break;
+
+            yield return new QuestionAnswerPayload(
+                BuildUpdateKey(seedNoAnswer),
+                questionText,
+                questionTimestampUtc,
+                questionProfileName,
+                null,
+                null,
+                null,
+                question.GetRawText());
+            yield break;
+        }
+
+        foreach (var answer in answers)
+        {
+            var seed = $"{questionIdentity}|{questionText}|{questionTimestampUtc:O}|{questionProfileName}|{answer.AnswerText}|{answer.AnswerTimestampUtc:O}|{answer.AnswerProfileName}";
+            if (string.IsNullOrWhiteSpace(seed.Replace("|", string.Empty, StringComparison.Ordinal)))
+                continue;
+
+            yield return new QuestionAnswerPayload(
+                BuildUpdateKey(seed),
+                questionText,
+                questionTimestampUtc,
+                questionProfileName,
+                answer.AnswerText,
+                answer.AnswerTimestampUtc,
+                answer.AnswerProfileName,
+                answer.RawJson);
+        }
+    }
+
     private static BusinessInfoPayload ParseBusinessInfo(JsonElement item)
     {
         var description = GetString(item, "description");
@@ -1089,6 +1763,47 @@ WHERE PlaceId=@PlaceId;",
             GetInt(item, "total_photos"),
             additionalCategories,
             placeTopics,
+            item.GetRawText());
+    }
+
+    private static UpdatePayload? ParseMyBusinessUpdate(JsonElement item)
+    {
+        var postText = GetString(item, "post_text")
+            ?? GetString(item, "description")
+            ?? GetString(item, "text");
+        var url = GetString(item, "url");
+        var postDateUtc = ParseTimestampFromProperty(item, "timestamp")
+            ?? ParseTimestampFromProperty(item, "post_date")
+            ?? ParseTimestampFromProperty(item, "posted_at")
+            ?? ParseTimestampFromProperty(item, "date")
+            ?? ParseTimestampFromProperty(item, "date_posted");
+        var imageUrls = ExtractStringList(item, "images_url");
+        var links = ExtractLinks(item);
+
+        var identitySeed = GetString(item, "update_id")
+            ?? GetString(item, "post_id")
+            ?? GetString(item, "cid")
+            ?? GetString(item, "id");
+
+        if (string.IsNullOrWhiteSpace(identitySeed))
+        {
+            var seedParts = $"{postDateUtc:O}|{url}|{postText}";
+            if (string.IsNullOrWhiteSpace(seedParts.Replace("|", string.Empty, StringComparison.Ordinal)))
+                return null;
+            identitySeed = seedParts;
+        }
+
+        var updateKey = BuildUpdateKey(identitySeed);
+        if (string.IsNullOrWhiteSpace(updateKey))
+            return null;
+
+        return new UpdatePayload(
+            updateKey,
+            postText,
+            url,
+            imageUrls.Count == 0 ? "[]" : JsonSerializer.Serialize(imageUrls),
+            postDateUtc,
+            links.Count == 0 ? "[]" : JsonSerializer.Serialize(links),
             item.GetRawText());
     }
 
@@ -1124,6 +1839,8 @@ WHERE PlaceId=@PlaceId;",
                         ?? GetString(item, "name")
                         ?? GetString(item, "topic")
                         ?? GetString(item, "keyword")
+                        ?? GetString(item, "url")
+                        ?? GetString(item, "image_url")
                         ?? GetString(item, "value"),
                     _ => null
                 };
@@ -1149,6 +1866,8 @@ WHERE PlaceId=@PlaceId;",
                     ?? GetString(node, "name")
                     ?? GetString(node, "topic")
                     ?? GetString(node, "keyword")
+                    ?? GetString(node, "url")
+                    ?? GetString(node, "image_url")
                     ?? GetString(node, "value");
                 if (!string.IsNullOrWhiteSpace(parsed))
                     values.Add(parsed.Trim());
@@ -1164,6 +1883,46 @@ WHERE PlaceId=@PlaceId;",
         return values
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
+    }
+
+    private static IReadOnlyList<UpdateLinkPayload> ExtractLinks(JsonElement obj)
+    {
+        if (!obj.TryGetProperty("links", out var node) || node.ValueKind == JsonValueKind.Null)
+            return [];
+
+        if (node.ValueKind != JsonValueKind.Array)
+            return [];
+
+        var links = new List<UpdateLinkPayload>();
+        foreach (var item in node.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.Object)
+                continue;
+
+            var type = GetString(item, "type");
+            var title = GetString(item, "title");
+            var url = GetString(item, "url");
+            if (string.IsNullOrWhiteSpace(type) && string.IsNullOrWhiteSpace(title) && string.IsNullOrWhiteSpace(url))
+                continue;
+
+            links.Add(new UpdateLinkPayload(
+                string.IsNullOrWhiteSpace(type) ? null : type.Trim(),
+                string.IsNullOrWhiteSpace(title) ? null : title.Trim(),
+                string.IsNullOrWhiteSpace(url) ? null : url.Trim()));
+        }
+
+        return links;
+    }
+
+    private static string BuildUpdateKey(string value)
+    {
+        var normalized = value.Trim();
+        if (string.IsNullOrWhiteSpace(normalized))
+            return string.Empty;
+
+        using var sha = SHA256.Create();
+        var hash = sha.ComputeHash(Encoding.UTF8.GetBytes(normalized));
+        return Convert.ToHexString(hash).ToLowerInvariant();
     }
 
     private static PostbackSummary ParsePostbackSummary(string payloadJson)
@@ -1216,9 +1975,13 @@ WHERE PlaceId=@PlaceId;",
     private static string GetTaskGetPath(DataForSeoOptions cfg, string taskId, string taskType)
     {
         var normalizedTaskType = NormalizeTaskType(taskType);
-        var format = normalizedTaskType == TaskTypeMyBusinessInfo
-            ? "/v3/business_data/google/my_business_info/task_get/{0}"
-            : "/v3/business_data/google/reviews/task_get/{0}";
+        var format = normalizedTaskType switch
+        {
+            TaskTypeMyBusinessInfo => cfg.MyBusinessInfoTaskGetPathFormat,
+            TaskTypeMyBusinessUpdates => cfg.MyBusinessUpdatesTaskGetPathFormat,
+            TaskTypeQuestionsAndAnswers => cfg.QuestionsAndAnswersTaskGetPathFormat,
+            _ => cfg.TaskGetPathFormat
+        };
 
         return string.Format(CultureInfo.InvariantCulture, format, taskId);
     }
@@ -1226,23 +1989,35 @@ WHERE PlaceId=@PlaceId;",
     private static string GetTasksReadyPath(DataForSeoOptions cfg, string taskType)
     {
         var normalizedTaskType = NormalizeTaskType(taskType);
-        return normalizedTaskType == TaskTypeMyBusinessInfo
-            ? "/v3/business_data/google/my_business_info/tasks_ready"
-            : "/v3/business_data/google/reviews/tasks_ready";
+        return normalizedTaskType switch
+        {
+            TaskTypeMyBusinessInfo => cfg.MyBusinessInfoTasksReadyPath,
+            TaskTypeMyBusinessUpdates => cfg.MyBusinessUpdatesTasksReadyPath,
+            TaskTypeQuestionsAndAnswers => cfg.QuestionsAndAnswersTasksReadyPath,
+            _ => cfg.TasksReadyPath
+        };
     }
 
     private static string GetTaskPostPath(DataForSeoOptions cfg, string taskType)
     {
         var normalizedTaskType = NormalizeTaskType(taskType);
-        return normalizedTaskType == TaskTypeMyBusinessInfo
-            ? "/v3/business_data/google/my_business_info/task_post"
-            : "/v3/business_data/google/reviews/task_post";
+        return normalizedTaskType switch
+        {
+            TaskTypeMyBusinessInfo => cfg.MyBusinessInfoTaskPostPath,
+            TaskTypeMyBusinessUpdates => cfg.MyBusinessUpdatesTaskPostPath,
+            TaskTypeQuestionsAndAnswers => cfg.QuestionsAndAnswersTaskPostPath,
+            _ => cfg.TaskPostPath
+        };
     }
 
     private static string NormalizeTaskType(string? taskType)
     {
         if (string.Equals(taskType, TaskTypeMyBusinessInfo, StringComparison.OrdinalIgnoreCase))
             return TaskTypeMyBusinessInfo;
+        if (string.Equals(taskType, TaskTypeMyBusinessUpdates, StringComparison.OrdinalIgnoreCase))
+            return TaskTypeMyBusinessUpdates;
+        if (string.Equals(taskType, TaskTypeQuestionsAndAnswers, StringComparison.OrdinalIgnoreCase))
+            return TaskTypeQuestionsAndAnswers;
         return TaskTypeReviews;
     }
 
@@ -1279,7 +2054,15 @@ WHERE PlaceId=@PlaceId;",
     {
         if (!obj.TryGetProperty(property, out var node) || node.ValueKind == JsonValueKind.Null)
             return null;
-        return node.GetString();
+
+        return node.ValueKind switch
+        {
+            JsonValueKind.String => node.GetString(),
+            JsonValueKind.Number => node.ToString(),
+            JsonValueKind.True => "true",
+            JsonValueKind.False => "false",
+            _ => null
+        };
     }
 
     private static int? GetInt(JsonElement obj, string property)
@@ -1311,9 +2094,42 @@ WHERE PlaceId=@PlaceId;",
     {
         if (string.IsNullOrWhiteSpace(value))
             return null;
-        if (!DateTimeOffset.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var dto))
+
+        var trimmed = value.Trim();
+        if (long.TryParse(trimmed, NumberStyles.Integer, CultureInfo.InvariantCulture, out var epoch))
+        {
+            // Only treat clear epoch formats as unix timestamps.
+            if (trimmed.Length == 13)
+                return DateTimeOffset.FromUnixTimeMilliseconds(epoch).UtcDateTime;
+            if (trimmed.Length == 10)
+                return DateTimeOffset.FromUnixTimeSeconds(epoch).UtcDateTime;
+        }
+        if (!DateTimeOffset.TryParse(trimmed, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var dto))
             return null;
         return dto.UtcDateTime;
+    }
+
+    private static DateTime? ParseTimestampFromProperty(JsonElement obj, string propertyName)
+    {
+        if (!obj.TryGetProperty(propertyName, out var node) || node.ValueKind == JsonValueKind.Null)
+            return null;
+
+        if (node.ValueKind == JsonValueKind.String || node.ValueKind == JsonValueKind.Number)
+            return ParseTimestamp(node.ToString());
+
+        if (node.ValueKind != JsonValueKind.Object)
+            return null;
+
+        foreach (var nestedName in new[] { "timestamp", "post_date", "date", "datetime", "posted_at", "time", "date_posted" })
+        {
+            if (!node.TryGetProperty(nestedName, out var nested) || nested.ValueKind == JsonValueKind.Null)
+                continue;
+
+            if (nested.ValueKind == JsonValueKind.String || nested.ValueKind == JsonValueKind.Number)
+                return ParseTimestamp(nested.ToString());
+        }
+
+        return null;
     }
 
     private static string? TruncateText(string? value, int maxLength)
@@ -1358,6 +2174,42 @@ WHERE PlaceId=@PlaceId;",
         string? StatusMessage,
         bool IsCompleted,
         Dictionary<string, ReviewPayload> Reviews);
+
+    private sealed record UpdatePayload(
+        string UpdateKey,
+        string? PostText,
+        string? Url,
+        string ImagesUrlJson,
+        DateTime? PostDateUtc,
+        string LinksJson,
+        string RawJson);
+
+    private sealed record MyBusinessUpdatesTaskSnapshot(
+        int StatusCode,
+        string? StatusMessage,
+        bool IsCompleted,
+        Dictionary<string, UpdatePayload> Updates);
+
+    private sealed record QuestionAnswerPayload(
+        string QaKey,
+        string? QuestionText,
+        DateTime? QuestionTimestampUtc,
+        string? QuestionProfileName,
+        string? AnswerText,
+        DateTime? AnswerTimestampUtc,
+        string? AnswerProfileName,
+        string RawJson);
+
+    private sealed record QuestionsAndAnswersTaskSnapshot(
+        int StatusCode,
+        string? StatusMessage,
+        bool IsCompleted,
+        Dictionary<string, QuestionAnswerPayload> Items);
+
+    private sealed record UpdateLinkPayload(
+        string? Type,
+        string? Title,
+        string? Url);
 
     private sealed record MyBusinessInfoTaskPostItem(
         [property: JsonPropertyName("place_id")] string PlaceId,
