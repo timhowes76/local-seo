@@ -7,13 +7,35 @@
 <form method="post" action="/search">
     @Html.AntiForgeryToken()
     @Html.ValidationSummary(false)
-    <label>SeedKeyword</label><input asp-for="SeedKeyword" required /><br />
-    <label>LocationName</label><input asp-for="LocationName" required /><br />
-    <label>RadiusMeters</label><input asp-for="RadiusMeters" /><br />
-    <label>ResultLimit (1..20)</label><input asp-for="ResultLimit" min="1" max="20" /><br />
-    <label>Fetch Reviews</label><input asp-for="FetchReviews" type="checkbox" /><br />
+    <label asp-for="SeedKeyword">Seed Keyword</label><input asp-for="SeedKeyword" required /><br />
+    <label asp-for="LocationName">Location Name</label><input asp-for="LocationName" required /><br />
+    <label for="RadiusKm">Radius</label>
+    <input id="RadiusKm" name="RadiusKm" type="range" min="1" max="100" step="1" value="@Math.Max(1, Model.RadiusMeters / 1000)" />
+    <span id="RadiusKmDisplay">@Math.Max(1, Model.RadiusMeters / 1000) KM</span>
+    <input asp-for="RadiusMeters" type="hidden" />
+    <br />
+    <label asp-for="ResultLimit">Search Depth</label><input asp-for="ResultLimit" min="1" max="20" /><br />
+    <label asp-for="FetchReviews">Get Detailed Data</label><input asp-for="FetchReviews" type="checkbox" /><br />
     <button type="submit">Run Search</button>
 </form>
+<script>
+    (() => {
+        const kmSlider = document.getElementById("RadiusKm");
+        const metersInput = document.getElementById("RadiusMeters");
+        const kmDisplay = document.getElementById("RadiusKmDisplay");
+        if (!kmSlider || !metersInput || !kmDisplay) return;
+
+        const syncFromKm = () => {
+            const km = Number(kmSlider.value || "1");
+            const meters = Math.max(1000, km * 1000);
+            metersInput.value = String(meters);
+            kmDisplay.textContent = `${km} KM`;
+        };
+
+        kmSlider.addEventListener("input", syncFromKm);
+        syncFromKm();
+    })();
+</script>
 <div>
     <h3>Status Log</h3>
     <p>Latest action: @(TempData["Status"] ?? "Ready")</p>

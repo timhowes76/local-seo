@@ -1,13 +1,15 @@
+@using System.Text.Json
+@inject Microsoft.Extensions.Options.IOptions<LocalSeo.Web.Options.GoogleOptions> GoogleOptions
 @model PlaceDetailsViewModel
+
 <h2>Location Details</h2>
 @if (ViewBag.RequestedRunId != null)
 {
     <p><a href="/runs/@ViewBag.RequestedRunId">Back to Run @ViewBag.RequestedRunId</a></p>
 }
 
-<div><strong>Name:</strong> @Model.DisplayName</div>
-<div><strong>Place ID:</strong> @Model.PlaceId</div>
-<div><strong>Address:</strong> @Model.FormattedAddress</div>
+<div><strong>Name:</strong> @(Model.DisplayName ?? "N/A")</div>
+<div><strong>Address:</strong> @(Model.FormattedAddress ?? "N/A")</div>
 <div><strong>Primary Category:</strong> @(Model.PrimaryCategory ?? Model.PrimaryType ?? "N/A")</div>
 <div><strong>Telephone:</strong> @(Model.NationalPhoneNumber ?? "N/A")</div>
 <div>
@@ -21,178 +23,375 @@
         <span>N/A</span>
     }
 </div>
-<div><strong>Latitude:</strong> @Model.Lat</div>
-<div><strong>Longitude:</strong> @Model.Lng</div>
-<div><strong>Photo Count:</strong> @(Model.PhotoCount?.ToString() ?? "N/A")</div>
-<div><strong>Description:</strong> @(Model.Description ?? "N/A")</div>
-<div><strong>Service Area Business:</strong> @(Model.IsServiceAreaBusiness.HasValue ? (Model.IsServiceAreaBusiness.Value ? "Yes" : "No") : "N/A")</div>
-<div><strong>Business Status:</strong> @(Model.BusinessStatus ?? "N/A")</div>
-<div><strong>Active Run:</strong> @(Model.ActiveRunId?.ToString() ?? "N/A")</div>
-<div><strong>Active Rank:</strong> @(Model.ActiveRankPosition?.ToString() ?? "N/A")</div>
-<div><strong>Active Rating:</strong> @(Model.ActiveRating?.ToString() ?? "N/A")</div>
-<div><strong>Active Rating Count:</strong> @(Model.ActiveUserRatingCount?.ToString() ?? "N/A")</div>
-<div><strong>Captured At:</strong> @(Model.ActiveCapturedAtUtc?.ToString("u") ?? "N/A")</div>
+<div><strong>Rating:</strong> @(Model.ActiveRating?.ToString() ?? "N/A")</div>
+<div><strong>Number of Reviews:</strong> @(Model.ActiveUserRatingCount?.ToString() ?? "N/A")</div>
 
-<h3>Opening Hours</h3>
-@if (Model.RegularOpeningHours.Count == 0)
+@{
+    var apiKey = GoogleOptions.Value.ApiKey;
+    var hasBusinessCoords = Model.Lat.HasValue && Model.Lng.HasValue;
+    var hasRunCenter = Model.RunCenterLat.HasValue && Model.RunCenterLng.HasValue;
+    var velocity = Model.ReviewVelocity;
+}
+
+<h3>Map</h3>
+@if (string.IsNullOrWhiteSpace(apiKey))
 {
-    <p>N/A</p>
+    <p>Map unavailable because Google API key is not configured.</p>
+}
+else if (!hasBusinessCoords && !hasRunCenter)
+{
+    <p>Map unavailable because coordinates are missing.</p>
 }
 else
 {
-    <ul>
-    @foreach (var row in Model.RegularOpeningHours)
-    {
-        <li>@row</li>
-    }
-    </ul>
-}
+    <div id="place-details-map" style="width:100%;height:300px;margin-top:8px;"></div>
+    <p style="margin-top:6px;">
+        <strong>Legend:</strong> Red marker = business location.
+        @if (hasRunCenter)
+        {
+            <span>Blue marker = run center (Run #@(Model.MapRunId?.ToString() ?? "N/A")).</span>
+        }
+    </p>
+    <script>
+        const businessLocation = {
+            lat: @((Model.Lat?.ToString(System.Globalization.CultureInfo.InvariantCulture)) ?? "null"),
+            lng: @((Model.Lng?.ToString(System.Globalization.CultureInfo.InvariantCulture)) ?? "null")
+        };
+        const runCenterLocation = {
+            lat: @((Model.RunCenterLat?.ToString(System.Globalization.CultureInfo.InvariantCulture)) ?? "null"),
+            lng: @((Model.RunCenterLng?.ToString(System.Globalization.CultureInfo.InvariantCulture)) ?? "null")
+        };
 
-<h3>Other Categories</h3>
-@if (Model.OtherCategories.Count == 0)
-{
-    <p>None</p>
-}
-else
-{
-    <ul>
-    @foreach (var category in Model.OtherCategories)
-    {
-        <li>@category</li>
-    }
-    </ul>
-}
+        function initPlaceDetailsMap() {
+            const hasBusiness = businessLocation.lat !== null && businessLocation.lng !== null;
+            const hasCenter = runCenterLocation.lat !== null && runCenterLocation.lng !== null;
+            if (!hasBusiness && !hasCenter) return;
 
-<h3>Social Profiles</h3>
-<p>Not available from Google Places API. Requires Google Business Profile data.</p>
+            const defaultCenter = hasBusiness
+                ? { lat: businessLocation.lat, lng: businessLocation.lng }
+                : { lat: runCenterLocation.lat, lng: runCenterLocation.lng };
+            const map = new google.maps.Map(document.getElementById("place-details-map"), {
+                center: defaultCenter,
+                zoom: 14
+            });
+            const bounds = new google.maps.LatLngBounds();
 
-<h3>Service Areas</h3>
-<p>Not available from Google Places API. Requires Google Business Profile data.</p>
+            if (hasBusiness) {
+                const businessPoint = { lat: businessLocation.lat, lng: businessLocation.lng };
+                new google.maps.Marker({
+                    map,
+                    position: businessPoint,
+                    title: "Business Location",
+                    icon: {
+                        path: google.maps.SymbolPath.CIRCLE,
+                        scale: 7,
+                        fillColor: "#e53935",
+                        fillOpacity: 1,
+                        strokeColor: "#7f0000",
+                        strokeWeight: 1
+                    }
+                });
+                bounds.extend(businessPoint);
+            }
 
-<h3>Reviews</h3>
-@if (Model.Reviews.Count == 0)
-{
-    <p>No stored reviews yet.</p>
-}
-else
-{
-    <table>
-    <thead><tr><th>When</th><th>Profile</th><th>Rating</th><th>Review</th><th>Owner Reply</th><th>Link</th></tr></thead>
-    <tbody>
-    @foreach (var r in Model.Reviews)
-    {
-        <tr>
-            <td>@(r.ReviewTimestampUtc?.ToString("u") ?? r.LastSeenUtc.ToString("u"))</td>
-            <td>@(r.ProfileName ?? "N/A")</td>
-            <td>@(r.Rating?.ToString() ?? "N/A")</td>
-            <td>@(r.ReviewText ?? "N/A")</td>
-            <td>@(r.OwnerAnswer ?? "N/A")</td>
-            <td>
-                @if (!string.IsNullOrWhiteSpace(r.ReviewUrl))
-                {
-                    <a href="@r.ReviewUrl" target="_blank" rel="noopener noreferrer">Open</a>
+            if (hasCenter) {
+                const centerPoint = { lat: runCenterLocation.lat, lng: runCenterLocation.lng };
+                new google.maps.Marker({
+                    map,
+                    position: centerPoint,
+                    title: "Run Center",
+                    icon: {
+                        path: google.maps.SymbolPath.CIRCLE,
+                        scale: 7,
+                        fillColor: "#1a73e8",
+                        fillOpacity: 1,
+                        strokeColor: "#0b3d91",
+                        strokeWeight: 1
+                    }
+                });
+                bounds.extend(centerPoint);
+            }
+
+            if (!bounds.isEmpty()) {
+                map.fitBounds(bounds);
+                if (hasBusiness && hasCenter && map.getZoom() > 14) {
+                    map.setZoom(14);
                 }
-                else
-                {
-                    <span>N/A</span>
-                }
-            </td>
-        </tr>
-    }
-    </tbody>
-    </table>
+            }
+        }
+    </script>
+    <script async defer src="https://maps.googleapis.com/maps/api/js?key=@System.Uri.EscapeDataString(apiKey)&callback=initPlaceDetailsMap"></script>
 }
 
-<h3>Recent History</h3>
-<table>
-<thead><tr><th>Run</th><th>Rank</th><th>Rating</th><th>Ratings</th><th>Captured</th></tr></thead>
-<tbody>
-@foreach (var h in Model.History)
+<h3>Review Velocity</h3>
+@if (velocity is null || string.Equals(velocity.StatusLabel, "NoReviews", StringComparison.OrdinalIgnoreCase))
 {
-    <tr>
-        <td><a href="/runs/@h.SearchRunId">@h.SearchRunId</a></td>
-        <td>@h.RankPosition</td>
-        <td>@h.Rating</td>
-        <td>@h.UserRatingCount</td>
-        <td>@h.CapturedAtUtc</td>
-    </tr>
-}
-</tbody>
-</table>
-
-
-@if (Model.ReviewVelocity is null || string.Equals(Model.ReviewVelocity.StatusLabel, "NoReviews", StringComparison.OrdinalIgnoreCase))
-{
-    <h3>Review Velocity</h3>
     <p>No reviews captured yet for this place.</p>
 }
 else
 {
-    var v = Model.ReviewVelocity;
-    string summary = v.StatusLabel switch
+    var reviews3m = Math.Max(0, velocity.ReviewsLast90 ?? 0);
+    var reviews6m = Math.Max(0, (velocity.ReviewsLast180 ?? 0) - (velocity.ReviewsLast90 ?? 0));
+    var reviews9m = Math.Max(0, (velocity.ReviewsLast270 ?? 0) - (velocity.ReviewsLast180 ?? 0));
+    var reviews12m = Math.Max(0, (velocity.ReviewsLast365 ?? 0) - (velocity.ReviewsLast270 ?? 0));
+    string summary = velocity.StatusLabel switch
     {
-        "Slowing" => $"Review activity has slowed by {Math.Abs(v.Trend90Pct ?? 0):0.#}% vs the prior 90 days; consider running a review request campaign.",
-        "Stalled" => $"No reviews in {v.DaysSinceLastReview ?? 0} days; visibility and conversion trust signals may decay—prioritise generating new reviews.",
-        "Accelerating" => $"Review activity is accelerating, up {v.Trend90Pct ?? 0:0.#}% in the last 90 days vs the prior period.",
-        _ => $"Review activity is steady; last review was {v.DaysSinceLastReview ?? 0} days ago and the last 90 days are broadly stable vs the prior period."
+        "Slowing" => $"Review activity has slowed by {Math.Abs(velocity.Trend90Pct ?? 0):0.#}% vs the prior 90 days.",
+        "Stalled" => $"No reviews in {velocity.DaysSinceLastReview ?? 0} days.",
+        "Accelerating" => $"Review activity is accelerating, up {velocity.Trend90Pct ?? 0:0.#}% in the last 90 days vs the prior period.",
+        _ => $"Review activity is steady; last review was {velocity.DaysSinceLastReview ?? 0} days ago."
     };
 
-    <h3>Review Velocity</h3>
     <p>@summary</p>
     <table>
-        <thead><tr><th>3m</th><th>6m</th><th>9m</th><th>12m</th><th>Avg/mo</th><th>Trend 90d</th><th>Days since</th><th>Longest gap 12m</th><th>Responded %</th><th>Avg response hrs</th><th>Momentum</th><th>Status</th></tr></thead>
+        <thead><tr><th>3m</th><th>6m</th><th>9m</th><th>12m</th><th>Avg/mo</th><th>Days since</th><th>Longest gap 12m</th><th>Responded %</th><th>Avg response hrs</th><th>Status</th></tr></thead>
         <tbody>
             <tr>
-                <td>@(v.ReviewsLast90 ?? 0)</td>
-                <td>@(v.ReviewsLast180 ?? 0)</td>
-                <td>@(v.ReviewsLast270 ?? 0)</td>
-                <td>@(v.ReviewsLast365 ?? 0)</td>
-                <td>@(v.AvgPerMonth12m?.ToString("0.0") ?? "0.0")</td>
-                <td>@(v.Trend90Pct?.ToString("+0.##;-0.##;0") ?? "0")%</td>
-                <td>@(v.DaysSinceLastReview?.ToString() ?? "N/A")</td>
-                <td>@(v.LongestGapDays12m?.ToString() ?? "N/A")</td>
-                <td>@(v.RespondedPct12m?.ToString("0.##") ?? "N/A")%</td>
-                <td>@(v.AvgOwnerResponseHours12m?.ToString("0.##") ?? "N/A")</td>
-                <td>@(v.MomentumScore?.ToString() ?? "N/A")</td>
-                <td><span class="status-pill status-@((v.StatusLabel ?? "healthy").ToLowerInvariant())">@v.StatusLabel</span></td>
+                <td>@reviews3m</td>
+                <td>@reviews6m</td>
+                <td>@reviews9m</td>
+                <td>@reviews12m</td>
+                <td>@(velocity.AvgPerMonth12m?.ToString("0.0") ?? "0.0")</td>
+                <td>@(velocity.DaysSinceLastReview?.ToString() ?? "N/A")</td>
+                <td>@(velocity.LongestGapDays12m?.ToString() ?? "N/A")</td>
+                <td>@(velocity.RespondedPct12m?.ToString("0.##") ?? "N/A")%</td>
+                <td>@(velocity.AvgOwnerResponseHours12m?.ToString("0.##") ?? "N/A")</td>
+                <td><span class="status-pill status-@((velocity.StatusLabel ?? "healthy").ToLowerInvariant())">@velocity.StatusLabel</span></td>
             </tr>
         </tbody>
     </table>
+}
 
-    <h4>Monthly Reviews (last 24 months)</h4>
-    <table>
-        <thead><tr><th>Month</th><th>Reviews</th></tr></thead>
-        <tbody>
-        @foreach (var m in v.MonthlySeries)
+<div style="margin-top:16px;">
+    <button type="button" data-tab-button="details" class="details-tab-button" style="margin-right:6px;">Detail</button>
+    <button type="button" data-tab-button="reviews" class="details-tab-button" style="margin-right:6px;">Reviews</button>
+    <button type="button" data-tab-button="rank-history" class="details-tab-button" style="margin-right:6px;">Rank History</button>
+    <button type="button" data-tab-button="tech" class="details-tab-button">Tech</button>
+</div>
+
+<div id="tab-details" class="details-tab-panel" style="margin-top:12px;">
+    <h3>Detail</h3>
+    <div><strong>Description:</strong> @(Model.Description ?? "N/A")</div>
+    <div><strong>Business Status:</strong> @(Model.BusinessStatus ?? "N/A")</div>
+
+    <h4>Opening Hours</h4>
+    @if (Model.RegularOpeningHours.Count == 0)
+    {
+        <p>N/A</p>
+    }
+    else
+    {
+        <ul>
+        @foreach (var row in Model.RegularOpeningHours)
         {
-            <tr><td>@($"{m.Year}-{m.Month:00}")</td><td>@m.ReviewCount</td></tr>
+            <li>@row</li>
+        }
+        </ul>
+    }
+
+    <h4>Other Categories</h4>
+    @if (Model.OtherCategories.Count == 0)
+    {
+        <p>None</p>
+    }
+    else
+    {
+        <ul>
+        @foreach (var category in Model.OtherCategories)
+        {
+            <li>@category</li>
+        }
+        </ul>
+    }
+
+    <h4>Place Topics</h4>
+    @if (Model.PlaceTopics.Count == 0)
+    {
+        <p>None</p>
+    }
+    else
+    {
+        <ul>
+        @foreach (var topic in Model.PlaceTopics)
+        {
+            <li>@topic</li>
+        }
+        </ul>
+    }
+</div>
+
+<div id="tab-reviews" class="details-tab-panel" style="margin-top:12px;display:none;">
+    <h3>Reviews</h3>
+    @if (Model.Reviews.Count == 0)
+    {
+        <p>No stored reviews yet.</p>
+    }
+    else
+    {
+        <table>
+        <thead><tr><th>When</th><th>Profile</th><th>Rating</th><th>Review</th><th>Owner Reply</th><th>Link</th></tr></thead>
+        <tbody>
+        @foreach (var r in Model.Reviews)
+        {
+            <tr>
+                <td>@(r.ReviewTimestampUtc?.ToString("u") ?? r.LastSeenUtc.ToString("u"))</td>
+                <td>@(r.ProfileName ?? "N/A")</td>
+                <td>@(r.Rating?.ToString() ?? "N/A")</td>
+                <td>@(r.ReviewText ?? "N/A")</td>
+                <td>@(r.OwnerAnswer ?? "N/A")</td>
+                <td>
+                    @if (!string.IsNullOrWhiteSpace(r.ReviewUrl))
+                    {
+                        <a href="@r.ReviewUrl" target="_blank" rel="noopener noreferrer">Open</a>
+                    }
+                    else
+                    {
+                        <span>N/A</span>
+                    }
+                </td>
+            </tr>
         }
         </tbody>
-    </table>
+        </table>
+    }
+
+    <h4>Reviews over time</h4>
+    @if (velocity is null || velocity.MonthlySeries.Count == 0)
+    {
+        <p>No monthly review data available.</p>
+    }
+    else
+    {
+        var runningTotal = 0;
+        var cumulativeSeries = velocity.MonthlySeries
+            .OrderBy(m => m.Year)
+            .ThenBy(m => m.Month)
+            .Select(m => new
+            {
+                label = $"{m.Year}-{m.Month:00}",
+                total = (runningTotal += m.ReviewCount)
+            })
+            .ToList();
+        var monthlyJson = JsonSerializer.Serialize(
+            cumulativeSeries.Select(m => new { label = m.label, value = m.total }));
+        <div id="reviews-over-time-chart" style="width:100%;height:320px;border:1px solid #ddd;margin-top:8px;"></div>
+        <script>
+            (() => {
+                const data = @Html.Raw(monthlyJson);
+                const host = document.getElementById("reviews-over-time-chart");
+                if (!host || !data || data.length === 0) return;
+
+                const width = Math.max(640, host.clientWidth || 640);
+                const height = 320;
+                const margin = { top: 20, right: 24, bottom: 56, left: 56 };
+                const plotW = width - margin.left - margin.right;
+                const plotH = height - margin.top - margin.bottom;
+                const maxY = Math.max(1, ...data.map(d => d.value));
+                const xStep = data.length > 1 ? plotW / (data.length - 1) : 0;
+                const yPos = (v) => margin.top + plotH - ((v / maxY) * plotH);
+                const xPos = (i) => margin.left + (xStep * i);
+                const points = data.map((d, i) => `${xPos(i)},${yPos(d.value)}`).join(" ");
+
+                const xTicks = data.map((d, i) => {
+                    if (i % Math.max(1, Math.floor(data.length / 8)) !== 0 && i !== data.length - 1) return "";
+                    return `<text x="${xPos(i)}" y="${height - 24}" text-anchor="middle" font-size="11" fill="#555">${d.label}</text>`;
+                }).join("");
+
+                const yTicks = Array.from({ length: 5 }, (_, i) => Math.round((maxY / 4) * (4 - i)));
+                const yTickLines = yTicks.map(v => {
+                    const y = yPos(v);
+                    return `<line x1="${margin.left}" y1="${y}" x2="${width - margin.right}" y2="${y}" stroke="#eee"/><text x="${margin.left - 8}" y="${y + 4}" text-anchor="end" font-size="11" fill="#555">${v}</text>`;
+                }).join("");
+
+                host.innerHTML = `
+<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="Reviews over time total reviews chart">
+  <rect x="0" y="0" width="${width}" height="${height}" fill="#fff"/>
+  ${yTickLines}
+  <line x1="${margin.left}" y1="${margin.top + plotH}" x2="${width - margin.right}" y2="${margin.top + plotH}" stroke="#333"/>
+  <line x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${margin.top + plotH}" stroke="#333"/>
+  ${xTicks}
+  <polyline points="${points}" fill="none" stroke="#b0b0b0" stroke-width="1"/>
+  ${data.map((d, i) => `<circle cx="${xPos(i)}" cy="${yPos(d.value)}" r="4" fill="#1a73e8"><title>${d.label}: ${d.value}</title></circle>`).join("")}
+  <text x="${width / 2}" y="${height - 6}" text-anchor="middle" font-size="12" fill="#333">Time</text>
+  <text x="16" y="${margin.top + (plotH / 2)}" text-anchor="middle" font-size="12" fill="#333" transform="rotate(-90 16 ${margin.top + (plotH / 2)})">Total Reviews</text>
+</svg>`;
+            })();
+        </script>
+    }
 
     <h4>Year Breakdown</h4>
-    <table>
-        <thead><tr><th>Year</th><th>Reviews</th><th>Avg Rating</th><th>Responded %</th></tr></thead>
-        <tbody>
-        @foreach (var y in v.YearBreakdown)
-        {
-            <tr><td>@y.Year</td><td>@y.ReviewCount</td><td>@(y.AvgRating?.ToString("0.00") ?? "N/A")</td><td>@(y.RespondedPct?.ToString("0.##") ?? "N/A")</td></tr>
-        }
-        </tbody>
-    </table>
-
-    @if (v.CompetitorBlock is not null)
+    @if (velocity is null || velocity.YearBreakdown.Count == 0)
     {
-        <h4>Competitor Velocity</h4>
-        <div>Competitor average reviews/mo (12m): @(v.CompetitorBlock.CompetitorAverageReviewsPerMonth12m?.ToString("0.00") ?? "N/A")</div>
+        <p>No yearly review data available.</p>
+    }
+    else
+    {
         <table>
-            <thead><tr><th>Name</th><th>Reviews 365d</th><th>Avg Rating</th><th>Days since last review</th></tr></thead>
+            <thead><tr><th>Year</th><th>Reviews</th><th>Avg Rating</th><th>Responded %</th></tr></thead>
             <tbody>
-            @foreach (var c in v.CompetitorBlock.Competitors)
+            @foreach (var y in velocity.YearBreakdown)
             {
-                <tr><td>@c.Name</td><td>@c.ReviewsLast365</td><td>@(c.AvgRating?.ToString("0.00") ?? "N/A")</td><td>@(c.DaysSinceLastReview?.ToString() ?? "N/A")</td></tr>
+                <tr>
+                    <td>@y.Year</td>
+                    <td>@y.ReviewCount</td>
+                    <td>@(y.AvgRating?.ToString("0.00") ?? "N/A")</td>
+                    <td>@(y.RespondedPct?.ToString("0.##") ?? "N/A")</td>
+                </tr>
             }
             </tbody>
         </table>
     }
-}
+</div>
+
+<div id="tab-rank-history" class="details-tab-panel" style="margin-top:12px;display:none;">
+    <h3>Rank History</h3>
+    <h4>Recent History</h4>
+    <table>
+    <thead><tr><th>Run</th><th>Rank</th><th>Rating</th><th>Ratings</th><th>Captured</th></tr></thead>
+    <tbody>
+    @foreach (var h in Model.History)
+    {
+        <tr>
+            <td><a href="/runs/@h.SearchRunId">@h.SearchRunId</a></td>
+            <td>@h.RankPosition</td>
+            <td>@h.Rating</td>
+            <td>@h.UserRatingCount</td>
+            <td>@h.CapturedAtUtc</td>
+        </tr>
+    }
+    </tbody>
+    </table>
+</div>
+
+<div id="tab-tech" class="details-tab-panel" style="margin-top:12px;display:none;">
+    <h3>Tech</h3>
+    <div><strong>PlaceId:</strong> @Model.PlaceId</div>
+    <div><strong>Lat:</strong> @(Model.Lat?.ToString() ?? "N/A")</div>
+    <div><strong>Long:</strong> @(Model.Lng?.ToString() ?? "N/A")</div>
+    <div><strong>Active Run:</strong> @(Model.ActiveRunId?.ToString() ?? "N/A")</div>
+    <div><strong>Capturated At:</strong> @(Model.ActiveCapturedAtUtc?.ToString("u") ?? "N/A")</div>
+</div>
+
+<script>
+    (() => {
+        const buttons = document.querySelectorAll("[data-tab-button]");
+        const panels = document.querySelectorAll(".details-tab-panel");
+        if (!buttons.length || !panels.length) return;
+
+        const showTab = (tabKey) => {
+            panels.forEach(panel => {
+                panel.style.display = panel.id === `tab-${tabKey}` ? "" : "none";
+            });
+        };
+
+        buttons.forEach(button => {
+            button.addEventListener("click", () => {
+                const key = button.getAttribute("data-tab-button");
+                if (!key) return;
+                showTab(key);
+            });
+        });
+
+        showTab("details");
+    })();
+</script>

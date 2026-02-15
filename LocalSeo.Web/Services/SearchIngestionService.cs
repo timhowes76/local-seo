@@ -90,18 +90,16 @@ WHEN MATCHED THEN UPDATE SET
   Lng=@Lng,
   NationalPhoneNumber=@NationalPhoneNumber,
   WebsiteUri=@WebsiteUri,
-  Description=@Description,
-  PhotoCount=@PhotoCount,
   IsServiceAreaBusiness=@IsServiceAreaBusiness,
   BusinessStatus=@BusinessStatus,
   SearchLocationName=@SearchLocationName,
   RegularOpeningHoursJson=@RegularOpeningHoursJson,
   LastSeenUtc=SYSUTCDATETIME()
 WHEN NOT MATCHED THEN INSERT(
-  PlaceId,DisplayName,PrimaryType,PrimaryCategory,TypesCsv,FormattedAddress,Lat,Lng,NationalPhoneNumber,WebsiteUri,Description,PhotoCount,IsServiceAreaBusiness,BusinessStatus,SearchLocationName,RegularOpeningHoursJson
+  PlaceId,DisplayName,PrimaryType,PrimaryCategory,TypesCsv,FormattedAddress,Lat,Lng,NationalPhoneNumber,WebsiteUri,IsServiceAreaBusiness,BusinessStatus,SearchLocationName,RegularOpeningHoursJson
 )
 VALUES(
-  @PlaceId,@DisplayName,@PrimaryType,@PrimaryCategory,@TypesCsv,@FormattedAddress,@Lat,@Lng,@NationalPhoneNumber,@WebsiteUri,@Description,@PhotoCount,@IsServiceAreaBusiness,@BusinessStatus,@SearchLocationName,@RegularOpeningHoursJson
+  @PlaceId,@DisplayName,@PrimaryType,@PrimaryCategory,@TypesCsv,@FormattedAddress,@Lat,@Lng,@NationalPhoneNumber,@WebsiteUri,@IsServiceAreaBusiness,@BusinessStatus,@SearchLocationName,@RegularOpeningHoursJson
 );",
                 new
                 {
@@ -115,8 +113,6 @@ VALUES(
                     p.Lng,
                     p.NationalPhoneNumber,
                     p.WebsiteUri,
-                    p.Description,
-                    p.PhotoCount,
                     p.IsServiceAreaBusiness,
                     p.BusinessStatus,
                     SearchLocationName = effectiveLocationName,
@@ -224,6 +220,8 @@ SELECT
   Lng,
   Description,
   PhotoCount,
+  OtherCategoriesJson,
+  PlaceTopicsJson,
   IsServiceAreaBusiness,
   BusinessStatus,
   RegularOpeningHoursJson
@@ -250,6 +248,17 @@ SELECT TOP 1 SearchRunId, RankPosition, Rating, UserRatingCount, CapturedAtUtc
 FROM dbo.PlaceSnapshot
 WHERE PlaceId=@PlaceId
 ORDER BY CapturedAtUtc DESC", new { PlaceId = placeId }, cancellationToken: ct));
+
+        var mapRunId = runId ?? active?.SearchRunId;
+        SearchRunCenterRow? runCenter = null;
+        if (mapRunId.HasValue)
+        {
+            runCenter = await conn.QuerySingleOrDefaultAsync<SearchRunCenterRow>(new CommandDefinition(@"
+SELECT TOP 1 SearchRunId, CenterLat, CenterLng
+FROM dbo.SearchRun
+WHERE SearchRunId=@SearchRunId;",
+                new { SearchRunId = mapRunId.Value }, cancellationToken: ct));
+        }
 
         var history = (await conn.QueryAsync<PlaceHistoryRow>(new CommandDefinition(@"
 SELECT TOP 20 SearchRunId, RankPosition, Rating, UserRatingCount, CapturedAtUtc
@@ -284,14 +293,8 @@ ORDER BY COALESCE(ReviewTimestampUtc, LastSeenUtc) DESC, PlaceReviewId DESC", ne
         if (regularOpeningHours.Count == 0 && liveDetails is { RegularOpeningHours.Count: > 0 })
             regularOpeningHours = liveDetails.RegularOpeningHours;
 
-        var otherCategories = SplitTypes(effectiveTypesCsv)
-            .Where(x => !IsGenericType(x))
-            .Where(x => !string.Equals(x, primaryType, StringComparison.OrdinalIgnoreCase))
-            .Select(HumanizeType)
-            .Where(x => !string.IsNullOrWhiteSpace(x))
-            .Select(x => x!)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
+        var otherCategories = ParseJsonStringArray(place.OtherCategoriesJson);
+        var placeTopics = ParseJsonStringArray(place.PlaceTopicsJson);
 
         return new PlaceDetailsViewModel
         {
@@ -304,17 +307,21 @@ ORDER BY COALESCE(ReviewTimestampUtc, LastSeenUtc) DESC, PlaceReviewId DESC", ne
             WebsiteUri = PreferNonEmpty(place.WebsiteUri, liveDetails?.WebsiteUri),
             Lat = place.Lat ?? liveDetails?.Lat,
             Lng = place.Lng ?? liveDetails?.Lng,
-            Description = PreferLongerText(place.Description, liveDetails?.Description),
-            PhotoCount = place.PhotoCount ?? liveDetails?.PhotoCount,
+            Description = place.Description,
+            PhotoCount = place.PhotoCount,
             IsServiceAreaBusiness = place.IsServiceAreaBusiness ?? liveDetails?.IsServiceAreaBusiness,
             BusinessStatus = HumanizeType(PreferNonEmpty(place.BusinessStatus, liveDetails?.BusinessStatus)),
             RegularOpeningHours = regularOpeningHours,
             OtherCategories = otherCategories,
+            PlaceTopics = placeTopics,
             ActiveRunId = active?.SearchRunId,
             ActiveRankPosition = active?.RankPosition,
             ActiveRating = active?.Rating,
             ActiveUserRatingCount = active?.UserRatingCount,
             ActiveCapturedAtUtc = active?.CapturedAtUtc,
+            MapRunId = runCenter?.SearchRunId,
+            RunCenterLat = runCenter?.CenterLat,
+            RunCenterLng = runCenter?.CenterLng,
             Reviews = reviews,
             History = history,
             ReviewVelocity = await reviewVelocityService.GetPlaceReviewVelocityAsync(placeId, ct)
@@ -479,9 +486,13 @@ ORDER BY COALESCE(ReviewTimestampUtc, LastSeenUtc) DESC, PlaceReviewId DESC", ne
         decimal? Lng,
         string? Description,
         int? PhotoCount,
+        string? OtherCategoriesJson,
+        string? PlaceTopicsJson,
         bool? IsServiceAreaBusiness,
         string? BusinessStatus,
         string? RegularOpeningHoursJson);
+
+    private sealed record SearchRunCenterRow(long SearchRunId, decimal? CenterLat, decimal? CenterLng);
 
     private sealed record PlaceSnapshotContextRow(long SearchRunId, int RankPosition, decimal? Rating, int? UserRatingCount, DateTime CapturedAtUtc);
 

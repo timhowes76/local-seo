@@ -104,21 +104,40 @@ WHERE PlaceId=@PlaceId", new { PlaceId = placeId }, cancellationToken: ct));
             return null;
 
         var monthly = await conn.QueryAsync<MonthlyReviewCountDto>(new CommandDefinition(@"
-DECLARE @StartMonth date = DATEFROMPARTS(YEAR(DATEADD(month,-23,SYSUTCDATETIME())), MONTH(DATEADD(month,-23,SYSUTCDATETIME())), 1);
-;WITH months AS (
-  SELECT @StartMonth AS MonthStart
-  UNION ALL
-  SELECT DATEADD(month,1,MonthStart) FROM months WHERE MonthStart < DATEFROMPARTS(YEAR(SYSUTCDATETIME()), MONTH(SYSUTCDATETIME()), 1)
-)
-SELECT YEAR(m.MonthStart) AS [Year], MONTH(m.MonthStart) AS [Month], COUNT(r.PlaceReviewId) AS ReviewCount
-FROM months m
-LEFT JOIN dbo.PlaceReview r
-  ON r.PlaceId=@PlaceId
- AND r.ReviewTimestampUtc >= m.MonthStart
- AND r.ReviewTimestampUtc < DATEADD(month,1,m.MonthStart)
-GROUP BY m.MonthStart
-ORDER BY m.MonthStart
-OPTION (MAXRECURSION 60);", new { PlaceId = placeId }, cancellationToken: ct));
+DECLARE @StartMonth date = (
+  SELECT DATEFROMPARTS(
+    YEAR(MIN(COALESCE(ReviewTimestampUtc, LastSeenUtc))),
+    MONTH(MIN(COALESCE(ReviewTimestampUtc, LastSeenUtc))),
+    1)
+  FROM dbo.PlaceReview
+  WHERE PlaceId=@PlaceId
+    AND COALESCE(ReviewTimestampUtc, LastSeenUtc) IS NOT NULL
+);
+
+IF @StartMonth IS NULL
+BEGIN
+  SELECT CAST(NULL AS int) AS [Year], CAST(NULL AS int) AS [Month], CAST(NULL AS int) AS ReviewCount
+  WHERE 1 = 0;
+END
+ELSE
+BEGIN
+  ;WITH months AS (
+    SELECT @StartMonth AS MonthStart
+    UNION ALL
+    SELECT DATEADD(month,1,MonthStart)
+    FROM months
+    WHERE MonthStart < DATEFROMPARTS(YEAR(SYSUTCDATETIME()), MONTH(SYSUTCDATETIME()), 1)
+  )
+  SELECT YEAR(m.MonthStart) AS [Year], MONTH(m.MonthStart) AS [Month], COUNT(r.PlaceReviewId) AS ReviewCount
+  FROM months m
+  LEFT JOIN dbo.PlaceReview r
+    ON r.PlaceId=@PlaceId
+   AND COALESCE(r.ReviewTimestampUtc, r.LastSeenUtc) >= m.MonthStart
+   AND COALESCE(r.ReviewTimestampUtc, r.LastSeenUtc) < DATEADD(month,1,m.MonthStart)
+  GROUP BY m.MonthStart
+  ORDER BY m.MonthStart
+  OPTION (MAXRECURSION 32767);
+END;", new { PlaceId = placeId }, cancellationToken: ct));
 
         var years = await conn.QueryAsync<YearReviewBreakdownDto>(new CommandDefinition(@"
 SELECT YEAR(ReviewTimestampUtc) AS [Year],

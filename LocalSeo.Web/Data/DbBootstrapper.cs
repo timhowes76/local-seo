@@ -34,7 +34,7 @@ BEGIN
     Lng decimal(9,6) NULL,
     NationalPhoneNumber nvarchar(50) NULL,
     WebsiteUri nvarchar(500) NULL,
-    Description nvarchar(2000) NULL,
+    Description nvarchar(750) NULL,
     PhotoCount int NULL,
     IsServiceAreaBusiness bit NULL,
     BusinessStatus nvarchar(50) NULL,
@@ -43,6 +43,8 @@ BEGIN
     OpeningDate datetime2(0) NULL,
     SocialProfilesJson nvarchar(max) NULL,
     ServiceAreasJson nvarchar(max) NULL,
+    OtherCategoriesJson nvarchar(max) NULL,
+    PlaceTopicsJson nvarchar(max) NULL,
     LastSeenUtc datetime2(0) NOT NULL CONSTRAINT DF_Place_LastSeenUtc DEFAULT SYSUTCDATETIME()
   );
 END;
@@ -53,7 +55,15 @@ IF COL_LENGTH('dbo.Place', 'NationalPhoneNumber') IS NULL
 IF COL_LENGTH('dbo.Place', 'WebsiteUri') IS NULL
   ALTER TABLE dbo.Place ADD WebsiteUri nvarchar(500) NULL;
 IF COL_LENGTH('dbo.Place', 'Description') IS NULL
-  ALTER TABLE dbo.Place ADD Description nvarchar(2000) NULL;
+  ALTER TABLE dbo.Place ADD Description nvarchar(750) NULL;
+IF EXISTS (SELECT 1 FROM sys.columns WHERE object_id=OBJECT_ID('dbo.Place') AND name='Description' AND max_length <> 1500)
+BEGIN
+  UPDATE dbo.Place
+  SET Description = LEFT(Description, 750)
+  WHERE Description IS NOT NULL
+    AND LEN(Description) > 750;
+  ALTER TABLE dbo.Place ALTER COLUMN Description nvarchar(750) NULL;
+END;
 IF COL_LENGTH('dbo.Place', 'PhotoCount') IS NULL
   ALTER TABLE dbo.Place ADD PhotoCount int NULL;
 IF COL_LENGTH('dbo.Place', 'IsServiceAreaBusiness') IS NULL
@@ -70,6 +80,10 @@ IF COL_LENGTH('dbo.Place', 'SocialProfilesJson') IS NULL
   ALTER TABLE dbo.Place ADD SocialProfilesJson nvarchar(max) NULL;
 IF COL_LENGTH('dbo.Place', 'ServiceAreasJson') IS NULL
   ALTER TABLE dbo.Place ADD ServiceAreasJson nvarchar(max) NULL;
+IF COL_LENGTH('dbo.Place', 'OtherCategoriesJson') IS NULL
+  ALTER TABLE dbo.Place ADD OtherCategoriesJson nvarchar(max) NULL;
+IF COL_LENGTH('dbo.Place', 'PlaceTopicsJson') IS NULL
+  ALTER TABLE dbo.Place ADD PlaceTopicsJson nvarchar(max) NULL;
 IF OBJECT_ID('dbo.PlaceSnapshot','U') IS NULL
 BEGIN
   CREATE TABLE dbo.PlaceSnapshot(
@@ -298,6 +312,7 @@ BEGIN
   CREATE TABLE dbo.DataForSeoReviewTask(
     DataForSeoReviewTaskId bigint IDENTITY(1,1) PRIMARY KEY,
     DataForSeoTaskId nvarchar(64) NOT NULL,
+    TaskType nvarchar(40) NOT NULL CONSTRAINT DF_DataForSeoReviewTask_TaskType DEFAULT 'reviews',
     PlaceId nvarchar(128) NOT NULL FOREIGN KEY REFERENCES dbo.Place(PlaceId),
     LocationName nvarchar(200) NULL,
     Status nvarchar(40) NOT NULL,
@@ -315,6 +330,8 @@ BEGIN
     LastError nvarchar(2000) NULL
   );
 END;
+IF COL_LENGTH('dbo.DataForSeoReviewTask', 'TaskType') IS NULL
+  ALTER TABLE dbo.DataForSeoReviewTask ADD TaskType nvarchar(40) NOT NULL CONSTRAINT DF_DataForSeoReviewTask_TaskType_Alt DEFAULT 'reviews';
 IF COL_LENGTH('dbo.DataForSeoReviewTask', 'LocationName') IS NULL
   ALTER TABLE dbo.DataForSeoReviewTask ADD LocationName nvarchar(200) NULL;
 IF COL_LENGTH('dbo.DataForSeoReviewTask', 'Status') IS NULL

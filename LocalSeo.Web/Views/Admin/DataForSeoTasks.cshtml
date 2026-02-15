@@ -1,4 +1,7 @@
 @model IReadOnlyList<DataForSeoTaskRow>
+@{
+    var selectedTaskType = (ViewBag.TaskType as string ?? "all").ToLowerInvariant();
+}
 <h2>DataForSEO Tasks</h2>
 
 @if (TempData["Status"] != null)
@@ -8,9 +11,45 @@
 
 <p><a href="/admin">Back to Admin</a></p>
 
-<form method="post" action="/admin/dataforseo-tasks/refresh">
+<form method="get" action="/admin/dataforseo-tasks">
+    <label for="taskTypeFilter">Task Type</label>
+    <select id="taskTypeFilter" name="taskType">
+        @if (selectedTaskType == "all")
+        {
+            <option value="all" selected>All</option>
+        }
+        else
+        {
+            <option value="all">All</option>
+        }
+        @if (selectedTaskType == "my_business_info")
+        {
+            <option value="my_business_info" selected>my_business_info</option>
+        }
+        else
+        {
+            <option value="my_business_info">my_business_info</option>
+        }
+        @if (selectedTaskType == "reviews")
+        {
+            <option value="reviews" selected>reviews</option>
+        }
+        else
+        {
+            <option value="reviews">reviews</option>
+        }
+    </select>
+    <button type="submit">Apply Filter</button>
+</form>
+
+<form method="post" action="/admin/dataforseo-tasks/refresh?taskType=@selectedTaskType">
     @Html.AntiForgeryToken()
     <button type="submit">Refresh Statuses (Tasks Ready)</button>
+</form>
+
+<form method="post" action="/admin/dataforseo-tasks/delete-errors?taskType=@selectedTaskType" onsubmit="return confirm('Delete all Error rows for the current filter?');">
+    @Html.AntiForgeryToken()
+    <button type="submit">Delete Error Rows</button>
 </form>
 
 @if (Model.Count == 0)
@@ -24,6 +63,7 @@ else
         <tr>
             <th>ID</th>
             <th>Task ID</th>
+            <th>Task Type</th>
             <th>Place ID</th>
             <th>Location</th>
             <th>Status</th>
@@ -47,6 +87,7 @@ else
         <tr>
             <td>@row.DataForSeoReviewTaskId</td>
             <td><code>@row.DataForSeoTaskId</code></td>
+            <td>@row.TaskType</td>
             <td><code>@row.PlaceId</code></td>
             <td>@(row.LocationName ?? "N/A")</td>
             <td>@row.Status</td>
@@ -62,10 +103,13 @@ else
             <td>@(row.LastPopulateReviewCount?.ToString() ?? "N/A")</td>
             <td>@(row.LastError ?? "N/A")</td>
             <td>
-                <form method="post" action="/admin/dataforseo-tasks/@row.DataForSeoReviewTaskId/populate">
-                    @Html.AntiForgeryToken()
-                    <button type="submit">Populate Results</button>
-                </form>
+                @if (string.Equals(row.Status, "Ready", StringComparison.OrdinalIgnoreCase))
+                {
+                    <form method="post" action="/admin/dataforseo-tasks/@row.DataForSeoReviewTaskId/populate?taskType=@selectedTaskType">
+                        @Html.AntiForgeryToken()
+                        <button type="submit">Populate Results</button>
+                    </form>
+                }
             </td>
         </tr>
     }

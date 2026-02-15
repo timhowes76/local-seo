@@ -6,7 +6,7 @@
 <div><strong>Location:</strong> @Model.Run.LocationName</div>
 
 <table>
-<thead><tr><th>Rank</th><th>Name</th><th>Primary Category</th><th>Photos</th><th>Telephone</th><th>Website</th><th>Avg Rating</th><th>Reviews</th><th>Reviews 90d</th><th>Avg/mo (12m)</th><th>Trend (90d)</th><th>Days since last review</th><th>Status</th><th>Momentum</th><th>Address</th><th>Captured</th><th>Details</th></tr></thead>
+<thead><tr><th>Rank</th><th>Name</th><th>Primary Category</th><th>Photos</th><th>Telephone</th><th>Website</th><th>Avg Rating</th><th>Total Reviews</th><th>Reviews 90d</th><th>Avg/mo (12m)</th><th>Days last review</th><th>Review Status</th><th>Captured</th><th>Details</th></tr></thead>
 <tbody>
 @foreach (var s in Model.Snapshots)
 {
@@ -39,11 +39,8 @@
         <td>@(s.UserRatingCount?.ToString() ?? "N/A")</td>
         <td>@(s.ReviewsLast90?.ToString() ?? "0")</td>
         <td>@(s.AvgPerMonth12m?.ToString("0.0") ?? "0.0")</td>
-        <td>@(s.Trend90Pct?.ToString("+0.##;-0.##;0") ?? "0")%</td>
         <td>@(s.DaysSinceLastReview?.ToString() ?? "N/A")</td>
         <td><span class="status-pill status-@((s.StatusLabel ?? "noreviews").ToLowerInvariant())">@(s.StatusLabel ?? "NoReviews")</span></td>
-        <td>@(s.MomentumScore?.ToString() ?? "N/A")</td>
-        <td>@s.FormattedAddress</td>
         <td>@s.CapturedAtUtc</td>
         <td><a href="/places/@s.PlaceId?runId=@Model.Run.SearchRunId">View</a></td>
     </tr>

@@ -38,6 +38,7 @@ public sealed record PlaceReviewRow(
 public sealed record DataForSeoTaskRow(
     long DataForSeoReviewTaskId,
     string DataForSeoTaskId,
+    string TaskType,
     string PlaceId,
     string? LocationName,
     string Status,
@@ -72,11 +73,15 @@ public sealed class PlaceDetailsViewModel
     public string? BusinessStatus { get; init; }
     public IReadOnlyList<string> RegularOpeningHours { get; init; } = [];
     public IReadOnlyList<string> OtherCategories { get; init; } = [];
+    public IReadOnlyList<string> PlaceTopics { get; init; } = [];
     public long? ActiveRunId { get; init; }
     public int? ActiveRankPosition { get; init; }
     public decimal? ActiveRating { get; init; }
     public int? ActiveUserRatingCount { get; init; }
     public DateTime? ActiveCapturedAtUtc { get; init; }
+    public long? MapRunId { get; init; }
+    public decimal? RunCenterLat { get; init; }
+    public decimal? RunCenterLng { get; init; }
     public IReadOnlyList<PlaceReviewRow> Reviews { get; init; } = [];
     public IReadOnlyList<PlaceHistoryRow> History { get; init; } = [];
     public PlaceReviewVelocityDetailsDto? ReviewVelocity { get; init; }
