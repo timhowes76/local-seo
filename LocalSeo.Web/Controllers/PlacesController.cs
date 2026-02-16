@@ -13,20 +13,28 @@ public class PlacesController(
     IReviewsProviderResolver reviewsProviderResolver) : Controller
 {
     [HttpGet("/places")]
-    public async Task<IActionResult> Index([FromQuery] string? sort, [FromQuery] string? direction, [FromQuery] string? keyword, [FromQuery] string? location, CancellationToken ct)
+    public async Task<IActionResult> Index([FromQuery] string? sort, [FromQuery] string? direction, [FromQuery] string? placeName, [FromQuery] string? keyword, [FromQuery] string? location, CancellationToken ct)
     {
-        ViewBag.Sort = sort;
-        ViewBag.Direction = direction;
-        ViewBag.Keyword = keyword;
-        ViewBag.Location = location;
-        var rows = await reviewVelocityService.GetPlaceVelocityListAsync(sort, direction, keyword, location, ct);
-        return View(rows);
+        var rows = await reviewVelocityService.GetPlaceVelocityListAsync(sort, direction, placeName, keyword, location, ct);
+        var filters = await reviewVelocityService.GetRunFilterOptionsAsync(ct);
+        var model = new PlacesIndexViewModel
+        {
+            Rows = rows,
+            KeywordOptions = filters.Keywords,
+            LocationOptions = filters.Locations,
+            SelectedKeyword = keyword,
+            SelectedLocation = location,
+            PlaceNameQuery = placeName,
+            Sort = sort,
+            Direction = direction
+        };
+        return View(model);
     }
 
     [HttpGet("/places/{id}")]
-    public async Task<IActionResult> Details(string id, long? runId, CancellationToken ct)
+    public async Task<IActionResult> Details(string id, long? runId, [FromQuery] int reviewPage = 1, CancellationToken ct = default)
     {
-        var model = await ingestionService.GetPlaceDetailsAsync(id, runId, ct);
+        var model = await ingestionService.GetPlaceDetailsAsync(id, runId, ct, reviewPage);
         if (model is null)
             return NotFound();
 

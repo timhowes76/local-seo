@@ -7,7 +7,8 @@ namespace LocalSeo.Web.Services;
 public interface IReviewVelocityService
 {
     Task RecomputePlaceStatsAsync(string placeId, CancellationToken ct);
-    Task<IReadOnlyList<PlaceVelocityListItemDto>> GetPlaceVelocityListAsync(string? sort, string? direction, string? keyword, string? location, CancellationToken ct);
+    Task<IReadOnlyList<PlaceVelocityListItemDto>> GetPlaceVelocityListAsync(string? sort, string? direction, string? placeName, string? keyword, string? location, CancellationToken ct);
+    Task<PlacesRunFilterOptions> GetRunFilterOptionsAsync(CancellationToken ct);
     Task<PlaceReviewVelocityDetailsDto?> GetPlaceReviewVelocityAsync(string placeId, CancellationToken ct);
     Task<PlaceUpdateVelocityDetailsDto?> GetPlaceUpdateVelocityAsync(string placeId, CancellationToken ct);
 }
@@ -52,48 +53,118 @@ public sealed class ReviewVelocityService(
             cancellationToken: ct));
     }
 
-    public async Task<IReadOnlyList<PlaceVelocityListItemDto>> GetPlaceVelocityListAsync(string? sort, string? direction, string? keyword, string? location, CancellationToken ct)
+    public async Task<IReadOnlyList<PlaceVelocityListItemDto>> GetPlaceVelocityListAsync(string? sort, string? direction, string? placeName, string? keyword, string? location, CancellationToken ct)
     {
-        var sortKey = (sort ?? "needsAttention").Trim();
+        var sortKey = (sort ?? "rank").Trim();
         var dir = string.Equals(direction, "asc", StringComparison.OrdinalIgnoreCase) ? "ASC" : "DESC";
+        var normalizedPlaceName = string.IsNullOrWhiteSpace(placeName) ? null : placeName.Trim();
         var normalizedKeyword = string.IsNullOrWhiteSpace(keyword) ? null : keyword.Trim();
         var normalizedLocation = string.IsNullOrWhiteSpace(location) ? null : location.Trim();
         var orderBy = sortKey.ToLowerInvariant() switch
         {
-            "totalreviews" => $"COALESCE(latest.UserRatingCount, 0) {dir}, p.DisplayName ASC",
-            "userratingcount" => $"COALESCE(latest.UserRatingCount, 0) {dir}, p.DisplayName ASC",
-            "reviewslast90" => $"COALESCE(v.ReviewsLast90, 0) {dir}, p.DisplayName ASC",
-            "trend90pct" => $"COALESCE(v.Trend90Pct, 0) {dir}, p.DisplayName ASC",
-            "dayssincelastreview" => $"COALESCE(v.DaysSinceLastReview, 999999) {dir}, p.DisplayName ASC",
-            _ => "CASE COALESCE(v.StatusLabel,'NoReviews') WHEN 'Stalled' THEN 1 WHEN 'Slowing' THEN 2 WHEN 'NoReviews' THEN 3 WHEN 'Healthy' THEN 4 WHEN 'Accelerating' THEN 5 ELSE 6 END ASC, COALESCE(v.MomentumScore, 0) ASC, p.DisplayName ASC"
+            "name" => $"p.DisplayName {dir}, COALESCE(latest.RankPosition, 999999) ASC",
+            "totalreviews" => $"COALESCE(latest.UserRatingCount, 0) {dir}, COALESCE(latest.RankPosition, 999999) ASC",
+            "reviewslast90" => $"COALESCE(v.ReviewsLast90, 0) {dir}, COALESCE(latest.RankPosition, 999999) ASC",
+            "dayssincelastreview" => $"COALESCE(v.DaysSinceLastReview, 999999) {dir}, COALESCE(latest.RankPosition, 999999) ASC",
+            "updates" => $"COALESCE(updCount.UpdateCount, 0) {dir}, COALESCE(latest.RankPosition, 999999) ASC",
+            "dayssincelastupdate" => $"COALESCE(CASE WHEN upd.LastUpdateDate IS NULL THEN 999999 ELSE DATEDIFF(day, upd.LastUpdateDate, CAST(SYSUTCDATETIME() AS date)) END, 999999) {dir}, COALESCE(latest.RankPosition, 999999) ASC",
+            "needsattention" => $"CASE COALESCE(v.StatusLabel,'NoReviews') WHEN 'Stalled' THEN 1 WHEN 'Slowing' THEN 2 WHEN 'NoReviews' THEN 3 WHEN 'Healthy' THEN 4 WHEN 'Accelerating' THEN 5 ELSE 6 END {dir}, COALESCE(latest.RankPosition, 999999) ASC",
+            _ => $"COALESCE(latest.RankPosition, 999999) {dir}, p.DisplayName ASC"
         };
 
         var sql = $@"
 SELECT
   p.PlaceId,
+  latest.RankPosition,
   p.DisplayName,
+  p.PrimaryCategory,
   latest.Rating,
   latest.UserRatingCount,
   v.ReviewsLast90,
-  v.AvgPerMonth12m,
-  v.Trend90Pct,
   v.DaysSinceLastReview,
   v.StatusLabel,
-  v.MomentumScore
+  COALESCE(updCount.UpdateCount, 0) AS UpdateCount,
+  CASE WHEN upd.LastUpdateDate IS NULL THEN NULL ELSE DATEDIFF(day, upd.LastUpdateDate, CAST(SYSUTCDATETIME() AS date)) END AS DaysSinceLastUpdate,
+  CASE
+    WHEN latestUpdateTask.Status IN ('NoData','CompletedNoUpdates','CompletedNoData') THEN 'No Data'
+    WHEN upd.LastUpdateDate IS NULL THEN 'NoUpdates'
+    WHEN DATEDIFF(day, upd.LastUpdateDate, CAST(SYSUTCDATETIME() AS date)) > 60 THEN 'Stalled'
+    WHEN updTrend.Trend90Pct <= -30 THEN 'Slowing'
+    WHEN updTrend.Trend90Pct >= 30 AND DATEDIFF(day, upd.LastUpdateDate, CAST(SYSUTCDATETIME() AS date)) <= 30 THEN 'Accelerating'
+    ELSE 'Healthy'
+  END AS UpdateStatusLabel,
+  CASE WHEN NULLIF(LTRIM(RTRIM(p.WebsiteUri)), N'') IS NULL THEN CAST(0 AS bit) ELSE CAST(1 AS bit) END AS HasWebsite,
+  LEN(COALESCE(p.Description, N'')) AS DescriptionLength,
+  CASE
+    WHEN p.OtherCategoriesJson IS NULL THEN CAST(0 AS bit)
+    WHEN LTRIM(RTRIM(p.OtherCategoriesJson)) IN (N'', N'[]', N'{{}}') THEN CAST(0 AS bit)
+    ELSE CAST(1 AS bit)
+  END AS HasOtherCategories,
+  p.PhotoCount,
+  p.QuestionAnswerCount
 FROM dbo.Place p
 OUTER APPLY (
-  SELECT TOP 1 s.SearchRunId, s.Rating, s.UserRatingCount
+  SELECT TOP 1 s.SearchRunId, s.RankPosition, s.Rating, s.UserRatingCount
   FROM dbo.PlaceSnapshot s
   WHERE s.PlaceId=p.PlaceId
   ORDER BY s.CapturedAtUtc DESC
 ) latest
 LEFT JOIN dbo.SearchRun sr ON sr.SearchRunId = latest.SearchRunId
 LEFT JOIN dbo.PlaceReviewVelocityStats v ON v.PlaceId=p.PlaceId
-WHERE (@Keyword IS NULL OR sr.SeedKeyword LIKE '%' + @Keyword + '%')
-  AND (@Location IS NULL
-    OR sr.LocationName LIKE '%' + @Location + '%'
-    OR p.SearchLocationName LIKE '%' + @Location + '%'
-    OR p.FormattedAddress LIKE '%' + @Location + '%')
+OUTER APPLY (
+  SELECT
+    MAX(CAST(effective.EffectiveUpdateUtc AS date)) AS LastUpdateDate,
+    SUM(CASE WHEN effective.EffectiveUpdateUtc >= DATEADD(day,-90,SYSUTCDATETIME()) THEN 1 ELSE 0 END) AS UpdatesLast90,
+    SUM(CASE WHEN effective.EffectiveUpdateUtc >= DATEADD(day,-180,SYSUTCDATETIME()) AND effective.EffectiveUpdateUtc < DATEADD(day,-90,SYSUTCDATETIME()) THEN 1 ELSE 0 END) AS PrevUpdates90
+  FROM dbo.PlaceUpdate u
+  CROSS APPLY (
+    SELECT COALESCE(
+      CAST(TRY_CAST(JSON_VALUE(u.RawJson, '$.timestamp') AS datetimeoffset(0)) AS datetime2(0)),
+      CASE
+        WHEN TRY_CONVERT(bigint, JSON_VALUE(u.RawJson, '$.timestamp')) BETWEEN 1000000000 AND 9999999999
+          THEN DATEADD(second, TRY_CONVERT(int, TRY_CONVERT(bigint, JSON_VALUE(u.RawJson, '$.timestamp'))), CAST('1970-01-01T00:00:00' AS datetime2(0)))
+        WHEN TRY_CONVERT(bigint, JSON_VALUE(u.RawJson, '$.timestamp')) BETWEEN 1000000000000 AND 9999999999999
+          THEN DATEADD(second, TRY_CONVERT(int, TRY_CONVERT(bigint, JSON_VALUE(u.RawJson, '$.timestamp')) / 1000), CAST('1970-01-01T00:00:00' AS datetime2(0)))
+        ELSE NULL
+      END,
+      CAST(TRY_CAST(JSON_VALUE(u.RawJson, '$.post_date') AS datetimeoffset(0)) AS datetime2(0)),
+      CAST(TRY_CAST(JSON_VALUE(u.RawJson, '$.date_posted') AS datetimeoffset(0)) AS datetime2(0)),
+      CAST(TRY_CAST(JSON_VALUE(u.RawJson, '$.posted_at') AS datetimeoffset(0)) AS datetime2(0)),
+      CAST(TRY_CAST(JSON_VALUE(u.RawJson, '$.date') AS datetimeoffset(0)) AS datetime2(0)),
+      TRY_CONVERT(datetime2(0), JSON_VALUE(u.RawJson, '$.timestamp'), 112),
+      TRY_CONVERT(datetime2(0), JSON_VALUE(u.RawJson, '$.post_date'), 112),
+      TRY_CONVERT(datetime2(0), JSON_VALUE(u.RawJson, '$.date_posted'), 112),
+      TRY_CONVERT(datetime2(0), JSON_VALUE(u.RawJson, '$.posted_at'), 112),
+      TRY_CONVERT(datetime2(0), JSON_VALUE(u.RawJson, '$.date'), 112),
+      u.PostDateUtc,
+      u.FirstSeenUtc
+    ) AS EffectiveUpdateUtc
+  ) effective
+  WHERE u.PlaceId=p.PlaceId
+    AND effective.EffectiveUpdateUtc IS NOT NULL
+) upd
+OUTER APPLY (
+  SELECT CAST(CASE
+    WHEN COALESCE(upd.PrevUpdates90, 0) = 0 AND COALESCE(upd.UpdatesLast90, 0) = 0 THEN 0
+    WHEN COALESCE(upd.PrevUpdates90, 0) = 0 AND COALESCE(upd.UpdatesLast90, 0) > 0 THEN 100
+    ELSE ((COALESCE(upd.UpdatesLast90, 0) - COALESCE(upd.PrevUpdates90, 0)) * 100.0) / NULLIF(COALESCE(upd.PrevUpdates90, 0), 0)
+  END AS decimal(9,2)) AS Trend90Pct
+) updTrend
+OUTER APPLY (
+  SELECT TOP 1 Status
+  FROM dbo.DataForSeoReviewTask t
+  WHERE t.PlaceId=p.PlaceId
+    AND COALESCE(t.TaskType, 'reviews')='my_business_updates'
+  ORDER BY t.CreatedAtUtc DESC, t.DataForSeoReviewTaskId DESC
+) latestUpdateTask
+OUTER APPLY (
+  SELECT COUNT(1) AS UpdateCount
+  FROM dbo.PlaceUpdate u2
+  WHERE u2.PlaceId=p.PlaceId
+) updCount
+WHERE (@PlaceName IS NULL OR p.DisplayName LIKE '%' + @PlaceName + '%')
+  AND (@Keyword IS NULL OR sr.SeedKeyword = @Keyword)
+  AND (@Location IS NULL OR sr.LocationName = @Location)
 ORDER BY {orderBy};";
 
         await using var conn = (Microsoft.Data.SqlClient.SqlConnection)await connectionFactory.OpenConnectionAsync(ct);
@@ -101,11 +172,33 @@ ORDER BY {orderBy};";
             sql,
             new
             {
+                PlaceName = normalizedPlaceName,
                 Keyword = normalizedKeyword,
                 Location = normalizedLocation
             },
             cancellationToken: ct));
         return rows.ToList();
+    }
+
+    public async Task<PlacesRunFilterOptions> GetRunFilterOptionsAsync(CancellationToken ct)
+    {
+        await using var conn = (Microsoft.Data.SqlClient.SqlConnection)await connectionFactory.OpenConnectionAsync(ct);
+
+        var keywords = (await conn.QueryAsync<string>(new CommandDefinition(@"
+SELECT DISTINCT SeedKeyword
+FROM dbo.SearchRun
+WHERE SeedKeyword IS NOT NULL
+  AND LTRIM(RTRIM(SeedKeyword)) <> N''
+ORDER BY SeedKeyword;", cancellationToken: ct))).ToList();
+
+        var locations = (await conn.QueryAsync<string>(new CommandDefinition(@"
+SELECT DISTINCT LocationName
+FROM dbo.SearchRun
+WHERE LocationName IS NOT NULL
+  AND LTRIM(RTRIM(LocationName)) <> N''
+ORDER BY LocationName;", cancellationToken: ct))).ToList();
+
+        return new PlacesRunFilterOptions(keywords, locations);
     }
 
     public async Task<PlaceReviewVelocityDetailsDto?> GetPlaceReviewVelocityAsync(string placeId, CancellationToken ct)

@@ -27,20 +27,31 @@
 }
 
 <div class="page-stack">
-    <section class="card">
-        <div class="card-header">
+    <div class="run-summary-grid">
+        <section class="card">
             <h2 class="card-title">Run @Model.Run.SearchRunId</h2>
-            <a href="/search?rerunId=@Model.Run.SearchRunId" class="btn">Rerun</a>
-        </div>
-        <div><strong>Keyword:</strong> @Model.Run.SeedKeyword</div>
-        <div><strong>Location:</strong> @Model.Run.LocationName</div>
-        <div><strong>Search Depth:</strong> @Model.Run.ResultLimit</div>
-        <div><strong>Get Enhanced Google Data:</strong> @(Model.Run.FetchDetailedData ? "Yes" : "No")</div>
-        <div><strong>Get Google Reviews:</strong> @(Model.Run.FetchGoogleReviews ? "Yes" : "No")</div>
-        <div><strong>Get Google Updates:</strong> @(Model.Run.FetchGoogleUpdates ? "Yes" : "No")</div>
-        <div><strong>Get Google Question &amp; Answers:</strong> @(Model.Run.FetchGoogleQuestionsAndAnswers ? "Yes" : "No")</div>
-        <div><strong>Captured:</strong> @(capturedStampUtc?.ToString("u") ?? "N/A")</div>
-    </section>
+            <div><strong>Keyword:</strong> @Model.Run.SeedKeyword</div>
+            <div><strong>Location:</strong> @Model.Run.LocationName</div>
+            <div><strong>Search Depth:</strong> @Model.Run.ResultLimit</div>
+            <div><strong>Get Enhanced Google Data:</strong> @(Model.Run.FetchDetailedData ? "Yes" : "No")</div>
+            <div><strong>Get Google Reviews:</strong> @(Model.Run.FetchGoogleReviews ? "Yes" : "No")</div>
+            <div><strong>Get Google Updates:</strong> @(Model.Run.FetchGoogleUpdates ? "Yes" : "No")</div>
+            <div><strong>Get Google Question &amp; Answers:</strong> @(Model.Run.FetchGoogleQuestionsAndAnswers ? "Yes" : "No")</div>
+            <div><strong>Captured:</strong> @(capturedStampUtc?.ToString("u") ?? "N/A")</div>
+        </section>
+        <section class="run-actions-grid">
+            <a href="/runs/@Model.Run.SearchRunId/compare-reviews" class="home-nav-card run-action-card">
+                <i class="bi bi-bar-chart-line home-nav-icon"></i>
+                <span class="home-nav-title">Compare Reviews</span>
+                <span class="home-nav-subtitle">Compare review velocity and trends for this run</span>
+            </a>
+            <a href="/search?rerunId=@Model.Run.SearchRunId" class="home-nav-card run-action-card">
+                <i class="bi bi-arrow-repeat home-nav-icon"></i>
+                <span class="home-nav-title">Rerun</span>
+                <span class="home-nav-subtitle">Run this search again with the same inputs</span>
+            </a>
+        </section>
+    </div>
 
     @if (Model.TaskProgress.Count > 0)
     {
@@ -88,58 +99,51 @@
                         <th>Rank</th>
                         <th>Name</th>
                         <th>Primary Category</th>
-                        <th>Photos</th>
-                        <th>Telephone</th>
-                        <th>Website</th>
                         <th>Avg Rating</th>
                         <th>Total Reviews</th>
-                        <th>Number of Q&amp;As</th>
                         <th>Reviews 90d</th>
-                        <th>Avg/mo (12m)</th>
                         <th>Days last review</th>
-                        <th>Days last update</th>
                         <th>Review Status</th>
+                        <th>Number of Updates</th>
+                        <th>Days last update</th>
                         <th>Update Status</th>
+                        <th>Website</th>
+                        <th>Description</th>
+                        <th>Other Categories</th>
+                        <th>Photos</th>
+                        <th>Number of Q&amp;As</th>
                         <th>Details</th>
                     </tr>
                 </thead>
                 <tbody>
                 @foreach (var s in Model.Snapshots)
                 {
+                    var websiteYes = !string.IsNullOrWhiteSpace(s.WebsiteUri);
+                    var hasOtherCategories = s.HasOtherCategories ?? false;
+                    var descriptionLength = Math.Max(0, s.DescriptionLength ?? 0);
+                    var descriptionPercent = Math.Clamp((int)Math.Round((descriptionLength / 750.0) * 100.0), 0, 100);
+                    var descriptionStatusClass = descriptionPercent < 33
+                        ? "status-error"
+                        : descriptionPercent < 66
+                            ? "status-pending"
+                            : "status-healthy";
                     <tr>
                         <td>@s.RankPosition</td>
                         <td>@(s.DisplayName ?? "N/A")</td>
                         <td>@(string.IsNullOrWhiteSpace(s.PrimaryCategory) ? "N/A" : s.PrimaryCategory)</td>
-                        <td>@(s.PhotoCount?.ToString() ?? "N/A")</td>
-                        <td>
-                            @if (!string.IsNullOrWhiteSpace(s.NationalPhoneNumber))
-                            {
-                                <a href="tel:@s.NationalPhoneNumber">@s.NationalPhoneNumber</a>
-                            }
-                            else
-                            {
-                                <span>N/A</span>
-                            }
-                        </td>
-                        <td>
-                            @if (!string.IsNullOrWhiteSpace(s.WebsiteUri))
-                            {
-                                <a href="@s.WebsiteUri" target="_blank" rel="noopener noreferrer">Website</a>
-                            }
-                            else
-                            {
-                                <span>N/A</span>
-                            }
-                        </td>
                         <td>@(s.Rating?.ToString() ?? "N/A")</td>
                         <td>@(s.UserRatingCount?.ToString() ?? "N/A")</td>
-                        <td>@(s.QuestionAnswerCount?.ToString() ?? "0")</td>
                         <td>@(s.ReviewsLast90?.ToString() ?? "0")</td>
-                        <td>@(s.AvgPerMonth12m?.ToString("0.0") ?? "0.0")</td>
                         <td>@(s.DaysSinceLastReview?.ToString() ?? "N/A")</td>
-                        <td>@(s.DaysSinceLastUpdate?.ToString() ?? "N/A")</td>
                         <td><span class="status-pill @StatusCss(s.StatusLabel, "noreviews")">@(s.StatusLabel ?? "NoReviews")</span></td>
+                        <td>@(s.UpdateCount?.ToString() ?? "0")</td>
+                        <td>@(s.DaysSinceLastUpdate?.ToString() ?? "N/A")</td>
                         <td><span class="status-pill @StatusCss(s.UpdateStatusLabel, "noupdates")">@(s.UpdateStatusLabel ?? "NoUpdates")</span></td>
+                        <td><span class="status-pill @(websiteYes ? "status-healthy" : "status-nodata")">@(websiteYes ? "Yes" : "No")</span></td>
+                        <td><span class="status-pill @descriptionStatusClass">@descriptionPercent%</span></td>
+                        <td><span class="status-pill @(hasOtherCategories ? "status-healthy" : "status-nodata")">@(hasOtherCategories ? "Yes" : "No")</span></td>
+                        <td>@(s.PhotoCount?.ToString() ?? "N/A")</td>
+                        <td>@(s.QuestionAnswerCount?.ToString() ?? "0")</td>
                         <td><a href="/places/@s.PlaceId?runId=@Model.Run.SearchRunId">View</a></td>
                     </tr>
                 }

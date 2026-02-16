@@ -43,6 +43,51 @@
         "never" => "status-noreviews",
         _ => "status-noreviews"
     };
+    string NormalizeMultilineText(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return "N/A";
+
+        return text
+            .Replace("<br />", "\n", StringComparison.OrdinalIgnoreCase)
+            .Replace("<br/>", "\n", StringComparison.OrdinalIgnoreCase)
+            .Replace("<br>", "\n", StringComparison.OrdinalIgnoreCase)
+            .Trim();
+    }
+    int FilledStarCount(decimal? rating)
+    {
+        if (!rating.HasValue)
+            return 0;
+        var rounded = (int)Math.Round(rating.Value, MidpointRounding.AwayFromZero);
+        return Math.Clamp(rounded, 0, 5);
+    }
+    double GetWorkingHoursBetween(DateTime startUtc, DateTime endUtc)
+    {
+        if (endUtc <= startUtc)
+            return 0;
+
+        var cursor = startUtc;
+        var hours = 0.0;
+        while (cursor < endUtc)
+        {
+            var nextBoundary = cursor.Date.AddDays(1);
+            var segmentEnd = endUtc < nextBoundary ? endUtc : nextBoundary;
+            var isWorkingDay = cursor.DayOfWeek is not DayOfWeek.Saturday and not DayOfWeek.Sunday;
+            if (isWorkingDay)
+                hours += (segmentEnd - cursor).TotalHours;
+            cursor = segmentEnd;
+        }
+
+        return hours;
+    }
+    string ResponseLagCss(double workingHours)
+    {
+        if (workingHours <= 24)
+            return "status-healthy";
+        if (workingHours <= 72)
+            return "status-pending";
+        return "status-error";
+    }
 
     var enhancedTask = GetTask("my_business_info");
     var reviewsTask = GetTask("reviews");
@@ -52,6 +97,10 @@
     var updatesNoData = IsNoDataStatus(updatesTask?.Status);
     var updatesNeverRun = IsNeverRun(updatesTask?.Status);
     var enhancedNeverRun = IsNeverRun(enhancedTask?.Status);
+    var reviewPage = Model.ReviewPage <= 0 ? 1 : Model.ReviewPage;
+    var totalReviewPages = Math.Max(1, Model.TotalReviewPages);
+    var hasPrevReviewPage = reviewPage > 1;
+    var hasNextReviewPage = reviewPage < totalReviewPages;
 }
 
 <div class="page-stack">
@@ -417,50 +466,6 @@ else
 
 <div id="tab-reviews" class="details-tab-panel card is-hidden">
     <h3>Reviews</h3>
-    @if (Model.Reviews.Count == 0)
-    {
-        @if (reviewsNoData)
-        {
-            <p>No stored reviews yet. Google Review collection reported <strong>No Data</strong> for this place.</p>
-        }
-        else if (reviewsNeverRun)
-        {
-            <p>No stored reviews yet. Google Review collection has never been run for this place.</p>
-        }
-        else
-        {
-            <p>No stored reviews yet.</p>
-        }
-    }
-    else
-    {
-        <table>
-        <thead><tr><th>When</th><th>Profile</th><th>Rating</th><th>Review</th><th>Owner Reply</th><th>Link</th></tr></thead>
-        <tbody>
-        @foreach (var r in Model.Reviews)
-        {
-            <tr>
-                <td>@(r.ReviewTimestampUtc?.ToString("u") ?? r.LastSeenUtc.ToString("u"))</td>
-                <td>@(r.ProfileName ?? "N/A")</td>
-                <td>@(r.Rating?.ToString() ?? "N/A")</td>
-                <td>@(r.ReviewText ?? "N/A")</td>
-                <td>@(r.OwnerAnswer ?? "N/A")</td>
-                <td>
-                    @if (!string.IsNullOrWhiteSpace(r.ReviewUrl))
-                    {
-                        <a href="@r.ReviewUrl" target="_blank" rel="noopener noreferrer">Open</a>
-                    }
-                    else
-                    {
-                        <span>N/A</span>
-                    }
-                </td>
-            </tr>
-        }
-        </tbody>
-        </table>
-    }
-
     <h4>Reviews over time</h4>
     @if (velocity is null || velocity.MonthlySeries.Count == 0)
     {
@@ -558,6 +563,137 @@ else
             }
             </tbody>
         </table>
+    }
+
+    <h4>Review Log</h4>
+    @if (Model.Reviews.Count == 0)
+    {
+        @if (reviewsNoData)
+        {
+            <p>No stored reviews yet. Google Review collection reported <strong>No Data</strong> for this place.</p>
+        }
+        else if (reviewsNeverRun)
+        {
+            <p>No stored reviews yet. Google Review collection has never been run for this place.</p>
+        }
+        else
+        {
+            <p>No stored reviews yet.</p>
+        }
+    }
+    else
+    {
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Profile</th>
+                        <th>Rating</th>
+                        <th>Review &amp; Reply</th>
+                        <th>Link</th>
+                    </tr>
+                </thead>
+                <tbody>
+                @foreach (var r in Model.Reviews)
+                {
+                    var reviewDate = (r.ReviewTimestampUtc ?? r.LastSeenUtc).ToString("dd MMM yyyy");
+                    var replyDate = r.OwnerTimestampUtc?.ToString("dd MMM yyyy");
+                    var filledStars = FilledStarCount(r.Rating);
+                    var reviewReferenceUtc = r.ReviewTimestampUtc ?? r.LastSeenUtc;
+                    double? responseWorkingHours = r.OwnerTimestampUtc.HasValue
+                        ? GetWorkingHoursBetween(reviewReferenceUtc, r.OwnerTimestampUtc.Value)
+                        : null;
+                    var responseWorkingDays = responseWorkingHours.HasValue
+                        ? Math.Max(0, (int)Math.Floor(responseWorkingHours.Value / 24d))
+                        : 0;
+                    var responseDaysLabel = responseWorkingDays == 1 ? "1 day" : $"{responseWorkingDays} days";
+                    <tr>
+                        <td>@reviewDate</td>
+                        <td>@(r.ProfileName ?? "N/A")</td>
+                        <td>
+                            <span class="rating-stars" aria-label="Rating @(r.Rating?.ToString("0.0") ?? "0.0") out of 5">
+                                @for (var i = 0; i < 5; i++)
+                                {
+                                    if (i < filledStars)
+                                    {
+                                        <i class="bi bi-star-fill"></i>
+                                    }
+                                    else
+                                    {
+                                        <i class="bi bi-star"></i>
+                                    }
+                                }
+                            </span>
+                        </td>
+                        <td>
+                            <div class="review-text">@NormalizeMultilineText(r.ReviewText)</div>
+                            @if (!string.IsNullOrWhiteSpace(r.OwnerAnswer))
+                            {
+                                <div class="review-reply-block">
+                                    <div class="review-reply-title">
+                                        Reply
+                                        @if (!string.IsNullOrWhiteSpace(replyDate))
+                                        {
+                                            <span>(@replyDate)</span>
+                                            @if (responseWorkingHours.HasValue)
+                                            {
+                                                <span class="status-pill @ResponseLagCss(responseWorkingHours.Value)">
+                                                    + @responseDaysLabel
+                                                </span>
+                                            }
+                                        }
+                                    </div>
+                                    <div class="review-reply-text">@NormalizeMultilineText(r.OwnerAnswer)</div>
+                                </div>
+                            }
+                        </td>
+                        <td>
+                            @if (!string.IsNullOrWhiteSpace(r.ReviewUrl))
+                            {
+                                <a href="@r.ReviewUrl" target="_blank" rel="noopener noreferrer">Open</a>
+                            }
+                            else
+                            {
+                                <span>N/A</span>
+                            }
+                        </td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+
+        @if (totalReviewPages > 1)
+        {
+            var prevUrl = $"/places/{Model.PlaceId}?reviewPage={reviewPage - 1}&tab=reviews";
+            var nextUrl = $"/places/{Model.PlaceId}?reviewPage={reviewPage + 1}&tab=reviews";
+            if (requestedRunId.HasValue)
+            {
+                prevUrl += $"&runId={requestedRunId.Value}";
+                nextUrl += $"&runId={requestedRunId.Value}";
+            }
+
+            <div class="toolbar review-pager">
+                @if (hasPrevReviewPage)
+                {
+                    <a class="btn btn-secondary" href="@prevUrl">Previous</a>
+                }
+                else
+                {
+                    <button type="button" class="btn btn-secondary" disabled>Previous</button>
+                }
+                <span class="muted">Page @reviewPage of @totalReviewPages (@Model.TotalReviewCount total)</span>
+                @if (hasNextReviewPage)
+                {
+                    <a class="btn btn-secondary" href="@nextUrl">Next</a>
+                }
+                else
+                {
+                    <button type="button" class="btn btn-secondary" disabled>Next</button>
+                }
+            </div>
+        }
     }
 </div>
 
@@ -756,12 +892,14 @@ else
     <h3>Rank History</h3>
     <h4>Recent History</h4>
     <table>
-    <thead><tr><th>Run</th><th>Rank</th><th>Rating</th><th>Ratings</th><th>Captured</th></tr></thead>
+    <thead><tr><th>Run</th><th>Keyword</th><th>Location</th><th>Rank</th><th>Avg Rating</th><th>Total Reviews</th><th>Captured</th></tr></thead>
     <tbody>
     @foreach (var h in Model.History)
     {
         <tr>
             <td><a href="/runs/@h.SearchRunId">@h.SearchRunId</a></td>
+            <td>@(string.IsNullOrWhiteSpace(h.SeedKeyword) ? "N/A" : h.SeedKeyword)</td>
+            <td>@(string.IsNullOrWhiteSpace(h.LocationName) ? "N/A" : h.LocationName)</td>
             <td>@h.RankPosition</td>
             <td>@h.Rating</td>
             <td>@h.UserRatingCount</td>
@@ -815,7 +953,9 @@ else
             });
         });
 
-        showTab("details");
+        const requestedTab = new URLSearchParams(window.location.search).get("tab");
+        const availableTabs = new Set(Array.from(buttons).map(x => x.getAttribute("data-tab-button")));
+        showTab(requestedTab && availableTabs.has(requestedTab) ? requestedTab : "details");
     })();
 </script>
 </div>

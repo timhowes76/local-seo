@@ -23,4 +23,14 @@ public class RunsController(ISearchIngestionService ingestionService) : Controll
         var taskProgress = await ingestionService.GetRunTaskProgressAsync(run, ct);
         return View(new RunDetailsViewModel(run, snapshots, taskProgress));
     }
+
+    [HttpGet("/runs/{id:long}/compare-reviews")]
+    public async Task<IActionResult> CompareReviews(long id, CancellationToken ct)
+    {
+        var model = await ingestionService.GetRunReviewComparisonAsync(id, ct);
+        if (model is null)
+            return NotFound();
+
+        return View(model);
+    }
 }

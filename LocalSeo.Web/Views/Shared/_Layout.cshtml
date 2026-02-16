@@ -4,6 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>@(ViewData["Title"] as string ?? "Local SEO Tool")</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" />
     <link rel="stylesheet" href="/css/site.css" />
 </head>
 <body>
@@ -19,10 +20,26 @@
         <aside class="sidebar">
             <div class="sidebar-brand">Local SEO Tool</div>
             <nav class="sidebar-nav">
-                <a class="sidebar-link @(currentController == "search" ? "is-active" : null)" href="/search">Search</a>
-                <a class="sidebar-link @(currentController == "runs" ? "is-active" : null)" href="/runs">Runs</a>
-                <a class="sidebar-link @(currentController == "places" ? "is-active" : null)" href="/places">Places</a>
-                <a class="sidebar-link @(currentController == "admin" ? "is-active" : null)" href="/admin">Admin</a>
+                <a class="sidebar-link @(currentController == "home" ? "is-active" : null)" href="/">
+                    <i class="bi bi-house-door"></i>
+                    <span>Home</span>
+                </a>
+                <a class="sidebar-link @(currentController == "search" ? "is-active" : null)" href="/search">
+                    <i class="bi bi-search"></i>
+                    <span>Search</span>
+                </a>
+                <a class="sidebar-link @(currentController == "runs" ? "is-active" : null)" href="/runs">
+                    <i class="bi bi-list-check"></i>
+                    <span>Runs</span>
+                </a>
+                <a class="sidebar-link @(currentController == "places" ? "is-active" : null)" href="/places">
+                    <i class="bi bi-geo-alt"></i>
+                    <span>Places</span>
+                </a>
+                <a class="sidebar-link @(currentController == "admin" ? "is-active" : null)" href="/admin">
+                    <i class="bi bi-gear"></i>
+                    <span>Admin</span>
+                </a>
             </nav>
         </aside>
 

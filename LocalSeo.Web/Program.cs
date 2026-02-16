@@ -19,6 +19,7 @@ builder.Services.Configure<DataForSeoOptions>(builder.Configuration.GetSection("
 
 builder.Services.AddControllersWithViews();
 builder.Services.AddHttpClient();
+builder.Services.AddMemoryCache();
 builder.Services.AddDataProtection();
 
 builder.Services.AddAuthentication("LocalCookie")
@@ -45,6 +46,7 @@ builder.Services.AddScoped<IGooglePlacesClient, GooglePlacesClient>();
 builder.Services.AddScoped<ISearchIngestionService, SearchIngestionService>();
 builder.Services.AddScoped<IAdminMaintenanceService, AdminMaintenanceService>();
 builder.Services.AddScoped<IAdminSettingsService, AdminSettingsService>();
+builder.Services.AddScoped<IDataForSeoAccountStatusService, DataForSeoAccountStatusService>();
 builder.Services.AddScoped<IEmailSender, SendGridEmailSender>();
 builder.Services.AddScoped<ICodeHasher, CodeHasher>();
 builder.Services.AddScoped<IReviewsProviderResolver, ReviewsProviderResolver>();

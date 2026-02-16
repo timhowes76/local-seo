@@ -30,6 +30,9 @@ public sealed record PlaceSnapshotRow(
     string? FormattedAddress,
     string? WebsiteUri,
     int? QuestionAnswerCount,
+    int? UpdateCount,
+    int? DescriptionLength,
+    bool? HasOtherCategories,
     int? ReviewsLast90,
     decimal? AvgPerMonth12m,
     decimal? Trend90Pct,
@@ -38,7 +41,14 @@ public sealed record PlaceSnapshotRow(
     string? UpdateStatusLabel,
     string? StatusLabel,
     int? MomentumScore);
-public sealed record PlaceHistoryRow(long SearchRunId, int RankPosition, decimal? Rating, int? UserRatingCount, DateTime CapturedAtUtc);
+public sealed record PlaceHistoryRow(
+    long SearchRunId,
+    int RankPosition,
+    decimal? Rating,
+    int? UserRatingCount,
+    DateTime CapturedAtUtc,
+    string? SeedKeyword,
+    string? LocationName);
 public sealed record PlaceReviewRow(
     string ReviewId,
     string? ProfileName,
@@ -73,6 +83,38 @@ public sealed record RunDetailsViewModel(
     SearchRun Run,
     IReadOnlyList<PlaceSnapshotRow> Snapshots,
     IReadOnlyList<RunTaskProgressRow> TaskProgress);
+
+public sealed record RunReviewComparisonViewModel(
+    SearchRun Run,
+    IReadOnlyList<RunReviewComparisonRow> Rows,
+    IReadOnlyList<RunReviewComparisonSeries> Series);
+
+public sealed record RunReviewComparisonRow(
+    string PlaceId,
+    int RankPosition,
+    string DisplayName,
+    decimal? AvgRating,
+    int? UserRatingCount,
+    int Reviews3m,
+    int Reviews6m,
+    int Reviews9m,
+    int Reviews12m,
+    decimal? AvgPerMonth12m,
+    int? DaysSinceLastReview,
+    int? LongestGapDays12m,
+    decimal? RespondedPct12m,
+    decimal? AvgOwnerResponseHours12m,
+    string StatusLabel);
+
+public sealed record RunReviewComparisonSeries(
+    string PlaceId,
+    string DisplayName,
+    IReadOnlyList<RunReviewComparisonSeriesPoint> Points);
+
+public sealed record RunReviewComparisonSeriesPoint(
+    int Year,
+    int Month,
+    int TotalReviews);
 
 public sealed record RunTaskProgressRow(
     string TaskType,
@@ -114,6 +156,10 @@ public sealed class PlaceDetailsViewModel
     public decimal? RunCenterLat { get; init; }
     public decimal? RunCenterLng { get; init; }
     public IReadOnlyList<PlaceReviewRow> Reviews { get; init; } = [];
+    public int ReviewPage { get; init; } = 1;
+    public int ReviewPageSize { get; init; } = 25;
+    public int TotalReviewCount { get; init; }
+    public int TotalReviewPages { get; init; }
     public IReadOnlyList<PlaceUpdateRow> Updates { get; init; } = [];
     public IReadOnlyList<PlaceQuestionAnswerRow> QuestionsAndAnswers { get; init; } = [];
     public IReadOnlyList<PlaceHistoryRow> History { get; init; } = [];
@@ -124,15 +170,38 @@ public sealed class PlaceDetailsViewModel
 
 public sealed record PlaceVelocityListItemDto(
     string PlaceId,
+    int? RankPosition,
     string? DisplayName,
+    string? PrimaryCategory,
     decimal? Rating,
     int? UserRatingCount,
     int? ReviewsLast90,
-    decimal? AvgPerMonth12m,
-    decimal? Trend90Pct,
     int? DaysSinceLastReview,
     string? StatusLabel,
-    int? MomentumScore);
+    int? UpdateCount,
+    int? DaysSinceLastUpdate,
+    string? UpdateStatusLabel,
+    bool? HasWebsite,
+    int? DescriptionLength,
+    bool? HasOtherCategories,
+    int? PhotoCount,
+    int? QuestionAnswerCount);
+
+public sealed record PlacesRunFilterOptions(
+    IReadOnlyList<string> Keywords,
+    IReadOnlyList<string> Locations);
+
+public sealed class PlacesIndexViewModel
+{
+    public IReadOnlyList<PlaceVelocityListItemDto> Rows { get; init; } = [];
+    public IReadOnlyList<string> KeywordOptions { get; init; } = [];
+    public IReadOnlyList<string> LocationOptions { get; init; } = [];
+    public string? SelectedKeyword { get; init; }
+    public string? SelectedLocation { get; init; }
+    public string? PlaceNameQuery { get; init; }
+    public string? Sort { get; init; }
+    public string? Direction { get; init; }
+}
 
 public sealed record PlaceReviewVelocityDetailsDto(
     string PlaceId,

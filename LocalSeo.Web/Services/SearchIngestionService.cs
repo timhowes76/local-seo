@@ -14,7 +14,8 @@ public interface ISearchIngestionService
     Task<SearchRun?> GetRunAsync(long runId, CancellationToken ct);
     Task<IReadOnlyList<PlaceSnapshotRow>> GetRunSnapshotsAsync(long runId, CancellationToken ct);
     Task<IReadOnlyList<RunTaskProgressRow>> GetRunTaskProgressAsync(SearchRun run, CancellationToken ct);
-    Task<PlaceDetailsViewModel?> GetPlaceDetailsAsync(string placeId, long? runId, CancellationToken ct);
+    Task<RunReviewComparisonViewModel?> GetRunReviewComparisonAsync(long runId, CancellationToken ct);
+    Task<PlaceDetailsViewModel?> GetPlaceDetailsAsync(string placeId, long? runId, CancellationToken ct, int reviewPage = 1, int reviewPageSize = 25);
 }
 
 public sealed class SearchIngestionService(
@@ -339,6 +340,13 @@ WHERE SearchRunId=@RunId", new { RunId = runId }, cancellationToken: ct));
         var rows = await conn.QueryAsync<PlaceSnapshotRow>(new CommandDefinition(@"
 SELECT s.PlaceSnapshotId, s.SearchRunId, s.PlaceId, s.RankPosition, s.Rating, s.UserRatingCount, s.CapturedAtUtc,
        p.DisplayName, p.PrimaryCategory, p.PhotoCount, p.NationalPhoneNumber, p.Lat, p.Lng, p.FormattedAddress, p.WebsiteUri, p.QuestionAnswerCount,
+       COALESCE(updCount.UpdateCount, 0) AS UpdateCount,
+       LEN(COALESCE(p.Description, N'')) AS DescriptionLength,
+       CASE
+         WHEN p.OtherCategoriesJson IS NULL THEN CAST(0 AS bit)
+         WHEN LTRIM(RTRIM(p.OtherCategoriesJson)) IN (N'', N'[]', N'{}') THEN CAST(0 AS bit)
+         ELSE CAST(1 AS bit)
+       END AS HasOtherCategories,
        v.ReviewsLast90, v.AvgPerMonth12m, v.Trend90Pct, v.DaysSinceLastReview,
        CASE WHEN upd.LastUpdateDate IS NULL THEN NULL ELSE DATEDIFF(day, upd.LastUpdateDate, CAST(SYSUTCDATETIME() AS date)) END AS DaysSinceLastUpdate,
        CASE
@@ -399,6 +407,11 @@ OUTER APPLY (
     AND COALESCE(t.TaskType, 'reviews')='my_business_updates'
   ORDER BY t.CreatedAtUtc DESC, t.DataForSeoReviewTaskId DESC
 ) latestUpdateTask
+OUTER APPLY (
+  SELECT COUNT(1) AS UpdateCount
+  FROM dbo.PlaceUpdate u2
+  WHERE u2.PlaceId=s.PlaceId
+) updCount
 WHERE s.SearchRunId=@RunId
 ORDER BY s.RankPosition", new { RunId = runId }, cancellationToken: ct));
         return rows.ToList();
@@ -480,9 +493,142 @@ GROUP BY TaskType;",
         return result;
     }
 
-    public async Task<PlaceDetailsViewModel?> GetPlaceDetailsAsync(string placeId, long? runId, CancellationToken ct)
+    public async Task<RunReviewComparisonViewModel?> GetRunReviewComparisonAsync(long runId, CancellationToken ct)
+    {
+        var run = await GetRunAsync(runId, ct);
+        if (run is null)
+            return null;
+
+        await using var conn = (Microsoft.Data.SqlClient.SqlConnection)await connectionFactory.OpenConnectionAsync(ct);
+
+        var rowData = (await conn.QueryAsync<RunReviewComparisonRowData>(new CommandDefinition(@"
+WITH run_places AS (
+  SELECT
+    s.PlaceId,
+    MIN(s.RankPosition) AS RankPosition
+  FROM dbo.PlaceSnapshot s
+  WHERE s.SearchRunId=@RunId
+  GROUP BY s.PlaceId
+)
+SELECT
+  rp.PlaceId,
+  rp.RankPosition,
+  COALESCE(NULLIF(LTRIM(RTRIM(p.DisplayName)), N''), rp.PlaceId) AS DisplayName,
+  latestSnapshot.Rating AS AvgRating,
+  latestSnapshot.UserRatingCount,
+  COALESCE(v.ReviewsLast90, 0) AS ReviewsLast90,
+  COALESCE(v.ReviewsLast180, 0) AS ReviewsLast180,
+  COALESCE(v.ReviewsLast270, 0) AS ReviewsLast270,
+  COALESCE(v.ReviewsLast365, 0) AS ReviewsLast365,
+  v.AvgPerMonth12m,
+  v.DaysSinceLastReview,
+  v.LongestGapDays12m,
+  v.RespondedPct12m,
+  v.AvgOwnerResponseHours12m,
+  COALESCE(NULLIF(LTRIM(RTRIM(v.StatusLabel)), N''), N'NoReviews') AS StatusLabel
+FROM run_places rp
+LEFT JOIN dbo.Place p ON p.PlaceId=rp.PlaceId
+OUTER APPLY (
+  SELECT TOP 1
+    s.Rating,
+    s.UserRatingCount
+  FROM dbo.PlaceSnapshot s
+  WHERE s.SearchRunId=@RunId
+    AND s.PlaceId=rp.PlaceId
+  ORDER BY s.RankPosition ASC, s.CapturedAtUtc DESC, s.PlaceSnapshotId DESC
+) latestSnapshot
+LEFT JOIN dbo.PlaceReviewVelocityStats v ON v.PlaceId=rp.PlaceId
+ORDER BY rp.RankPosition, COALESCE(NULLIF(LTRIM(RTRIM(p.DisplayName)), N''), rp.PlaceId);",
+            new { RunId = runId }, cancellationToken: ct))).ToList();
+
+        var rows = rowData
+            .Select(x => new RunReviewComparisonRow(
+                x.PlaceId,
+                x.RankPosition,
+                x.DisplayName,
+                x.AvgRating,
+                x.UserRatingCount,
+                Math.Max(0, x.ReviewsLast90),
+                Math.Max(0, x.ReviewsLast180 - x.ReviewsLast90),
+                Math.Max(0, x.ReviewsLast270 - x.ReviewsLast180),
+                Math.Max(0, x.ReviewsLast365 - x.ReviewsLast270),
+                x.AvgPerMonth12m,
+                x.DaysSinceLastReview,
+                x.LongestGapDays12m,
+                x.RespondedPct12m,
+                x.AvgOwnerResponseHours12m,
+                string.IsNullOrWhiteSpace(x.StatusLabel) ? "NoReviews" : x.StatusLabel))
+            .ToList();
+
+        var monthlyCounts = (await conn.QueryAsync<RunReviewMonthlyCountRow>(new CommandDefinition(@"
+WITH run_places AS (
+  SELECT DISTINCT PlaceId
+  FROM dbo.PlaceSnapshot
+  WHERE SearchRunId=@RunId
+),
+review_points AS (
+  SELECT
+    rp.PlaceId,
+    COALESCE(NULLIF(LTRIM(RTRIM(p.DisplayName)), N''), rp.PlaceId) AS DisplayName,
+    COALESCE(r.ReviewTimestampUtc, r.LastSeenUtc) AS EventUtc
+  FROM run_places rp
+  LEFT JOIN dbo.Place p ON p.PlaceId=rp.PlaceId
+  LEFT JOIN dbo.PlaceReview r ON r.PlaceId=rp.PlaceId
+)
+SELECT
+  PlaceId,
+  DisplayName,
+  YEAR(EventUtc) AS [Year],
+  MONTH(EventUtc) AS [Month],
+  COUNT(1) AS ReviewCount
+FROM review_points
+WHERE EventUtc IS NOT NULL
+GROUP BY PlaceId, DisplayName, YEAR(EventUtc), MONTH(EventUtc)
+ORDER BY PlaceId, [Year], [Month];",
+            new { RunId = runId }, cancellationToken: ct))).ToList();
+
+        var displayNameByPlaceId = rows.ToDictionary(x => x.PlaceId, x => x.DisplayName, StringComparer.OrdinalIgnoreCase);
+        var rankByPlaceId = rows.ToDictionary(x => x.PlaceId, x => x.RankPosition, StringComparer.OrdinalIgnoreCase);
+
+        var series = monthlyCounts
+            .GroupBy(x => x.PlaceId, StringComparer.OrdinalIgnoreCase)
+            .Select(group =>
+            {
+                var ordered = group
+                    .OrderBy(x => x.Year)
+                    .ThenBy(x => x.Month)
+                    .ToList();
+
+                var runningTotal = 0;
+                var points = ordered
+                    .Select(x =>
+                    {
+                        runningTotal += x.ReviewCount;
+                        return new RunReviewComparisonSeriesPoint(x.Year, x.Month, runningTotal);
+                    })
+                    .ToList();
+
+                displayNameByPlaceId.TryGetValue(group.Key, out var displayName);
+                return new
+                {
+                    PlaceId = group.Key,
+                    DisplayName = displayName ?? group.First().DisplayName,
+                    Points = (IReadOnlyList<RunReviewComparisonSeriesPoint>)points
+                };
+            })
+            .OrderBy(x => rankByPlaceId.TryGetValue(x.PlaceId, out var rank) ? rank : int.MaxValue)
+            .ThenBy(x => x.DisplayName)
+            .Select(x => new RunReviewComparisonSeries(x.PlaceId, x.DisplayName, x.Points))
+            .ToList();
+
+        return new RunReviewComparisonViewModel(run, rows, series);
+    }
+
+    public async Task<PlaceDetailsViewModel?> GetPlaceDetailsAsync(string placeId, long? runId, CancellationToken ct, int reviewPage = 1, int reviewPageSize = 25)
     {
         await using var conn = (Microsoft.Data.SqlClient.SqlConnection)await connectionFactory.OpenConnectionAsync(ct);
+        var effectiveReviewPageSize = Math.Clamp(reviewPageSize, 10, 100);
+        var effectiveReviewPage = Math.Max(1, reviewPage);
 
         var place = await conn.QuerySingleOrDefaultAsync<PlaceDetailsRow>(new CommandDefinition(@"
 SELECT
@@ -573,13 +719,30 @@ WHERE rn = 1;", new { PlaceId = placeId }, cancellationToken: ct))).ToList();
         var taskStatuses = BuildPlaceTaskStatuses(latestTaskRows, settings);
 
         var history = (await conn.QueryAsync<PlaceHistoryRow>(new CommandDefinition(@"
-SELECT TOP 20 SearchRunId, RankPosition, Rating, UserRatingCount, CapturedAtUtc
-FROM dbo.PlaceSnapshot
-WHERE PlaceId=@PlaceId
-ORDER BY CapturedAtUtc DESC", new { PlaceId = placeId }, cancellationToken: ct))).ToList();
+SELECT TOP 20
+  s.SearchRunId,
+  s.RankPosition,
+  s.Rating,
+  s.UserRatingCount,
+  s.CapturedAtUtc,
+  r.SeedKeyword,
+  r.LocationName
+FROM dbo.PlaceSnapshot s
+LEFT JOIN dbo.SearchRun r ON r.SearchRunId = s.SearchRunId
+WHERE s.PlaceId=@PlaceId
+ORDER BY s.CapturedAtUtc DESC", new { PlaceId = placeId }, cancellationToken: ct))).ToList();
+
+        var totalReviewCount = await conn.ExecuteScalarAsync<int>(new CommandDefinition(@"
+SELECT COUNT(1)
+FROM dbo.PlaceReview
+WHERE PlaceId=@PlaceId;", new { PlaceId = placeId }, cancellationToken: ct));
+        var totalReviewPages = Math.Max(1, (int)Math.Ceiling(totalReviewCount / (double)effectiveReviewPageSize));
+        if (effectiveReviewPage > totalReviewPages)
+            effectiveReviewPage = totalReviewPages;
+        var reviewOffset = (effectiveReviewPage - 1) * effectiveReviewPageSize;
 
         var reviews = (await conn.QueryAsync<PlaceReviewRow>(new CommandDefinition(@"
-SELECT TOP 100
+SELECT
   ReviewId,
   ProfileName,
   Rating,
@@ -592,7 +755,13 @@ SELECT TOP 100
   LastSeenUtc
 FROM dbo.PlaceReview
 WHERE PlaceId=@PlaceId
-ORDER BY COALESCE(ReviewTimestampUtc, LastSeenUtc) DESC, PlaceReviewId DESC", new { PlaceId = placeId }, cancellationToken: ct))).ToList();
+ORDER BY COALESCE(ReviewTimestampUtc, LastSeenUtc) DESC, PlaceReviewId DESC
+OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY;", new
+        {
+            PlaceId = placeId,
+            Offset = reviewOffset,
+            PageSize = effectiveReviewPageSize
+        }, cancellationToken: ct))).ToList();
 
         var updates = (await conn.QueryAsync<PlaceUpdateDataRow>(new CommandDefinition(@"
 SELECT TOP 200
@@ -687,6 +856,10 @@ ORDER BY COALESCE(AnswerTimestampUtc, QuestionTimestampUtc, LastSeenUtc) DESC, P
             RunCenterLat = runCenter?.CenterLat,
             RunCenterLng = runCenter?.CenterLng,
             Reviews = reviews,
+            ReviewPage = effectiveReviewPage,
+            ReviewPageSize = effectiveReviewPageSize,
+            TotalReviewCount = totalReviewCount,
+            TotalReviewPages = totalReviewPages,
             Updates = updates,
             QuestionsAndAnswers = questionsAndAnswers,
             History = history,
@@ -959,6 +1132,23 @@ ORDER BY COALESCE(AnswerTimestampUtc, QuestionTimestampUtc, LastSeenUtc) DESC, P
     private sealed record LatestTaskStatusRow(long DataForSeoReviewTaskId, string TaskType, string Status, DateTime CreatedAtUtc);
     private sealed record LatestTaskRunByPlaceRow(string PlaceId, string TaskType, DateTime LastCreatedAtUtc);
     private sealed record RunTaskProgressStatusRow(string TaskType, int ProcessingCount, int CompletedCount, int ErrorCount, int DueCount);
+    private sealed record RunReviewComparisonRowData(
+        string PlaceId,
+        int RankPosition,
+        string DisplayName,
+        decimal? AvgRating,
+        int? UserRatingCount,
+        int ReviewsLast90,
+        int ReviewsLast180,
+        int ReviewsLast270,
+        int ReviewsLast365,
+        decimal? AvgPerMonth12m,
+        int? DaysSinceLastReview,
+        int? LongestGapDays12m,
+        decimal? RespondedPct12m,
+        decimal? AvgOwnerResponseHours12m,
+        string StatusLabel);
+    private sealed record RunReviewMonthlyCountRow(string PlaceId, string DisplayName, int Year, int Month, int ReviewCount);
 
     private sealed record ReviewTaskRequest(string PlaceId, int? ReviewCount, string? LocationName, decimal? Lat, decimal? Lng);
 

@@ -43,7 +43,7 @@ public class LoginController(ILoginService loginService) : Controller
         var claims = new[] { new Claim(ClaimTypes.Email, model.Email), new Claim(ClaimTypes.Name, model.Email) };
         var identity = new ClaimsIdentity(claims, "LocalCookie");
         await HttpContext.SignInAsync("LocalCookie", new ClaimsPrincipal(identity));
-        return RedirectToAction("Index", "Search");
+        return RedirectToAction("Index", "Home");
     }
 
     [Authorize]

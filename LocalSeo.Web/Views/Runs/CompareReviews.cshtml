@@ -1,0 +1,237 @@
+@using System.Text.Json
+@model RunReviewComparisonViewModel
+@{
+    ViewData["Title"] = $"Compare Reviews: Run {Model.Run.SearchRunId}";
+    string StatusCss(string? value)
+    {
+        var key = (value ?? "NoReviews").Trim().ToLowerInvariant().Replace(" ", string.Empty);
+        return $"status-{key}";
+    }
+    string RespondedCss(decimal? value)
+    {
+        if (!value.HasValue)
+            return "status-nodata";
+        if (value.Value < 33m)
+            return "status-error";
+        if (value.Value < 66m)
+            return "status-pending";
+        return "status-healthy";
+    }
+
+    var chartSeries = Model.Series
+        .Where(x => x.Points.Count > 0)
+        .Select(x => new
+        {
+            placeId = x.PlaceId,
+            name = x.DisplayName,
+            points = x.Points.Select(p => new
+            {
+                year = p.Year,
+                month = p.Month,
+                label = $"{p.Year}-{p.Month:00}",
+                value = p.TotalReviews
+            })
+        })
+        .ToList();
+    var chartJson = JsonSerializer.Serialize(chartSeries);
+}
+
+<div class="page-stack">
+    <section class="card">
+        <div class="card-header">
+            <h2 class="card-title">Compare Reviews</h2>
+            <a href="/runs/@Model.Run.SearchRunId" class="btn btn-secondary">
+                <i class="bi bi-arrow-left"></i>
+                <span>Back to Run</span>
+            </a>
+        </div>
+        <div><strong>Run:</strong> @Model.Run.SearchRunId</div>
+        <div><strong>Keyword:</strong> @Model.Run.SeedKeyword</div>
+        <div><strong>Location:</strong> @Model.Run.LocationName</div>
+        <div><strong>Search Depth:</strong> @Model.Run.ResultLimit</div>
+    </section>
+
+    <section class="card">
+        <h2 class="card-title">Review Velocity Comparison</h2>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Company</th>
+                        <th>Avg Rating</th>
+                        <th>Number of Reviews</th>
+                        <th>3m</th>
+                        <th>6m</th>
+                        <th>9m</th>
+                        <th>12m</th>
+                        <th>Avg/Mo</th>
+                        <th>Days since</th>
+                        <th>Longest gap 12m</th>
+                        <th>Responded %</th>
+                        <th>Avg response hrs</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                @foreach (var row in Model.Rows)
+                {
+                    var respondedLabel = row.RespondedPct12m.HasValue ? $"{row.RespondedPct12m.Value:0.##}%" : "N/A";
+                    <tr>
+                        <td><a href="/places/@row.PlaceId?runId=@Model.Run.SearchRunId">@row.DisplayName</a></td>
+                        <td>@(row.AvgRating?.ToString("0.0") ?? "N/A")</td>
+                        <td>@(row.UserRatingCount?.ToString() ?? "N/A")</td>
+                        <td>@row.Reviews3m</td>
+                        <td>@row.Reviews6m</td>
+                        <td>@row.Reviews9m</td>
+                        <td>@row.Reviews12m</td>
+                        <td>@(row.AvgPerMonth12m?.ToString("0.0") ?? "0.0")</td>
+                        <td>@(row.DaysSinceLastReview?.ToString() ?? "N/A")</td>
+                        <td>@(row.LongestGapDays12m?.ToString() ?? "N/A")</td>
+                        <td>
+                            <span class="status-pill @RespondedCss(row.RespondedPct12m)">
+                                @respondedLabel
+                                @if (row.RespondedPct12m.HasValue && row.RespondedPct12m.Value > 95m)
+                                {
+                                    <i class="bi bi-emoji-smile"></i>
+                                }
+                            </span>
+                        </td>
+                        <td>@(row.AvgOwnerResponseHours12m?.ToString("0.##") ?? "N/A")</td>
+                        <td><span class="status-pill @StatusCss(row.StatusLabel)">@row.StatusLabel</span></td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="card">
+        <h2 class="card-title">Review Trends Over Time</h2>
+        @if (chartSeries.Count == 0)
+        {
+            <p class="muted">No review trend data available for this run yet.</p>
+        }
+        else
+        {
+            <div id="run-review-compare-chart" class="chart-panel chart-panel-large"></div>
+            <div id="run-review-compare-legend" class="chart-legend"></div>
+            <script>
+                (() => {
+                    const host = document.getElementById("run-review-compare-chart");
+                    const legendHost = document.getElementById("run-review-compare-legend");
+                    const series = @Html.Raw(chartJson);
+                    if (!host || !legendHost || !series || series.length === 0) return;
+
+                    const palette = [
+                        "#0d6efd", "#ef4444", "#16a34a", "#f59e0b", "#9333ea",
+                        "#0891b2", "#f97316", "#22c55e", "#be185d", "#4f46e5",
+                        "#ca8a04", "#059669"
+                    ];
+
+                    const monthStartUtcMs = (year, month) => Date.UTC(year, month - 1, 1);
+                    const monthLabelFromUtc = (utcMs) => {
+                        const d = new Date(utcMs);
+                        return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+                    };
+                    const monthDiff = (startUtcMs, endUtcMs) => {
+                        const s = new Date(startUtcMs);
+                        const e = new Date(endUtcMs);
+                        return (e.getUTCFullYear() - s.getUTCFullYear()) * 12 + (e.getUTCMonth() - s.getUTCMonth());
+                    };
+                    const addMonths = (utcMs, months) => {
+                        const d = new Date(utcMs);
+                        return Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + months, 1);
+                    };
+
+                    const normalized = series.map((item, index) => ({
+                        ...item,
+                        color: palette[index % palette.length],
+                        points: item.points.map(p => ({
+                            ...p,
+                            xUtcMs: monthStartUtcMs(p.year, p.month),
+                            y: p.value
+                        }))
+                    }));
+
+                    const allPoints = normalized.flatMap(x => x.points);
+                    if (allPoints.length === 0) return;
+
+                    const minX = Math.min(...allPoints.map(p => p.xUtcMs));
+                    const maxX = Math.max(...allPoints.map(p => p.xUtcMs));
+                    const xRange = Math.max(1, maxX - minX);
+                    const maxY = Math.max(1, ...allPoints.map(p => p.y));
+
+                    const renderLegend = () => {
+                        legendHost.innerHTML = normalized.map(item => `
+                            <div class="chart-legend-item">
+                                <span class="chart-legend-swatch" style="background:${item.color}"></span>
+                                <span>${item.name}</span>
+                            </div>
+                        `).join("");
+                    };
+
+                    const renderChart = () => {
+                        const measuredWidth = host.clientWidth || host.parentElement?.clientWidth || 0;
+                        if (measuredWidth < 320) return;
+
+                        const width = Math.max(980, Math.floor(measuredWidth));
+                        const height = 360;
+                        const margin = { top: 20, right: 24, bottom: 56, left: 60 };
+                        const plotW = width - margin.left - margin.right;
+                        const plotH = height - margin.top - margin.bottom;
+
+                        const xPos = (utcMs) => margin.left + ((utcMs - minX) / xRange) * plotW;
+                        const yPos = (v) => margin.top + plotH - ((v / maxY) * plotH);
+
+                        const yTicks = Array.from({ length: 6 }, (_, i) => Math.round((maxY / 5) * (5 - i)));
+                        const yGrid = yTicks.map(v => {
+                            const y = yPos(v);
+                            return `<line x1="${margin.left}" y1="${y}" x2="${width - margin.right}" y2="${y}" stroke="#e8eef7" />`
+                                + `<text x="${margin.left - 8}" y="${y + 4}" text-anchor="end" font-size="11" fill="#5f6f86">${v}</text>`;
+                        }).join("");
+
+                        const totalMonths = Math.max(1, monthDiff(minX, maxX) + 1);
+                        const tickStep = Math.max(1, Math.ceil(totalMonths / 8));
+                        const xTicks = [];
+                        for (let i = 0; i < totalMonths; i += tickStep) {
+                            const tickUtc = addMonths(minX, i);
+                            xTicks.push(
+                                `<text x="${xPos(tickUtc)}" y="${height - 24}" text-anchor="middle" font-size="11" fill="#5f6f86">${monthLabelFromUtc(tickUtc)}</text>`
+                            );
+                        }
+                        if ((totalMonths - 1) % tickStep !== 0) {
+                            xTicks.push(
+                                `<text x="${xPos(maxX)}" y="${height - 24}" text-anchor="middle" font-size="11" fill="#5f6f86">${monthLabelFromUtc(maxX)}</text>`
+                            );
+                        }
+
+                        const lineSvg = normalized.map(item => {
+                            if (!item.points.length) return "";
+                            const path = item.points.map(p => `${xPos(p.xUtcMs)},${yPos(p.y)}`).join(" ");
+                            const circles = item.points.map(p =>
+                                `<circle cx="${xPos(p.xUtcMs)}" cy="${yPos(p.y)}" r="3.5" fill="${item.color}"><title>${item.name}: ${p.label} = ${p.y}</title></circle>`
+                            ).join("");
+                            return `<polyline points="${path}" fill="none" stroke="${item.color}" stroke-width="2"></polyline>${circles}`;
+                        }).join("");
+
+                        host.innerHTML = `
+<svg width="100%" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="Review trends over time chart">
+  <rect x="0" y="0" width="${width}" height="${height}" fill="#fff"></rect>
+  ${yGrid}
+  <line x1="${margin.left}" y1="${margin.top + plotH}" x2="${width - margin.right}" y2="${margin.top + plotH}" stroke="#334155"></line>
+  <line x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${margin.top + plotH}" stroke="#334155"></line>
+  ${xTicks.join("")}
+  ${lineSvg}
+  <text x="${width / 2}" y="${height - 6}" text-anchor="middle" font-size="12" fill="#334155">Time</text>
+  <text x="16" y="${margin.top + (plotH / 2)}" text-anchor="middle" font-size="12" fill="#334155" transform="rotate(-90 16 ${margin.top + (plotH / 2)})">Total Reviews</text>
+</svg>`;
+                    };
+
+                    window.addEventListener("resize", renderChart);
+                    renderLegend();
+                    renderChart();
+                })();
+            </script>
+        }
+    </section>
+</div>

@@ -1,0 +1,103 @@
+@model HomeDashboardViewModel
+@{
+    ViewData["Title"] = "Home";
+    string StatusCss(string? label)
+    {
+        var key = (label ?? string.Empty).Trim().ToLowerInvariant();
+        if (key.Contains("ok") || key.Contains("online") || key.Contains("operational"))
+            return "status-healthy";
+        if (key.Contains("pending") || key.Contains("processing"))
+            return "status-pending";
+        if (key.Contains("error") || key.Contains("down") || key.Contains("unavailable"))
+            return "status-error";
+        return "status-nodata";
+    }
+}
+
+<div class="page-stack">
+    <section class="card">
+        <h2 class="card-title">Main Navigation</h2>
+        <div class="home-nav-grid">
+            <a href="/search" class="home-nav-card">
+                <i class="bi bi-search home-nav-icon"></i>
+                <span class="home-nav-title">Search</span>
+                <span class="home-nav-subtitle">Run a new Google places search.</span>
+            </a>
+            <a href="/runs" class="home-nav-card">
+                <i class="bi bi-list-check home-nav-icon"></i>
+                <span class="home-nav-title">Runs</span>
+                <span class="home-nav-subtitle">Review all captured runs and snapshots.</span>
+            </a>
+            <a href="/places" class="home-nav-card">
+                <i class="bi bi-geo-alt home-nav-icon"></i>
+                <span class="home-nav-title">Places</span>
+                <span class="home-nav-subtitle">View places, details, and velocity metrics.</span>
+            </a>
+            <a href="/admin" class="home-nav-card">
+                <i class="bi bi-gear home-nav-icon"></i>
+                <span class="home-nav-title">Admin</span>
+                <span class="home-nav-subtitle">Settings, maintenance, and DataForSEO tasks.</span>
+            </a>
+        </div>
+    </section>
+
+    <section class="card">
+        <div class="card-header">
+            <h2 class="card-title">DataForSEO Account</h2>
+            <span class="muted">Updated @Model.RetrievedAtUtc.ToString("u")</span>
+        </div>
+
+        <div class="stats-grid home-status-grid">
+            <div class="stat-card">
+                <span class="stat-label">Balance (USD)</span>
+                <div class="stat-value">
+                    @if (Model.DataForSeoBalanceDisplay is not null)
+                    {
+                        <span>$@Model.DataForSeoBalanceDisplay</span>
+                    }
+                    else
+                    {
+                        <span>N/A</span>
+                    }
+                </div>
+            </div>
+        </div>
+
+        @if (!string.IsNullOrWhiteSpace(Model.AccountError))
+        {
+            <p class="notice">@Model.AccountError</p>
+        }
+
+        <h3>API Status</h3>
+        @if (Model.ApiStatuses.Count == 0)
+        {
+            <p class="muted">No API status data available.</p>
+        }
+        else
+        {
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Service</th>
+                            <th>Status</th>
+                            <th>Description</th>
+                            <th>Code</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    @foreach (var row in Model.ApiStatuses)
+                    {
+                        <tr>
+                            <td>@row.ServiceName</td>
+                            <td><span class="status-pill @StatusCss(row.StatusLabel)">@row.StatusLabel</span></td>
+                            <td>@row.StatusDescription</td>
+                            <td>@(row.StatusCode?.ToString() ?? "N/A")</td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </section>
+</div>
