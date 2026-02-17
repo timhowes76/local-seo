@@ -24,6 +24,7 @@
         })
         .ToList();
     var capturedStampUtc = Model.Snapshots.FirstOrDefault()?.CapturedAtUtc;
+    var keyphraseTraffic = Model.KeyphraseTraffic;
 }
 
 <div class="page-stack">
@@ -99,6 +100,8 @@
                         <th>Rank</th>
                         <th>Name</th>
                         <th>Primary Category</th>
+                        <th>Avg Clicks</th>
+                        <th>Last Month Clicks</th>
                         <th>Avg Rating</th>
                         <th>Total Reviews</th>
                         <th>Reviews 90d</th>
@@ -131,6 +134,8 @@
                         <td>@s.RankPosition</td>
                         <td>@(s.DisplayName ?? "N/A")</td>
                         <td>@(string.IsNullOrWhiteSpace(s.PrimaryCategory) ? "N/A" : s.PrimaryCategory)</td>
+                        <td>@(s.AvgClicks?.ToString("N0") ?? "0")</td>
+                        <td>@(s.LastMonthClicks?.ToString("N0") ?? "N/A")</td>
                         <td>@(s.Rating?.ToString() ?? "N/A")</td>
                         <td>@(s.UserRatingCount?.ToString() ?? "N/A")</td>
                         <td>@(s.ReviewsLast90?.ToString() ?? "0")</td>
@@ -150,6 +155,49 @@
                 </tbody>
             </table>
         </div>
+    </section>
+
+    <section class="card">
+        <div class="card-header">
+            <h2 class="card-title">Total Search Volume (Keyphrases)</h2>
+            @if (keyphraseTraffic is not null)
+            {
+                <a class="btn btn-secondary" href="@keyphraseTraffic.KeyphrasesUrl">View Keyphrase Breakdown</a>
+            }
+        </div>
+        @if (keyphraseTraffic is null)
+        {
+            <p class="muted">No keyphrases are associated with this run's location/category yet.</p>
+        }
+        else if (keyphraseTraffic.Last12Months.Count == 0)
+        {
+            <p class="muted">Keyphrases exist, but there is no monthly search volume data yet.</p>
+        }
+        else
+        {
+            var maxTotal = keyphraseTraffic.Last12Months.Max(x => x.WeightedSearchVolume);
+            <div class="volume-chart">
+                @foreach (var point in keyphraseTraffic.Last12Months)
+                {
+                    var heightPercent = maxTotal <= 0 ? 0 : Math.Max(5, (int)Math.Round((point.WeightedSearchVolume * 100m) / maxTotal));
+                    <div class="volume-chart-column">
+                        <div class="volume-chart-plot">
+                            <span class="volume-chart-bar" style="height:@heightPercent%" title="@point.Year-@point.Month.ToString("00"): @point.WeightedSearchVolume.ToString("N1")"></span>
+                        </div>
+                        <span class="volume-chart-label">@point.Year-@point.Month.ToString("00")</span>
+                        <span class="volume-chart-value">@point.WeightedSearchVolume.ToString("N0")</span>
+                    </div>
+                }
+            </div>
+            <p class="muted">
+                Weighted Avg: @keyphraseTraffic.WeightedAvgSearchVolume.ToString("N0")
+                @if (keyphraseTraffic.WeightedLastMonthSearchVolume.HasValue && keyphraseTraffic.LatestMonthYear.HasValue && keyphraseTraffic.LatestMonthNumber.HasValue)
+                {
+                    <text> | Last Month (@keyphraseTraffic.LatestMonthYear-@keyphraseTraffic.LatestMonthNumber.Value.ToString("00")): @keyphraseTraffic.WeightedLastMonthSearchVolume.Value.ToString("N0")</text>
+                }
+            </p>
+        }
+        <p class="muted">Main term is counted at 100%. Modifier and Adjacent are counted at 70%. Synonyms and no-data rows are excluded.</p>
     </section>
 
     <section class="card">

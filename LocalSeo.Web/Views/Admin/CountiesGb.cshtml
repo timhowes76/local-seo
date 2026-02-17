@@ -1,0 +1,157 @@
+@model GbCountyListViewModel
+@{
+    ViewData["Title"] = "Counties (GB)";
+    var statusMessage = TempData["Status"] as string;
+    var currentSearch = (Model.Search ?? string.Empty).Trim();
+    var currentStatus = (Model.StatusFilter ?? "active").Trim().ToLowerInvariant();
+    var currentPage = Math.Max(1, Model.Page);
+    var totalPages = Math.Max(1, Model.TotalPages);
+    var hasPrev = currentPage > 1;
+    var hasNext = currentPage < totalPages;
+
+    var statusQuery = Uri.EscapeDataString(currentStatus);
+    var pageSizeQuery = Model.PageSize.ToString();
+    var searchQuery = string.IsNullOrWhiteSpace(currentSearch)
+        ? string.Empty
+        : $"&q={Uri.EscapeDataString(currentSearch)}";
+
+    string BuildListUrl(int page) =>
+        $"/admin/data-lists/counties-gb?status={statusQuery}{searchQuery}&page={page}&pageSize={pageSizeQuery}";
+
+    string BuildActionQuery() =>
+        $"status={statusQuery}{searchQuery}&page={currentPage}&pageSize={pageSizeQuery}";
+}
+
+<div class="page-stack">
+    @if (!string.IsNullOrWhiteSpace(statusMessage))
+    {
+        <div class="notice">@statusMessage</div>
+    }
+
+    <section class="card">
+        <div class="toolbar">
+            <a href="/admin/data-lists" class="btn btn-secondary">Back to Data Lists</a>
+            <a href="/admin/data-lists/towns-gb" class="btn btn-secondary">Open Towns (GB)</a>
+            <a href="/admin/data-lists/counties-gb/add?@BuildActionQuery()" class="btn btn-secondary">Add County</a>
+            <a href="/admin/data-lists/counties-gb/sort" class="btn btn-secondary">Sort Counties</a>
+        </div>
+    </section>
+
+    <section class="card">
+        <h2 class="card-title">Filters</h2>
+        <form method="get" action="/admin/data-lists/counties-gb" class="places-filter-line">
+            <label for="search">Text Search</label>
+            <input id="search" name="q" type="text" value="@currentSearch" placeholder="Name or Slug" />
+
+            <label for="statusFilter">Status</label>
+            <select id="statusFilter" name="status">
+                @if (currentStatus == "active")
+                {
+                    <option value="active" selected>Active</option>
+                }
+                else
+                {
+                    <option value="active">Active</option>
+                }
+                @if (currentStatus == "inactive")
+                {
+                    <option value="inactive" selected>Inactive</option>
+                }
+                else
+                {
+                    <option value="inactive">Inactive</option>
+                }
+                @if (currentStatus == "all")
+                {
+                    <option value="all" selected>All</option>
+                }
+                else
+                {
+                    <option value="all">All</option>
+                }
+            </select>
+
+            <input type="hidden" name="page" value="1" />
+            <input type="hidden" name="pageSize" value="@Model.PageSize" />
+            <button type="submit" class="btn btn-secondary">Apply</button>
+            <a href="/admin/data-lists/counties-gb" class="btn btn-secondary">Clear</a>
+        </form>
+    </section>
+
+    <section class="card">
+        <h2 class="card-title">Counties</h2>
+        @if (Model.Rows.Count == 0)
+        {
+            <p class="muted">No counties found for the current filter.</p>
+        }
+        else
+        {
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>County ID</th>
+                            <th>Name</th>
+                            <th>Slug</th>
+                            <th>Status</th>
+                            <th>Sort Order</th>
+                            <th>Created (UTC)</th>
+                            <th>Updated (UTC)</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    @foreach (var row in Model.Rows)
+                    {
+                        var statusKey = row.IsActive ? "active" : "inactive";
+                        var statusText = row.IsActive ? "Active" : "Inactive";
+                        <tr>
+                            <td>@row.CountyId</td>
+                            <td>@row.Name</td>
+                            <td>@(string.IsNullOrWhiteSpace(row.Slug) ? "N/A" : row.Slug)</td>
+                            <td><span class="status-pill status-@statusKey">@statusText</span></td>
+                            <td>@(row.SortOrder?.ToString() ?? "N/A")</td>
+                            <td>@row.CreatedUtc.ToString("u")</td>
+                            <td>@row.UpdatedUtc.ToString("u")</td>
+                            <td>
+                                <div class="toolbar">
+                                    <a class="btn btn-secondary" href="/admin/data-lists/counties-gb/view?countyId=@row.CountyId&@BuildActionQuery()">View</a>
+                                    <a class="btn btn-secondary" href="/admin/data-lists/counties-gb/edit?countyId=@row.CountyId&@BuildActionQuery()">Edit</a>
+                                    @if (row.IsActive)
+                                    {
+                                        <form method="post" action="/admin/data-lists/counties-gb/mark-inactive?@BuildActionQuery()" onsubmit="return confirm('Mark this county as inactive?');">
+                                            @Html.AntiForgeryToken()
+                                            <input type="hidden" name="countyId" value="@row.CountyId" />
+                                            <button type="submit" class="btn btn-secondary">Mark as Inactive</button>
+                                        </form>
+                                    }
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+        }
+
+        <div class="toolbar review-pager">
+            @if (hasPrev)
+            {
+                <a class="btn btn-secondary" href="@BuildListUrl(currentPage - 1)">Previous</a>
+            }
+            else
+            {
+                <button type="button" class="btn btn-secondary" disabled>Previous</button>
+            }
+            <span class="muted">Page @currentPage of @totalPages (@Model.TotalCount total)</span>
+            @if (hasNext)
+            {
+                <a class="btn btn-secondary" href="@BuildListUrl(currentPage + 1)">Next</a>
+            }
+            else
+            {
+                <button type="button" class="btn btn-secondary" disabled>Next</button>
+            }
+        </div>
+    </section>
+</div>

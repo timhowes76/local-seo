@@ -3,6 +3,7 @@ using LocalSeo.Web.Data;
 using LocalSeo.Web.Models;
 using LocalSeo.Web.Options;
 using Microsoft.Extensions.Options;
+using System.Text;
 using System.Text.Json;
 
 namespace LocalSeo.Web.Services;
@@ -13,6 +14,7 @@ public interface ISearchIngestionService
     Task<IReadOnlyList<SearchRun>> GetLatestRunsAsync(int take, CancellationToken ct);
     Task<SearchRun?> GetRunAsync(long runId, CancellationToken ct);
     Task<IReadOnlyList<PlaceSnapshotRow>> GetRunSnapshotsAsync(long runId, CancellationToken ct);
+    Task<RunKeyphraseTrafficSummary?> GetRunKeyphraseTrafficSummaryAsync(long runId, CancellationToken ct);
     Task<IReadOnlyList<RunTaskProgressRow>> GetRunTaskProgressAsync(SearchRun run, CancellationToken ct);
     Task<RunReviewComparisonViewModel?> GetRunReviewComparisonAsync(long runId, CancellationToken ct);
     Task<PlaceDetailsViewModel?> GetPlaceDetailsAsync(string placeId, long? runId, CancellationToken ct, int reviewPage = 1, int reviewPageSize = 25);
@@ -30,41 +32,72 @@ public sealed class SearchIngestionService(
 {
     public async Task<long> RunAsync(SearchFormModel model, CancellationToken ct)
     {
+        var normalizedCategoryId = (model.CategoryId ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(normalizedCategoryId))
+            throw new InvalidOperationException("Category is required.");
+        if (!model.TownId.HasValue || model.TownId.Value <= 0)
+            throw new InvalidOperationException("Town is required.");
+
+        SearchRunSelectionRow? selection;
+        await using (var lookupConn = (Microsoft.Data.SqlClient.SqlConnection)await connectionFactory.OpenConnectionAsync(ct))
+        {
+            selection = await lookupConn.QuerySingleOrDefaultAsync<SearchRunSelectionRow>(new CommandDefinition(@"
+SELECT TOP 1
+  c.CategoryId,
+  c.DisplayName AS CategoryDisplayName,
+  t.TownId,
+  t.CountyId,
+  t.Name AS TownName,
+  county.Name AS CountyName,
+  t.Latitude AS TownLat,
+  t.Longitude AS TownLng
+FROM dbo.GoogleBusinessProfileCategory c
+JOIN dbo.GbTown t ON t.TownId = @TownId
+JOIN dbo.GbCounty county ON county.CountyId = t.CountyId
+WHERE c.CategoryId = @CategoryId
+  AND c.Status = 'Active'
+  AND t.IsActive = 1
+  AND county.IsActive = 1
+  AND (@CountyId IS NULL OR t.CountyId = @CountyId);", new
+            {
+                CategoryId = normalizedCategoryId,
+                TownId = model.TownId.Value,
+                CountyId = model.CountyId
+            }, cancellationToken: ct));
+        }
+        if (selection is null)
+            throw new InvalidOperationException("Selected category or town is invalid, inactive, or no longer available.");
+
+        model.CountyId = selection.CountyId;
+        model.TownId = selection.TownId;
+
         decimal centerLat;
         decimal centerLng;
-        string? canonicalLocationName = null;
+        var locationQuery = $"{selection.TownName}, {selection.CountyName}";
+        string? canonicalLocationName = locationQuery;
+        var shouldPersistTownCoordinates = false;
 
-        if (model.CenterLat.HasValue && model.CenterLng.HasValue)
+        if (selection.TownLat.HasValue && selection.TownLng.HasValue)
         {
-            centerLat = model.CenterLat.Value;
-            centerLng = model.CenterLng.Value;
-            // Even when coordinates are prefilled (rerun), resolve a canonical location
-            // for downstream providers that validate location_name format.
-            try
-            {
-                var canonicalCenter = await google.GeocodeAsync(model.LocationName, placesOptions.Value.GeocodeCountryCode, ct);
-                canonicalLocationName = canonicalCenter?.CanonicalLocationName;
-            }
-            catch (Exception ex) when (!ct.IsCancellationRequested)
-            {
-                logger.LogWarning(ex, "Geocode canonicalization failed for rerun location '{LocationName}'. Falling back to raw input.", model.LocationName);
-            }
+            centerLat = selection.TownLat.Value;
+            centerLng = selection.TownLng.Value;
         }
         else
         {
-            var center = await google.GeocodeAsync(model.LocationName, placesOptions.Value.GeocodeCountryCode, ct);
+            var center = await google.GeocodeAsync(locationQuery, placesOptions.Value.GeocodeCountryCode, ct);
             if (center is null)
-                throw new InvalidOperationException($"Could not determine coordinates for '{model.LocationName}'.");
+                throw new InvalidOperationException($"Could not determine coordinates for '{locationQuery}'.");
 
             centerLat = center.Value.Lat;
             centerLng = center.Value.Lng;
             canonicalLocationName = center.Value.CanonicalLocationName;
+            shouldPersistTownCoordinates = true;
         }
 
         var effectiveLocationName = !string.IsNullOrWhiteSpace(canonicalLocationName)
             ? canonicalLocationName
-            : model.LocationName;
-        var places = await google.SearchAsync(model.SeedKeyword, model.LocationName, centerLat, centerLng, model.RadiusMeters, model.ResultLimit, ct);
+            : locationQuery;
+        var places = await google.SearchAsync(selection.CategoryDisplayName, locationQuery, centerLat, centerLng, model.RadiusMeters, model.ResultLimit, ct);
 
         var normalizedLocationByPlaceId = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (var place in places)
@@ -94,16 +127,33 @@ public sealed class SearchIngestionService(
         await using var conn = (Microsoft.Data.SqlClient.SqlConnection)await connectionFactory.OpenConnectionAsync(ct);
         await using var tx = await conn.BeginTransactionAsync(ct);
 
+        if (shouldPersistTownCoordinates)
+        {
+            await conn.ExecuteAsync(new CommandDefinition(@"
+UPDATE dbo.GbTown
+SET
+  Latitude = COALESCE(Latitude, @Latitude),
+  Longitude = COALESCE(Longitude, @Longitude),
+  UpdatedUtc = CASE
+    WHEN Latitude IS NULL OR Longitude IS NULL THEN SYSUTCDATETIME()
+    ELSE UpdatedUtc
+  END
+WHERE TownId = @TownId;", new
+            {
+                Latitude = centerLat,
+                Longitude = centerLng,
+                TownId = selection.TownId
+            }, tx, cancellationToken: ct));
+        }
+
         var runId = await conn.ExecuteScalarAsync<long>(new CommandDefinition(@"
-INSERT INTO dbo.SearchRun(SeedKeyword,LocationName,CenterLat,CenterLng,RadiusMeters,ResultLimit,FetchDetailedData,FetchGoogleReviews,FetchGoogleUpdates,FetchGoogleQuestionsAndAnswers)
+INSERT INTO dbo.SearchRun(CategoryId,TownId,RadiusMeters,ResultLimit,FetchDetailedData,FetchGoogleReviews,FetchGoogleUpdates,FetchGoogleQuestionsAndAnswers)
 OUTPUT INSERTED.SearchRunId
-VALUES(@SeedKeyword,@LocationName,@CenterLat,@CenterLng,@RadiusMeters,@ResultLimit,@FetchDetailedData,@FetchGoogleReviews,@FetchGoogleUpdates,@FetchGoogleQuestionsAndAnswers)",
+VALUES(@CategoryId,@TownId,@RadiusMeters,@ResultLimit,@FetchDetailedData,@FetchGoogleReviews,@FetchGoogleUpdates,@FetchGoogleQuestionsAndAnswers)",
             new
             {
-                model.SeedKeyword,
-                model.LocationName,
-                CenterLat = centerLat,
-                CenterLng = centerLng,
+                CategoryId = selection.CategoryId,
+                TownId = selection.TownId,
                 model.RadiusMeters,
                 model.ResultLimit,
                 FetchDetailedData = model.FetchEnhancedGoogleData,
@@ -320,8 +370,27 @@ GROUP BY PlaceId, COALESCE(TaskType, 'reviews');",
     {
         await using var conn = (Microsoft.Data.SqlClient.SqlConnection)await connectionFactory.OpenConnectionAsync(ct);
         var rows = await conn.QueryAsync<SearchRun>(new CommandDefinition(@"
-SELECT TOP (@Take) SearchRunId, SeedKeyword, LocationName, CenterLat, CenterLng, RadiusMeters, ResultLimit, FetchDetailedData, FetchGoogleReviews, FetchGoogleUpdates, FetchGoogleQuestionsAndAnswers, RanAtUtc
-FROM dbo.SearchRun ORDER BY SearchRunId DESC", new { Take = take }, cancellationToken: ct));
+SELECT TOP (@Take)
+  r.SearchRunId,
+  r.CategoryId,
+  r.TownId,
+  t.CountyId,
+  c.DisplayName AS SeedKeyword,
+  CONCAT(t.Name, N', ', county.Name) AS LocationName,
+  t.Latitude AS CenterLat,
+  t.Longitude AS CenterLng,
+  r.RadiusMeters,
+  r.ResultLimit,
+  r.FetchDetailedData,
+  r.FetchGoogleReviews,
+  r.FetchGoogleUpdates,
+  r.FetchGoogleQuestionsAndAnswers,
+  r.RanAtUtc
+FROM dbo.SearchRun r
+JOIN dbo.GoogleBusinessProfileCategory c ON c.CategoryId = r.CategoryId
+JOIN dbo.GbTown t ON t.TownId = r.TownId
+JOIN dbo.GbCounty county ON county.CountyId = t.CountyId
+ORDER BY r.SearchRunId DESC", new { Take = take }, cancellationToken: ct));
         return rows.ToList();
     }
 
@@ -329,15 +398,33 @@ FROM dbo.SearchRun ORDER BY SearchRunId DESC", new { Take = take }, cancellation
     {
         await using var conn = (Microsoft.Data.SqlClient.SqlConnection)await connectionFactory.OpenConnectionAsync(ct);
         return await conn.QuerySingleOrDefaultAsync<SearchRun>(new CommandDefinition(@"
-SELECT SearchRunId, SeedKeyword, LocationName, CenterLat, CenterLng, RadiusMeters, ResultLimit, FetchDetailedData, FetchGoogleReviews, FetchGoogleUpdates, FetchGoogleQuestionsAndAnswers, RanAtUtc
-FROM dbo.SearchRun
-WHERE SearchRunId=@RunId", new { RunId = runId }, cancellationToken: ct));
+SELECT
+  r.SearchRunId,
+  r.CategoryId,
+  r.TownId,
+  t.CountyId,
+  c.DisplayName AS SeedKeyword,
+  CONCAT(t.Name, N', ', county.Name) AS LocationName,
+  t.Latitude AS CenterLat,
+  t.Longitude AS CenterLng,
+  r.RadiusMeters,
+  r.ResultLimit,
+  r.FetchDetailedData,
+  r.FetchGoogleReviews,
+  r.FetchGoogleUpdates,
+  r.FetchGoogleQuestionsAndAnswers,
+  r.RanAtUtc
+FROM dbo.SearchRun r
+JOIN dbo.GoogleBusinessProfileCategory c ON c.CategoryId = r.CategoryId
+JOIN dbo.GbTown t ON t.TownId = r.TownId
+JOIN dbo.GbCounty county ON county.CountyId = t.CountyId
+WHERE r.SearchRunId=@RunId", new { RunId = runId }, cancellationToken: ct));
     }
 
     public async Task<IReadOnlyList<PlaceSnapshotRow>> GetRunSnapshotsAsync(long runId, CancellationToken ct)
     {
         await using var conn = (Microsoft.Data.SqlClient.SqlConnection)await connectionFactory.OpenConnectionAsync(ct);
-        var rows = await conn.QueryAsync<PlaceSnapshotRow>(new CommandDefinition(@"
+        var rows = (await conn.QueryAsync<PlaceSnapshotRow>(new CommandDefinition(@"
 SELECT s.PlaceSnapshotId, s.SearchRunId, s.PlaceId, s.RankPosition, s.Rating, s.UserRatingCount, s.CapturedAtUtc,
        p.DisplayName, p.PrimaryCategory, p.PhotoCount, p.NationalPhoneNumber, p.Lat, p.Lng, p.FormattedAddress, p.WebsiteUri, p.QuestionAnswerCount,
        COALESCE(updCount.UpdateCount, 0) AS UpdateCount,
@@ -413,8 +500,31 @@ OUTER APPLY (
   WHERE u2.PlaceId=s.PlaceId
 ) updCount
 WHERE s.SearchRunId=@RunId
-ORDER BY s.RankPosition", new { RunId = runId }, cancellationToken: ct));
-        return rows.ToList();
+ORDER BY s.RankPosition", new { RunId = runId }, cancellationToken: ct))).ToList();
+
+        var keyphraseTraffic = await GetRunKeyphraseTrafficSummaryCoreAsync(conn, runId, ct);
+        if (keyphraseTraffic is null)
+            return rows;
+
+        var settings = await adminSettingsService.GetAsync(ct);
+        var weightedAvg = Math.Max(0, keyphraseTraffic.WeightedAvgSearchVolume);
+        var weightedLastMonth = keyphraseTraffic.WeightedLastMonthSearchVolume;
+
+        return rows
+            .Select(row => row with
+            {
+                AvgClicks = CalculateEstimatedMapPackClicks(row.RankPosition, weightedAvg, settings),
+                LastMonthClicks = weightedLastMonth.HasValue
+                    ? CalculateEstimatedMapPackClicks(row.RankPosition, weightedLastMonth.Value, settings)
+                    : null
+            })
+            .ToList();
+    }
+
+    public async Task<RunKeyphraseTrafficSummary?> GetRunKeyphraseTrafficSummaryAsync(long runId, CancellationToken ct)
+    {
+        await using var conn = (Microsoft.Data.SqlClient.SqlConnection)await connectionFactory.OpenConnectionAsync(ct);
+        return await GetRunKeyphraseTrafficSummaryCoreAsync(conn, runId, ct);
     }
 
     public async Task<IReadOnlyList<RunTaskProgressRow>> GetRunTaskProgressAsync(SearchRun run, CancellationToken ct)
@@ -680,9 +790,13 @@ ORDER BY CapturedAtUtc DESC", new { PlaceId = placeId }, cancellationToken: ct))
         if (mapRunId.HasValue)
         {
             runCenter = await conn.QuerySingleOrDefaultAsync<SearchRunCenterRow>(new CommandDefinition(@"
-SELECT TOP 1 SearchRunId, CenterLat, CenterLng
-FROM dbo.SearchRun
-WHERE SearchRunId=@SearchRunId;",
+SELECT TOP 1
+  r.SearchRunId,
+  t.Latitude AS CenterLat,
+  t.Longitude AS CenterLng
+FROM dbo.SearchRun r
+JOIN dbo.GbTown t ON t.TownId = r.TownId
+WHERE r.SearchRunId=@SearchRunId;",
                 new { SearchRunId = mapRunId.Value }, cancellationToken: ct));
         }
 
@@ -691,9 +805,15 @@ WHERE SearchRunId=@SearchRunId;",
         if (contextRunId.HasValue)
         {
             runContext = await conn.QuerySingleOrDefaultAsync<SearchRunContextRow>(new CommandDefinition(@"
-SELECT TOP 1 SearchRunId, SeedKeyword, LocationName
-FROM dbo.SearchRun
-WHERE SearchRunId=@SearchRunId;",
+SELECT TOP 1
+  r.SearchRunId,
+  c.DisplayName AS SeedKeyword,
+  CONCAT(t.Name, N', ', county.Name) AS LocationName
+FROM dbo.SearchRun r
+JOIN dbo.GoogleBusinessProfileCategory c ON c.CategoryId = r.CategoryId
+JOIN dbo.GbTown t ON t.TownId = r.TownId
+JOIN dbo.GbCounty county ON county.CountyId = t.CountyId
+WHERE r.SearchRunId=@SearchRunId;",
                 new { SearchRunId = contextRunId.Value }, cancellationToken: ct));
         }
 
@@ -725,10 +845,13 @@ SELECT TOP 20
   s.Rating,
   s.UserRatingCount,
   s.CapturedAtUtc,
-  r.SeedKeyword,
-  r.LocationName
+  c.DisplayName AS SeedKeyword,
+  CONCAT(t.Name, N', ', county.Name) AS LocationName
 FROM dbo.PlaceSnapshot s
 LEFT JOIN dbo.SearchRun r ON r.SearchRunId = s.SearchRunId
+LEFT JOIN dbo.GoogleBusinessProfileCategory c ON c.CategoryId = r.CategoryId
+LEFT JOIN dbo.GbTown t ON t.TownId = r.TownId
+LEFT JOIN dbo.GbCounty county ON county.CountyId = t.CountyId
 WHERE s.PlaceId=@PlaceId
 ORDER BY s.CapturedAtUtc DESC", new { PlaceId = placeId }, cancellationToken: ct))).ToList();
 
@@ -824,6 +947,7 @@ ORDER BY COALESCE(AnswerTimestampUtc, QuestionTimestampUtc, LastSeenUtc) DESC, P
 
         var otherCategories = ParseJsonStringArray(place.OtherCategoriesJson);
         var placeTopics = ParseJsonStringArray(place.PlaceTopicsJson);
+        var estimatedTraffic = await BuildPlaceEstimatedTrafficSummaryAsync(conn, contextRunId, active?.RankPosition, settings, ct);
 
         return new PlaceDetailsViewModel
         {
@@ -865,8 +989,194 @@ ORDER BY COALESCE(AnswerTimestampUtc, QuestionTimestampUtc, LastSeenUtc) DESC, P
             History = history,
             DataTaskStatuses = taskStatuses,
             ReviewVelocity = await reviewVelocityService.GetPlaceReviewVelocityAsync(placeId, ct),
-            UpdateVelocity = await reviewVelocityService.GetPlaceUpdateVelocityAsync(placeId, ct)
+            UpdateVelocity = await reviewVelocityService.GetPlaceUpdateVelocityAsync(placeId, ct),
+            EstimatedTraffic = estimatedTraffic
         };
+    }
+
+    private async Task<RunKeyphraseTrafficSummary?> GetRunKeyphraseTrafficSummaryCoreAsync(
+        Microsoft.Data.SqlClient.SqlConnection conn,
+        long runId,
+        CancellationToken ct)
+    {
+        var runContext = await conn.QuerySingleOrDefaultAsync<RunKeywordTrafficContextRow>(new CommandDefinition(@"
+SELECT TOP 1
+  CategoryId,
+  TownId
+FROM dbo.SearchRun
+WHERE SearchRunId = @RunId;", new { RunId = runId }, cancellationToken: ct));
+        if (runContext is null)
+            return null;
+
+        var aggregate = await BuildKeywordTrafficAggregateAsync(conn, runContext.CategoryId, runContext.TownId, ct);
+        if (aggregate is null)
+            return null;
+
+        return new RunKeyphraseTrafficSummary(
+            runContext.CategoryId,
+            runContext.TownId,
+            aggregate.Last12Months,
+            aggregate.WeightedAvgSearchVolume,
+            aggregate.WeightedLastMonthSearchVolume,
+            aggregate.LatestMonthYear,
+            aggregate.LatestMonthNumber,
+            BuildAdminKeyphrasesUrl(runContext.TownId, runContext.CategoryId));
+    }
+
+    private async Task<PlaceEstimatedTrafficSummary?> BuildPlaceEstimatedTrafficSummaryAsync(
+        Microsoft.Data.SqlClient.SqlConnection conn,
+        long? contextRunId,
+        int? activeRankPosition,
+        AdminSettingsModel settings,
+        CancellationToken ct)
+    {
+        if (!contextRunId.HasValue || !activeRankPosition.HasValue || activeRankPosition.Value <= 0)
+            return null;
+
+        var runContext = await conn.QuerySingleOrDefaultAsync<RunKeywordTrafficContextRow>(new CommandDefinition(@"
+SELECT TOP 1
+  CategoryId,
+  TownId
+FROM dbo.SearchRun
+WHERE SearchRunId = @RunId;", new { RunId = contextRunId.Value }, cancellationToken: ct));
+        if (runContext is null)
+            return null;
+
+        var aggregate = await BuildKeywordTrafficAggregateAsync(conn, runContext.CategoryId, runContext.TownId, ct);
+        if (aggregate is null)
+            return null;
+
+        var weightedAvgVolume = Math.Max(0, aggregate.WeightedAvgSearchVolume);
+        var currentPosition = activeRankPosition.Value;
+        var currentVisits = CalculateEstimatedMapPackClicks(currentPosition, weightedAvgVolume, settings);
+        var visitsAt3 = CalculateEstimatedMapPackClicks(3, weightedAvgVolume, settings);
+        var visitsAt1 = CalculateEstimatedMapPackClicks(1, weightedAvgVolume, settings);
+
+        int? opportunityTo3 = null;
+        if (currentPosition > 3)
+            opportunityTo3 = Math.Max(0, visitsAt3 - currentVisits);
+
+        int? opportunityTo1 = null;
+        if (currentPosition > 1)
+            opportunityTo1 = Math.Max(0, visitsAt1 - currentVisits);
+
+        return new PlaceEstimatedTrafficSummary(
+            currentPosition,
+            currentVisits,
+            visitsAt3,
+            visitsAt1,
+            opportunityTo3,
+            opportunityTo1);
+    }
+
+    private async Task<KeywordTrafficAggregate?> BuildKeywordTrafficAggregateAsync(
+        Microsoft.Data.SqlClient.SqlConnection conn,
+        string categoryId,
+        long townId,
+        CancellationToken ct)
+    {
+        var keywordCount = await conn.ExecuteScalarAsync<int>(new CommandDefinition(@"
+SELECT COUNT(1)
+FROM dbo.CategoryLocationKeyword
+WHERE CategoryId = @CategoryId
+  AND LocationId = @TownId;", new
+        {
+            CategoryId = categoryId,
+            TownId = townId
+        }, cancellationToken: ct));
+        if (keywordCount <= 0)
+            return null;
+
+        var monthly = (await conn.QueryAsync<WeightedMonthRow>(new CommandDefinition(@"
+SELECT TOP 12
+  m.[Year],
+  m.[Month],
+  CAST(SUM(
+    CAST(m.SearchVolume AS decimal(18, 4)) *
+    CASE
+      WHEN k.KeywordType = 1 THEN 1.0
+      WHEN k.KeywordType IN (3, 4) THEN 0.7
+      ELSE 0.0
+    END
+  ) AS decimal(18, 4)) AS WeightedSearchVolume
+FROM dbo.CategoryLocationSearchVolume m
+JOIN dbo.CategoryLocationKeyword k ON k.Id = m.CategoryLocationKeywordId
+WHERE k.CategoryId = @CategoryId
+  AND k.LocationId = @TownId
+  AND k.NoData = 0
+  AND k.KeywordType IN (1, 3, 4)
+GROUP BY m.[Year], m.[Month]
+ORDER BY m.[Year] DESC, m.[Month] DESC;", new
+        {
+            CategoryId = categoryId,
+            TownId = townId
+        }, cancellationToken: ct))).ToList();
+
+        var last12Months = monthly
+            .OrderBy(x => x.Year)
+            .ThenBy(x => x.Month)
+            .Select(x => new WeightedSearchVolumePoint(
+                x.Year,
+                x.Month,
+                decimal.Round(x.WeightedSearchVolume, 2, MidpointRounding.AwayFromZero)))
+            .ToList();
+
+        var weightedAvg = last12Months.Count == 0
+            ? 0
+            : (int)Math.Round(last12Months.Average(x => x.WeightedSearchVolume), MidpointRounding.AwayFromZero);
+        var latest = monthly
+            .OrderByDescending(x => x.Year)
+            .ThenByDescending(x => x.Month)
+            .FirstOrDefault();
+        var weightedLastMonth = latest is null
+            ? (int?)null
+            : (int)Math.Round(latest.WeightedSearchVolume, MidpointRounding.AwayFromZero);
+
+        return new KeywordTrafficAggregate(
+            last12Months,
+            Math.Max(0, weightedAvg),
+            weightedLastMonth.HasValue ? Math.Max(0, weightedLastMonth.Value) : null,
+            latest?.Year,
+            latest?.Month);
+    }
+
+    private static int CalculateEstimatedMapPackClicks(int rankPosition, int baselineSearchVolume, AdminSettingsModel settings)
+    {
+        if (rankPosition < 1 || rankPosition > 10 || baselineSearchVolume <= 0)
+            return 0;
+
+        var mapPackShareRatio = Math.Clamp(settings.MapPackClickSharePercent, 0, 100) / 100m;
+        if (mapPackShareRatio <= 0m)
+            return 0;
+
+        var positionCtrRatio = rankPosition switch
+        {
+            1 => Math.Clamp(settings.MapPackCtrPosition1Percent, 0, 100) / 100m,
+            2 => Math.Clamp(settings.MapPackCtrPosition2Percent, 0, 100) / 100m,
+            3 => Math.Clamp(settings.MapPackCtrPosition3Percent, 0, 100) / 100m,
+            4 => Math.Clamp(settings.MapPackCtrPosition4Percent, 0, 100) / 100m,
+            5 => Math.Clamp(settings.MapPackCtrPosition5Percent, 0, 100) / 100m,
+            6 => Math.Clamp(settings.MapPackCtrPosition6Percent, 0, 100) / 100m,
+            7 => Math.Clamp(settings.MapPackCtrPosition7Percent, 0, 100) / 100m,
+            8 => Math.Clamp(settings.MapPackCtrPosition8Percent, 0, 100) / 100m,
+            9 => Math.Clamp(settings.MapPackCtrPosition9Percent, 0, 100) / 100m,
+            10 => Math.Clamp(settings.MapPackCtrPosition10Percent, 0, 100) / 100m,
+            _ => 0m
+        };
+        if (positionCtrRatio <= 0m)
+            return 0;
+
+        var clicks = baselineSearchVolume * mapPackShareRatio * positionCtrRatio;
+        return Math.Max(0, (int)Math.Round(clicks, MidpointRounding.AwayFromZero));
+    }
+
+    private static string BuildAdminKeyphrasesUrl(long locationId, string categoryId)
+    {
+        var encodedCategoryId = Convert.ToBase64String(Encoding.UTF8.GetBytes(categoryId))
+            .TrimEnd('=')
+            .Replace('+', '-')
+            .Replace('/', '_');
+        return $"/admin/location/{locationId}/category/{encodedCategoryId}/keyphrases";
     }
 
     private static IReadOnlyList<PlaceDataTaskStatusRow> BuildPlaceTaskStatuses(
@@ -1126,6 +1436,25 @@ ORDER BY COALESCE(AnswerTimestampUtc, QuestionTimestampUtc, LastSeenUtc) DESC, P
     private sealed record SearchRunCenterRow(long SearchRunId, decimal? CenterLat, decimal? CenterLng);
 
     private sealed record SearchRunContextRow(long SearchRunId, string SeedKeyword, string LocationName);
+
+    private sealed record SearchRunSelectionRow(
+        string CategoryId,
+        string CategoryDisplayName,
+        long TownId,
+        long CountyId,
+        string TownName,
+        string CountyName,
+        decimal? TownLat,
+        decimal? TownLng);
+
+    private sealed record RunKeywordTrafficContextRow(string CategoryId, long TownId);
+    private sealed record WeightedMonthRow(int Year, int Month, decimal WeightedSearchVolume);
+    private sealed record KeywordTrafficAggregate(
+        IReadOnlyList<WeightedSearchVolumePoint> Last12Months,
+        int WeightedAvgSearchVolume,
+        int? WeightedLastMonthSearchVolume,
+        int? LatestMonthYear,
+        int? LatestMonthNumber);
 
     private sealed record PlaceSnapshotContextRow(long SearchRunId, int RankPosition, decimal? Rating, int? UserRatingCount, DateTime CapturedAtUtc);
 

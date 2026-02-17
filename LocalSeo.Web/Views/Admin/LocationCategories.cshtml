@@ -1,0 +1,61 @@
+@model LocationCategoryListViewModel
+@{
+    ViewData["Title"] = "Location Categories";
+    var statusMessage = TempData["Status"] as string;
+}
+
+<div class="page-stack">
+    @if (!string.IsNullOrWhiteSpace(statusMessage))
+    {
+        <div class="notice">@statusMessage</div>
+    }
+
+    <section class="card">
+        <div class="toolbar">
+            <a href="/admin/data-lists/towns-gb/view?townId=@Model.LocationId" class="btn btn-secondary">Back to Town</a>
+            <a href="/admin/data-lists/towns-gb" class="btn btn-secondary">Back to Towns</a>
+        </div>
+    </section>
+
+    <section class="card">
+        <h2 class="card-title">Categories For @Model.LocationName, @Model.CountyName</h2>
+        @if (Model.Rows.Count == 0)
+        {
+            <p class="muted">No categories found for this location yet. Run searches first to seed category links.</p>
+        }
+        else
+        {
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Category</th>
+                            <th>Keywords</th>
+                            <th>Main Terms</th>
+                            <th>Last Keyword Update (UTC)</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    @foreach (var row in Model.Rows)
+                    {
+                        var encodedCategoryId = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(row.CategoryId))
+                            .TrimEnd('=')
+                            .Replace('+', '-')
+                            .Replace('/', '_');
+                        <tr>
+                            <td>@row.CategoryDisplayName <span class="muted">(@row.CategoryId)</span></td>
+                            <td>@row.KeywordCount</td>
+                            <td>@row.MainTermCount</td>
+                            <td>@(row.LastKeywordUpdatedUtc?.ToString("u") ?? "N/A")</td>
+                            <td>
+                                <a class="btn btn-secondary" href="/admin/location/@Model.LocationId/category/@encodedCategoryId/keyphrases">Keyphrases</a>
+                            </td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </section>
+</div>

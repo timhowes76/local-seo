@@ -1,0 +1,177 @@
+@model GoogleBusinessProfileCategoryListViewModel
+@{
+    ViewData["Title"] = "Google Business Profile Categories";
+    var statusMessage = TempData["Status"] as string;
+    var currentSearch = (Model.Search ?? string.Empty).Trim();
+    var currentStatus = (Model.StatusFilter ?? "active").Trim().ToLowerInvariant();
+    var currentPage = Math.Max(1, Model.Page);
+    var totalPages = Math.Max(1, Model.TotalPages);
+    var hasPrev = currentPage > 1;
+    var hasNext = currentPage < totalPages;
+
+    var statusQuery = Uri.EscapeDataString(currentStatus);
+    var pageSizeQuery = Model.PageSize.ToString();
+    var searchQuery = string.IsNullOrWhiteSpace(currentSearch)
+        ? string.Empty
+        : $"&q={Uri.EscapeDataString(currentSearch)}";
+
+    string BuildListUrl(int page) =>
+        $"/admin/data-lists/google-business-profile-categories?status={statusQuery}{searchQuery}&page={page}&pageSize={pageSizeQuery}";
+
+    string BuildActionQuery() =>
+        $"status={statusQuery}{searchQuery}&page={currentPage}&pageSize={pageSizeQuery}";
+}
+
+<div class="page-stack">
+    @if (!string.IsNullOrWhiteSpace(statusMessage))
+    {
+        <div class="notice">@statusMessage</div>
+    }
+
+    <section class="card">
+        <div class="toolbar">
+            <a href="/admin/data-lists" class="btn btn-secondary">Back to Data Lists</a>
+            <a href="/admin/google/connect" class="btn btn-secondary">Connect Google</a>
+            <a href="/admin/data-lists/google-business-profile-categories/add?@BuildActionQuery()" class="btn btn-secondary">Add Category</a>
+            <form method="post" action="/admin/data-lists/google-business-profile-categories/sync-uk?@BuildActionQuery()" onsubmit="return confirm('Sync GBP categories from Google for GB/en-GB now?');">
+                @Html.AntiForgeryToken()
+                <button type="submit">Sync from Google (UK)</button>
+            </form>
+        </div>
+    </section>
+
+    <section class="card">
+        <h2 class="card-title">Last Sync Run (UK)</h2>
+        @if (Model.LastUkSyncSummary is null)
+        {
+            <p class="muted">No successful UK sync has been recorded yet.</p>
+        }
+        else
+        {
+            <div><strong>Timestamp:</strong> @Model.LastUkSyncSummary.RanAtUtc.ToString("u")</div>
+            <div><strong>Number Added:</strong> @Model.LastUkSyncSummary.AddedCount</div>
+            <div><strong>Number Updated:</strong> @Model.LastUkSyncSummary.UpdatedCount</div>
+            <div><strong>Number Marked Inactive:</strong> @Model.LastUkSyncSummary.MarkedInactiveCount</div>
+        }
+    </section>
+
+    <section class="card">
+        <h2 class="card-title">Filters</h2>
+        <form method="get" action="/admin/data-lists/google-business-profile-categories" class="places-filter-line">
+            <label for="search">Text Search</label>
+            <input id="search" name="q" type="text" value="@currentSearch" placeholder="Display Name or Category ID" />
+
+            <label for="statusFilter">Status</label>
+            <select id="statusFilter" name="status">
+                @if (currentStatus == "active")
+                {
+                    <option value="active" selected>Active</option>
+                }
+                else
+                {
+                    <option value="active">Active</option>
+                }
+                @if (currentStatus == "inactive")
+                {
+                    <option value="inactive" selected>Inactive</option>
+                }
+                else
+                {
+                    <option value="inactive">Inactive</option>
+                }
+                @if (currentStatus == "all")
+                {
+                    <option value="all" selected>All</option>
+                }
+                else
+                {
+                    <option value="all">All</option>
+                }
+            </select>
+
+            <input type="hidden" name="page" value="1" />
+            <input type="hidden" name="pageSize" value="@Model.PageSize" />
+            <button type="submit" class="btn btn-secondary">Apply</button>
+            <a href="/admin/data-lists/google-business-profile-categories" class="btn btn-secondary">Clear</a>
+        </form>
+    </section>
+
+    <section class="card">
+        <h2 class="card-title">Categories</h2>
+        @if (Model.Rows.Count == 0)
+        {
+            <p class="muted">No categories found for the current filter.</p>
+        }
+        else
+        {
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Category ID (GCID / resource name)</th>
+                            <th>Display Name</th>
+                            <th>Region Code</th>
+                            <th>Language Code</th>
+                            <th>Status</th>
+                            <th>First Seen (UTC)</th>
+                            <th>Last Seen (UTC)</th>
+                            <th>Last Synced (UTC)</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    @foreach (var row in Model.Rows)
+                    {
+                        var statusKey = string.Equals(row.Status, "Inactive", StringComparison.OrdinalIgnoreCase)
+                            ? "inactive"
+                            : "active";
+                        <tr>
+                            <td><code>@row.CategoryId</code></td>
+                            <td>@row.DisplayName</td>
+                            <td>@row.RegionCode</td>
+                            <td>@row.LanguageCode</td>
+                            <td><span class="status-pill status-@statusKey">@row.Status</span></td>
+                            <td>@row.FirstSeenUtc.ToString("u")</td>
+                            <td>@row.LastSeenUtc.ToString("u")</td>
+                            <td>@row.LastSyncedUtc.ToString("u")</td>
+                            <td>
+                                <div class="toolbar">
+                                    <a class="btn btn-secondary" href="/admin/data-lists/google-business-profile-categories/edit?categoryId=@Uri.EscapeDataString(row.CategoryId)&@BuildActionQuery()">Edit</a>
+                                    @if (!string.Equals(row.Status, "Inactive", StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        <form method="post" action="/admin/data-lists/google-business-profile-categories/mark-inactive?@BuildActionQuery()" onsubmit="return confirm('Mark this category as inactive?');">
+                                            @Html.AntiForgeryToken()
+                                            <input type="hidden" name="categoryId" value="@row.CategoryId" />
+                                            <button type="submit" class="btn btn-secondary">Mark as Inactive</button>
+                                        </form>
+                                    }
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+        }
+
+        <div class="toolbar review-pager">
+            @if (hasPrev)
+            {
+                <a class="btn btn-secondary" href="@BuildListUrl(currentPage - 1)">Previous</a>
+            }
+            else
+            {
+                <button type="button" class="btn btn-secondary" disabled>Previous</button>
+            }
+            <span class="muted">Page @currentPage of @totalPages (@Model.TotalCount total)</span>
+            @if (hasNext)
+            {
+                <a class="btn btn-secondary" href="@BuildListUrl(currentPage + 1)">Next</a>
+            }
+            else
+            {
+                <button type="button" class="btn btn-secondary" disabled>Next</button>
+            }
+        </div>
+    </section>
+</div>

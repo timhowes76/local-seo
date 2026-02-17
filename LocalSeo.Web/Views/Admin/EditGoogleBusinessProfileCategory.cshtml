@@ -1,0 +1,59 @@
+@model GoogleBusinessProfileCategoryEditModel
+@{
+    ViewData["Title"] = "Edit GBP Category";
+    var returnQ = (ViewBag.ReturnQ as string ?? string.Empty).Trim();
+    var returnStatus = (ViewBag.ReturnStatus as string ?? "active").Trim().ToLowerInvariant();
+    var returnPage = ViewBag.ReturnPage is int p ? Math.Max(1, p) : 1;
+    var returnPageSize = ViewBag.ReturnPageSize is int ps ? Math.Clamp(ps, 10, 200) : 50;
+
+    var statusQuery = Uri.EscapeDataString(returnStatus);
+    var searchQuery = string.IsNullOrWhiteSpace(returnQ) ? string.Empty : $"&q={Uri.EscapeDataString(returnQ)}";
+    var backUrl = $"/admin/data-lists/google-business-profile-categories?status={statusQuery}{searchQuery}&page={returnPage}&pageSize={returnPageSize}";
+    var actionUrl = $"/admin/data-lists/google-business-profile-categories/edit?status={statusQuery}{searchQuery}&page={returnPage}&pageSize={returnPageSize}";
+}
+
+<div class="page-stack">
+    <section class="card">
+        <div class="toolbar">
+            <a href="@backUrl" class="btn btn-secondary">Back to Categories</a>
+        </div>
+    </section>
+
+    <section class="card">
+        <h2 class="card-title">Edit Category</h2>
+        <form method="post" action="@actionUrl" class="form-grid">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="CategoryId" value="@Model.CategoryId" />
+
+            <div class="form-row">
+                <label for="CategoryIdReadOnly">Category ID</label>
+                <input id="CategoryIdReadOnly" type="text" value="@Model.CategoryId" readonly />
+            </div>
+
+            <div class="form-row">
+                <label for="DisplayName">Display Name</label>
+                <input id="DisplayName" name="DisplayName" type="text" value="@Model.DisplayName" required />
+                @Html.ValidationMessageFor(x => x.DisplayName)
+            </div>
+
+            <div class="form-row">
+                <label for="RegionCodeReadOnly">Region Code</label>
+                <input id="RegionCodeReadOnly" type="text" value="@Model.RegionCode" readonly />
+            </div>
+
+            <div class="form-row">
+                <label for="LanguageCodeReadOnly">Language Code</label>
+                <input id="LanguageCodeReadOnly" type="text" value="@Model.LanguageCode" readonly />
+            </div>
+
+            <div class="form-row">
+                <label for="StatusReadOnly">Status</label>
+                <input id="StatusReadOnly" type="text" value="@Model.Status" readonly />
+            </div>
+
+            <div class="toolbar">
+                <button type="submit">Save</button>
+            </div>
+        </form>
+    </section>
+</div>

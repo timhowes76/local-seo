@@ -2,3 +2,4 @@
 **/obj/
 LocalSeo.Web/appsettings.json
 LocalSeo.Web/appsettings.*.json
+LocalSeo.Web/App_Data/

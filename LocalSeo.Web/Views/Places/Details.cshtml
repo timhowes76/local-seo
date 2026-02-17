@@ -192,6 +192,47 @@
         </section>
     </div>
 
+    @if (Model.EstimatedTraffic is not null)
+    {
+        var traffic = Model.EstimatedTraffic;
+        <section class="card estimated-traffic-card">
+            <h2 class="card-title">Estimated Traffic</h2>
+            <div class="estimated-traffic-grid">
+                <div class="estimated-traffic-metric">
+                    <span class="estimated-traffic-label">Current Map Position</span>
+                    <span class="estimated-traffic-value">@(traffic.CurrentMapPosition.ToString("N0"))</span>
+                </div>
+                <div class="estimated-traffic-metric">
+                    <span class="estimated-traffic-label">Estimated Monthly Map Visits</span>
+                    <span class="estimated-traffic-value">@traffic.EstimatedMonthlyMapVisits.ToString("N0")</span>
+                </div>
+                <div class="estimated-traffic-metric">
+                    <span class="estimated-traffic-label">Estimated Visits at Position 3</span>
+                    <span class="estimated-traffic-value">@traffic.EstimatedVisitsAtPosition3.ToString("N0")</span>
+                </div>
+                <div class="estimated-traffic-metric">
+                    <span class="estimated-traffic-label">Estimated Visits at Position 1</span>
+                    <span class="estimated-traffic-value">@traffic.EstimatedVisitsAtPosition1.ToString("N0")</span>
+                </div>
+            </div>
+
+            @if (traffic.CurrentMapPosition > 1)
+            {
+                <div class="estimated-traffic-gap">
+                    <h3>Traffic Opportunity Gap</h3>
+                    @if (traffic.CurrentMapPosition > 3 && traffic.OpportunityToPosition3.HasValue)
+                    {
+                        <div><strong>To Position 3:</strong> +@traffic.OpportunityToPosition3.Value.ToString("N0") visits/month</div>
+                    }
+                    @if (traffic.OpportunityToPosition1.HasValue)
+                    {
+                        <div><strong>To Position 1:</strong> +@traffic.OpportunityToPosition1.Value.ToString("N0") visits/month</div>
+                    }
+                </div>
+            }
+        </section>
+    }
+
 @{
     var apiKey = GoogleOptions.Value.ApiKey;
     var hasBusinessCoords = Model.Lat.HasValue && Model.Lng.HasValue;

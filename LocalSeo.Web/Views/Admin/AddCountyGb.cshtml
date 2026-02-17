@@ -1,0 +1,56 @@
+@model GbCountyCreateModel
+@{
+    ViewData["Title"] = "Add County (GB)";
+    var returnQ = (ViewBag.ReturnQ as string ?? string.Empty).Trim();
+    var returnStatus = (ViewBag.ReturnStatus as string ?? "active").Trim().ToLowerInvariant();
+    var returnPage = ViewBag.ReturnPage is int p ? Math.Max(1, p) : 1;
+    var returnPageSize = ViewBag.ReturnPageSize is int ps ? Math.Clamp(ps, 10, 200) : 50;
+
+    var statusQuery = Uri.EscapeDataString(returnStatus);
+    var searchQuery = string.IsNullOrWhiteSpace(returnQ) ? string.Empty : $"&q={Uri.EscapeDataString(returnQ)}";
+    var backUrl = $"/admin/data-lists/counties-gb?status={statusQuery}{searchQuery}&page={returnPage}&pageSize={returnPageSize}";
+    var actionUrl = $"/admin/data-lists/counties-gb/add?status={statusQuery}{searchQuery}&page={returnPage}&pageSize={returnPageSize}";
+}
+
+<div class="page-stack">
+    <section class="card">
+        <div class="toolbar">
+            <a href="@backUrl" class="btn btn-secondary">Back to Counties</a>
+        </div>
+    </section>
+
+    <section class="card">
+        <h2 class="card-title">Add County</h2>
+        <form method="post" action="@actionUrl" class="form-grid">
+            @Html.AntiForgeryToken()
+
+            <div class="form-row">
+                <label for="Name">Name</label>
+                <input id="Name" name="Name" type="text" value="@Model.Name" required />
+            </div>
+
+            <div class="form-row">
+                <label for="Slug">Slug</label>
+                <input id="Slug" name="Slug" type="text" value="@Model.Slug" />
+            </div>
+
+            <div class="form-row">
+                <label class="inline-group" for="IsActive">
+                    @if (Model.IsActive)
+                    {
+                        <input id="IsActive" name="IsActive" type="checkbox" value="true" checked />
+                    }
+                    else
+                    {
+                        <input id="IsActive" name="IsActive" type="checkbox" value="true" />
+                    }
+                    <span>Active</span>
+                </label>
+            </div>
+
+            <div class="toolbar">
+                <button type="submit">Add County</button>
+            </div>
+        </form>
+    </section>
+</div>

@@ -1,0 +1,96 @@
+@model GbCountyDetailsViewModel
+@{
+    ViewData["Title"] = "View County (GB)";
+    var county = Model.County;
+    var returnQ = (ViewBag.ReturnQ as string ?? string.Empty).Trim();
+    var returnStatus = (ViewBag.ReturnStatus as string ?? "active").Trim().ToLowerInvariant();
+    var returnPage = ViewBag.ReturnPage is int p ? Math.Max(1, p) : 1;
+    var returnPageSize = ViewBag.ReturnPageSize is int ps ? Math.Clamp(ps, 10, 200) : 50;
+
+    var statusQuery = Uri.EscapeDataString(returnStatus);
+    var searchQuery = string.IsNullOrWhiteSpace(returnQ) ? string.Empty : $"&q={Uri.EscapeDataString(returnQ)}";
+    var backUrl = $"/admin/data-lists/counties-gb?status={statusQuery}{searchQuery}&page={returnPage}&pageSize={returnPageSize}";
+    var editUrl = $"/admin/data-lists/counties-gb/edit?countyId={county.CountyId}&status={statusQuery}{searchQuery}&page={returnPage}&pageSize={returnPageSize}";
+    var statusText = county.IsActive ? "Active" : "Inactive";
+}
+
+<div class="page-stack">
+    <section class="card">
+        <div class="toolbar">
+            <a href="@backUrl" class="btn btn-secondary">Back to Counties</a>
+            <a href="@editUrl" class="btn btn-secondary">Edit</a>
+        </div>
+    </section>
+
+    <section class="card">
+        <h2 class="card-title">County Details - @county.Name (@statusText)</h2>
+    </section>
+
+    <section class="card">
+        <h2 class="card-title">Towns In This County</h2>
+        @if (Model.Towns.Count == 0)
+        {
+            <p class="muted">No towns found for this county.</p>
+        }
+        else
+        {
+            <div class="town-link-grid">
+                @foreach (var town in Model.Towns)
+                {
+                    var townStatusKey = town.IsActive ? "active" : "inactive";
+                    var townStatusText = town.IsActive ? "Active" : "Inactive";
+                    <a class="town-link-card" href="/admin/data-lists/towns-gb/view?townId=@town.TownId">
+                        <span class="town-link-name">@town.Name</span>
+                        <span class="status-pill status-@townStatusKey">@townStatusText</span>
+                    </a>
+                }
+            </div>
+        }
+    </section>
+
+    <section class="card">
+        <h2 class="card-title">Runs For This County</h2>
+        @if (Model.Runs.Count == 0)
+        {
+            <p class="muted">No runs found for this county.</p>
+        }
+        else
+        {
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Keyword</th>
+                            <th>Location</th>
+                            <th>Search Depth</th>
+                            <th>Get Enahnced Google Data</th>
+                            <th>Get Google Reviews</th>
+                            <th>Get Google Updates</th>
+                            <th>Get Google Question &amp; Answers</th>
+                            <th>Ran</th>
+                            <th>Details</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    @foreach (var r in Model.Runs)
+                    {
+                        <tr>
+                            <td>@r.SearchRunId</td>
+                            <td>@r.SeedKeyword</td>
+                            <td>@r.LocationName</td>
+                            <td>@r.ResultLimit</td>
+                            <td><span class="status-pill @(r.FetchDetailedData ? "status-healthy" : "status-noreviews")">@(r.FetchDetailedData ? "Yes" : "No")</span></td>
+                            <td><span class="status-pill @(r.FetchGoogleReviews ? "status-healthy" : "status-noreviews")">@(r.FetchGoogleReviews ? "Yes" : "No")</span></td>
+                            <td><span class="status-pill @(r.FetchGoogleUpdates ? "status-healthy" : "status-noreviews")">@(r.FetchGoogleUpdates ? "Yes" : "No")</span></td>
+                            <td><span class="status-pill @(r.FetchGoogleQuestionsAndAnswers ? "status-healthy" : "status-noreviews")">@(r.FetchGoogleQuestionsAndAnswers ? "Yes" : "No")</span></td>
+                            <td>@r.RanAtUtc</td>
+                            <td><a href="/runs/@r.SearchRunId">View</a></td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </section>
+</div>

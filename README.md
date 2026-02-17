@@ -25,6 +25,10 @@ ASP.NET Core MVC app for internal staff to run Google Places Text Search queries
 Set via `appsettings.json` and/or environment variables:
 - `ConnectionStrings__Sql`
 - `Google__ApiKey`
+- `Google__ClientId`
+- `Google__ClientSecret`
+- `Google__RedirectBaseUrl`
+- `Google__BusinessProfileOAuthRefreshToken` (optional in config; local secure store is populated after `/admin/google/connect`)
 - `SendGrid__ApiKey`
 - `SendGrid__FromEmail`
 - `SendGrid__FromName`
@@ -47,6 +51,12 @@ Set via `appsettings.json` and/or environment variables:
 - `DataForSeo__SortBy` (default `newest`)
 - `DataForSeo__MaxPollAttempts` (default `10`)
 - `DataForSeo__PollDelayMs` (default `1000`)
+
+### Google OAuth setup checklist (GBP Categories sync)
+- Authorized redirect URI:
+  `https://briskly-viceless-kayleen.ngrok-free.dev/admin/google/oauth/callback`
+- Authorized JavaScript origin (if needed):
+  `https://briskly-viceless-kayleen.ngrok-free.dev`
 
 ## Run
 1. Create SQL DB and set `ConnectionStrings__Sql`.

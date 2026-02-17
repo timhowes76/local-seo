@@ -1,0 +1,28 @@
+@model GoogleOAuthConnectionResult
+@{
+    ViewData["Title"] = "Google Connection";
+}
+
+<div class="page-stack">
+    <section class="card">
+        <div class="toolbar">
+            <a href="/admin/data-lists/google-business-profile-categories" class="btn btn-secondary">Back to Categories</a>
+        </div>
+    </section>
+
+    <section class="card">
+        <h2 class="card-title">Google Business Profile Connection</h2>
+        @if (Model.Success)
+        {
+            <p>@Model.Message</p>
+            @if (!string.IsNullOrWhiteSpace(Model.MaskedRefreshToken))
+            {
+                <p class="muted">Stored refresh token: <code>@Model.MaskedRefreshToken</code></p>
+            }
+        }
+        else
+        {
+            <p class="muted">@Model.Message</p>
+        }
+    </section>
+</div>

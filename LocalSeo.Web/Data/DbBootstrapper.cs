@@ -526,6 +526,18 @@ BEGIN
     GoogleReviewsRefreshHours int NOT NULL CONSTRAINT DF_AppSettings_GoogleReviewsRefreshHours DEFAULT(24),
     GoogleUpdatesRefreshHours int NOT NULL CONSTRAINT DF_AppSettings_GoogleUpdatesRefreshHours DEFAULT(24),
     GoogleQuestionsAndAnswersRefreshHours int NOT NULL CONSTRAINT DF_AppSettings_GoogleQuestionsAndAnswersRefreshHours DEFAULT(24),
+    SearchVolumeRefreshCooldownDays int NOT NULL CONSTRAINT DF_AppSettings_SearchVolumeRefreshCooldownDays DEFAULT(30),
+    MapPackClickSharePercent int NOT NULL CONSTRAINT DF_AppSettings_MapPackClickSharePercent DEFAULT(50),
+    MapPackCtrPosition1Percent int NOT NULL CONSTRAINT DF_AppSettings_MapPackCtrPosition1Percent DEFAULT(38),
+    MapPackCtrPosition2Percent int NOT NULL CONSTRAINT DF_AppSettings_MapPackCtrPosition2Percent DEFAULT(23),
+    MapPackCtrPosition3Percent int NOT NULL CONSTRAINT DF_AppSettings_MapPackCtrPosition3Percent DEFAULT(16),
+    MapPackCtrPosition4Percent int NOT NULL CONSTRAINT DF_AppSettings_MapPackCtrPosition4Percent DEFAULT(7),
+    MapPackCtrPosition5Percent int NOT NULL CONSTRAINT DF_AppSettings_MapPackCtrPosition5Percent DEFAULT(5),
+    MapPackCtrPosition6Percent int NOT NULL CONSTRAINT DF_AppSettings_MapPackCtrPosition6Percent DEFAULT(4),
+    MapPackCtrPosition7Percent int NOT NULL CONSTRAINT DF_AppSettings_MapPackCtrPosition7Percent DEFAULT(3),
+    MapPackCtrPosition8Percent int NOT NULL CONSTRAINT DF_AppSettings_MapPackCtrPosition8Percent DEFAULT(2),
+    MapPackCtrPosition9Percent int NOT NULL CONSTRAINT DF_AppSettings_MapPackCtrPosition9Percent DEFAULT(1),
+    MapPackCtrPosition10Percent int NOT NULL CONSTRAINT DF_AppSettings_MapPackCtrPosition10Percent DEFAULT(1),
     UpdatedAtUtc datetime2(0) NOT NULL CONSTRAINT DF_AppSettings_UpdatedAtUtc DEFAULT SYSUTCDATETIME()
   );
 END;
@@ -537,6 +549,30 @@ IF COL_LENGTH('dbo.AppSettings', 'GoogleUpdatesRefreshHours') IS NULL
   ALTER TABLE dbo.AppSettings ADD GoogleUpdatesRefreshHours int NOT NULL CONSTRAINT DF_AppSettings_GoogleUpdatesRefreshHours_Alt DEFAULT(24);
 IF COL_LENGTH('dbo.AppSettings', 'GoogleQuestionsAndAnswersRefreshHours') IS NULL
   ALTER TABLE dbo.AppSettings ADD GoogleQuestionsAndAnswersRefreshHours int NOT NULL CONSTRAINT DF_AppSettings_GoogleQuestionsAndAnswersRefreshHours_Alt DEFAULT(24);
+IF COL_LENGTH('dbo.AppSettings', 'SearchVolumeRefreshCooldownDays') IS NULL
+  ALTER TABLE dbo.AppSettings ADD SearchVolumeRefreshCooldownDays int NOT NULL CONSTRAINT DF_AppSettings_SearchVolumeRefreshCooldownDays_Alt DEFAULT(30);
+IF COL_LENGTH('dbo.AppSettings', 'MapPackClickSharePercent') IS NULL
+  ALTER TABLE dbo.AppSettings ADD MapPackClickSharePercent int NOT NULL CONSTRAINT DF_AppSettings_MapPackClickSharePercent_Alt DEFAULT(50);
+IF COL_LENGTH('dbo.AppSettings', 'MapPackCtrPosition1Percent') IS NULL
+  ALTER TABLE dbo.AppSettings ADD MapPackCtrPosition1Percent int NOT NULL CONSTRAINT DF_AppSettings_MapPackCtrPosition1Percent_Alt DEFAULT(38);
+IF COL_LENGTH('dbo.AppSettings', 'MapPackCtrPosition2Percent') IS NULL
+  ALTER TABLE dbo.AppSettings ADD MapPackCtrPosition2Percent int NOT NULL CONSTRAINT DF_AppSettings_MapPackCtrPosition2Percent_Alt DEFAULT(23);
+IF COL_LENGTH('dbo.AppSettings', 'MapPackCtrPosition3Percent') IS NULL
+  ALTER TABLE dbo.AppSettings ADD MapPackCtrPosition3Percent int NOT NULL CONSTRAINT DF_AppSettings_MapPackCtrPosition3Percent_Alt DEFAULT(16);
+IF COL_LENGTH('dbo.AppSettings', 'MapPackCtrPosition4Percent') IS NULL
+  ALTER TABLE dbo.AppSettings ADD MapPackCtrPosition4Percent int NOT NULL CONSTRAINT DF_AppSettings_MapPackCtrPosition4Percent_Alt DEFAULT(7);
+IF COL_LENGTH('dbo.AppSettings', 'MapPackCtrPosition5Percent') IS NULL
+  ALTER TABLE dbo.AppSettings ADD MapPackCtrPosition5Percent int NOT NULL CONSTRAINT DF_AppSettings_MapPackCtrPosition5Percent_Alt DEFAULT(5);
+IF COL_LENGTH('dbo.AppSettings', 'MapPackCtrPosition6Percent') IS NULL
+  ALTER TABLE dbo.AppSettings ADD MapPackCtrPosition6Percent int NOT NULL CONSTRAINT DF_AppSettings_MapPackCtrPosition6Percent_Alt DEFAULT(4);
+IF COL_LENGTH('dbo.AppSettings', 'MapPackCtrPosition7Percent') IS NULL
+  ALTER TABLE dbo.AppSettings ADD MapPackCtrPosition7Percent int NOT NULL CONSTRAINT DF_AppSettings_MapPackCtrPosition7Percent_Alt DEFAULT(3);
+IF COL_LENGTH('dbo.AppSettings', 'MapPackCtrPosition8Percent') IS NULL
+  ALTER TABLE dbo.AppSettings ADD MapPackCtrPosition8Percent int NOT NULL CONSTRAINT DF_AppSettings_MapPackCtrPosition8Percent_Alt DEFAULT(2);
+IF COL_LENGTH('dbo.AppSettings', 'MapPackCtrPosition9Percent') IS NULL
+  ALTER TABLE dbo.AppSettings ADD MapPackCtrPosition9Percent int NOT NULL CONSTRAINT DF_AppSettings_MapPackCtrPosition9Percent_Alt DEFAULT(1);
+IF COL_LENGTH('dbo.AppSettings', 'MapPackCtrPosition10Percent') IS NULL
+  ALTER TABLE dbo.AppSettings ADD MapPackCtrPosition10Percent int NOT NULL CONSTRAINT DF_AppSettings_MapPackCtrPosition10Percent_Alt DEFAULT(1);
 IF COL_LENGTH('dbo.AppSettings', 'UpdatedAtUtc') IS NULL
   ALTER TABLE dbo.AppSettings ADD UpdatedAtUtc datetime2(0) NOT NULL CONSTRAINT DF_AppSettings_UpdatedAtUtc_Alt DEFAULT SYSUTCDATETIME();
 EXEC(N'
@@ -547,11 +583,519 @@ WHEN MATCHED THEN UPDATE SET
   EnhancedGoogleDataRefreshHours = CASE WHEN target.EnhancedGoogleDataRefreshHours IS NULL OR target.EnhancedGoogleDataRefreshHours < 1 THEN 24 ELSE target.EnhancedGoogleDataRefreshHours END,
   GoogleReviewsRefreshHours = CASE WHEN target.GoogleReviewsRefreshHours IS NULL OR target.GoogleReviewsRefreshHours < 1 THEN 24 ELSE target.GoogleReviewsRefreshHours END,
   GoogleUpdatesRefreshHours = CASE WHEN target.GoogleUpdatesRefreshHours IS NULL OR target.GoogleUpdatesRefreshHours < 1 THEN 24 ELSE target.GoogleUpdatesRefreshHours END,
-  GoogleQuestionsAndAnswersRefreshHours = CASE WHEN target.GoogleQuestionsAndAnswersRefreshHours IS NULL OR target.GoogleQuestionsAndAnswersRefreshHours < 1 THEN 24 ELSE target.GoogleQuestionsAndAnswersRefreshHours END
+  GoogleQuestionsAndAnswersRefreshHours = CASE WHEN target.GoogleQuestionsAndAnswersRefreshHours IS NULL OR target.GoogleQuestionsAndAnswersRefreshHours < 1 THEN 24 ELSE target.GoogleQuestionsAndAnswersRefreshHours END,
+  SearchVolumeRefreshCooldownDays = CASE WHEN target.SearchVolumeRefreshCooldownDays IS NULL OR target.SearchVolumeRefreshCooldownDays < 1 THEN 30 ELSE target.SearchVolumeRefreshCooldownDays END,
+  MapPackClickSharePercent = CASE WHEN target.MapPackClickSharePercent IS NULL OR target.MapPackClickSharePercent < 0 OR target.MapPackClickSharePercent > 100 THEN 50 ELSE target.MapPackClickSharePercent END,
+  MapPackCtrPosition1Percent = CASE WHEN target.MapPackCtrPosition1Percent IS NULL OR target.MapPackCtrPosition1Percent < 0 OR target.MapPackCtrPosition1Percent > 100 THEN 38 ELSE target.MapPackCtrPosition1Percent END,
+  MapPackCtrPosition2Percent = CASE WHEN target.MapPackCtrPosition2Percent IS NULL OR target.MapPackCtrPosition2Percent < 0 OR target.MapPackCtrPosition2Percent > 100 THEN 23 ELSE target.MapPackCtrPosition2Percent END,
+  MapPackCtrPosition3Percent = CASE WHEN target.MapPackCtrPosition3Percent IS NULL OR target.MapPackCtrPosition3Percent < 0 OR target.MapPackCtrPosition3Percent > 100 THEN 16 ELSE target.MapPackCtrPosition3Percent END,
+  MapPackCtrPosition4Percent = CASE WHEN target.MapPackCtrPosition4Percent IS NULL OR target.MapPackCtrPosition4Percent < 0 OR target.MapPackCtrPosition4Percent > 100 THEN 7 ELSE target.MapPackCtrPosition4Percent END,
+  MapPackCtrPosition5Percent = CASE WHEN target.MapPackCtrPosition5Percent IS NULL OR target.MapPackCtrPosition5Percent < 0 OR target.MapPackCtrPosition5Percent > 100 THEN 5 ELSE target.MapPackCtrPosition5Percent END,
+  MapPackCtrPosition6Percent = CASE WHEN target.MapPackCtrPosition6Percent IS NULL OR target.MapPackCtrPosition6Percent < 0 OR target.MapPackCtrPosition6Percent > 100 THEN 4 ELSE target.MapPackCtrPosition6Percent END,
+  MapPackCtrPosition7Percent = CASE WHEN target.MapPackCtrPosition7Percent IS NULL OR target.MapPackCtrPosition7Percent < 0 OR target.MapPackCtrPosition7Percent > 100 THEN 3 ELSE target.MapPackCtrPosition7Percent END,
+  MapPackCtrPosition8Percent = CASE WHEN target.MapPackCtrPosition8Percent IS NULL OR target.MapPackCtrPosition8Percent < 0 OR target.MapPackCtrPosition8Percent > 100 THEN 2 ELSE target.MapPackCtrPosition8Percent END,
+  MapPackCtrPosition9Percent = CASE WHEN target.MapPackCtrPosition9Percent IS NULL OR target.MapPackCtrPosition9Percent < 0 OR target.MapPackCtrPosition9Percent > 100 THEN 1 ELSE target.MapPackCtrPosition9Percent END,
+  MapPackCtrPosition10Percent = CASE WHEN target.MapPackCtrPosition10Percent IS NULL OR target.MapPackCtrPosition10Percent < 0 OR target.MapPackCtrPosition10Percent > 100 THEN 1 ELSE target.MapPackCtrPosition10Percent END
 WHEN NOT MATCHED THEN
-  INSERT(AppSettingsId, EnhancedGoogleDataRefreshHours, GoogleReviewsRefreshHours, GoogleUpdatesRefreshHours, GoogleQuestionsAndAnswersRefreshHours, UpdatedAtUtc)
-  VALUES(1, 24, 24, 24, 24, SYSUTCDATETIME());
+  INSERT(AppSettingsId, EnhancedGoogleDataRefreshHours, GoogleReviewsRefreshHours, GoogleUpdatesRefreshHours, GoogleQuestionsAndAnswersRefreshHours, SearchVolumeRefreshCooldownDays, MapPackClickSharePercent, MapPackCtrPosition1Percent, MapPackCtrPosition2Percent, MapPackCtrPosition3Percent, MapPackCtrPosition4Percent, MapPackCtrPosition5Percent, MapPackCtrPosition6Percent, MapPackCtrPosition7Percent, MapPackCtrPosition8Percent, MapPackCtrPosition9Percent, MapPackCtrPosition10Percent, UpdatedAtUtc)
+  VALUES(1, 24, 24, 24, 24, 30, 50, 38, 23, 16, 7, 5, 4, 3, 2, 1, 1, SYSUTCDATETIME());
 ');
+IF OBJECT_ID('dbo.GoogleBusinessProfileCategory','U') IS NULL
+BEGIN
+  CREATE TABLE dbo.GoogleBusinessProfileCategory(
+    CategoryId nvarchar(255) NOT NULL PRIMARY KEY,
+    DisplayName nvarchar(300) NOT NULL,
+    RegionCode nvarchar(10) NOT NULL,
+    LanguageCode nvarchar(20) NOT NULL,
+    Status nvarchar(20) NOT NULL CONSTRAINT DF_GoogleBusinessProfileCategory_Status DEFAULT('Active'),
+    FirstSeenUtc datetime2(0) NOT NULL CONSTRAINT DF_GoogleBusinessProfileCategory_FirstSeenUtc DEFAULT SYSUTCDATETIME(),
+    LastSeenUtc datetime2(0) NOT NULL CONSTRAINT DF_GoogleBusinessProfileCategory_LastSeenUtc DEFAULT SYSUTCDATETIME(),
+    LastSyncedUtc datetime2(0) NOT NULL CONSTRAINT DF_GoogleBusinessProfileCategory_LastSyncedUtc DEFAULT SYSUTCDATETIME()
+  );
+END;
+IF COL_LENGTH('dbo.GoogleBusinessProfileCategory', 'DisplayName') IS NULL
+  ALTER TABLE dbo.GoogleBusinessProfileCategory ADD DisplayName nvarchar(300) NOT NULL CONSTRAINT DF_GoogleBusinessProfileCategory_DisplayName DEFAULT N'';
+IF COL_LENGTH('dbo.GoogleBusinessProfileCategory', 'RegionCode') IS NULL
+  ALTER TABLE dbo.GoogleBusinessProfileCategory ADD RegionCode nvarchar(10) NOT NULL CONSTRAINT DF_GoogleBusinessProfileCategory_RegionCode DEFAULT N'GB';
+IF COL_LENGTH('dbo.GoogleBusinessProfileCategory', 'LanguageCode') IS NULL
+  ALTER TABLE dbo.GoogleBusinessProfileCategory ADD LanguageCode nvarchar(20) NOT NULL CONSTRAINT DF_GoogleBusinessProfileCategory_LanguageCode DEFAULT N'en-GB';
+IF COL_LENGTH('dbo.GoogleBusinessProfileCategory', 'Status') IS NULL
+  ALTER TABLE dbo.GoogleBusinessProfileCategory ADD Status nvarchar(20) NOT NULL CONSTRAINT DF_GoogleBusinessProfileCategory_Status_Alt DEFAULT N'Active';
+IF COL_LENGTH('dbo.GoogleBusinessProfileCategory', 'FirstSeenUtc') IS NULL
+  ALTER TABLE dbo.GoogleBusinessProfileCategory ADD FirstSeenUtc datetime2(0) NOT NULL CONSTRAINT DF_GoogleBusinessProfileCategory_FirstSeenUtc_Alt DEFAULT SYSUTCDATETIME();
+IF COL_LENGTH('dbo.GoogleBusinessProfileCategory', 'LastSeenUtc') IS NULL
+  ALTER TABLE dbo.GoogleBusinessProfileCategory ADD LastSeenUtc datetime2(0) NOT NULL CONSTRAINT DF_GoogleBusinessProfileCategory_LastSeenUtc_Alt DEFAULT SYSUTCDATETIME();
+IF COL_LENGTH('dbo.GoogleBusinessProfileCategory', 'LastSyncedUtc') IS NULL
+  ALTER TABLE dbo.GoogleBusinessProfileCategory ADD LastSyncedUtc datetime2(0) NOT NULL CONSTRAINT DF_GoogleBusinessProfileCategory_LastSyncedUtc_Alt DEFAULT SYSUTCDATETIME();
+IF EXISTS (
+  SELECT 1
+  FROM sys.check_constraints
+  WHERE name = 'CK_GoogleBusinessProfileCategory_Status'
+    AND parent_object_id = OBJECT_ID('dbo.GoogleBusinessProfileCategory')
+)
+  ALTER TABLE dbo.GoogleBusinessProfileCategory DROP CONSTRAINT CK_GoogleBusinessProfileCategory_Status;
+UPDATE dbo.GoogleBusinessProfileCategory
+SET Status = N'Inactive'
+WHERE Status IS NULL
+  OR Status NOT IN (N'Active', N'Inactive');
+ALTER TABLE dbo.GoogleBusinessProfileCategory
+  WITH CHECK ADD CONSTRAINT CK_GoogleBusinessProfileCategory_Status CHECK (Status IN ('Active','Inactive'));
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_GoogleBusinessProfileCategory_Status_DisplayName' AND object_id=OBJECT_ID('dbo.GoogleBusinessProfileCategory'))
+  CREATE INDEX IX_GoogleBusinessProfileCategory_Status_DisplayName ON dbo.GoogleBusinessProfileCategory(Status, DisplayName, CategoryId);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_GoogleBusinessProfileCategory_Region_Language_Status' AND object_id=OBJECT_ID('dbo.GoogleBusinessProfileCategory'))
+  CREATE INDEX IX_GoogleBusinessProfileCategory_Region_Language_Status ON dbo.GoogleBusinessProfileCategory(RegionCode, LanguageCode, Status, CategoryId);
+IF OBJECT_ID('dbo.GoogleBusinessProfileCategorySyncRun','U') IS NULL
+BEGIN
+  CREATE TABLE dbo.GoogleBusinessProfileCategorySyncRun(
+    GoogleBusinessProfileCategorySyncRunId bigint IDENTITY(1,1) PRIMARY KEY,
+    RegionCode nvarchar(10) NOT NULL,
+    LanguageCode nvarchar(20) NOT NULL,
+    RanAtUtc datetime2(0) NOT NULL CONSTRAINT DF_GoogleBusinessProfileCategorySyncRun_RanAtUtc DEFAULT SYSUTCDATETIME(),
+    AddedCount int NOT NULL CONSTRAINT DF_GoogleBusinessProfileCategorySyncRun_AddedCount DEFAULT(0),
+    UpdatedCount int NOT NULL CONSTRAINT DF_GoogleBusinessProfileCategorySyncRun_UpdatedCount DEFAULT(0),
+    MarkedInactiveCount int NOT NULL CONSTRAINT DF_GoogleBusinessProfileCategorySyncRun_MarkedInactiveCount DEFAULT(0)
+  );
+END;
+IF COL_LENGTH('dbo.GoogleBusinessProfileCategorySyncRun', 'RegionCode') IS NULL
+  ALTER TABLE dbo.GoogleBusinessProfileCategorySyncRun ADD RegionCode nvarchar(10) NOT NULL CONSTRAINT DF_GoogleBusinessProfileCategorySyncRun_RegionCode DEFAULT N'GB';
+IF COL_LENGTH('dbo.GoogleBusinessProfileCategorySyncRun', 'LanguageCode') IS NULL
+  ALTER TABLE dbo.GoogleBusinessProfileCategorySyncRun ADD LanguageCode nvarchar(20) NOT NULL CONSTRAINT DF_GoogleBusinessProfileCategorySyncRun_LanguageCode DEFAULT N'en-GB';
+IF COL_LENGTH('dbo.GoogleBusinessProfileCategorySyncRun', 'RanAtUtc') IS NULL
+  ALTER TABLE dbo.GoogleBusinessProfileCategorySyncRun ADD RanAtUtc datetime2(0) NOT NULL CONSTRAINT DF_GoogleBusinessProfileCategorySyncRun_RanAtUtc_Alt DEFAULT SYSUTCDATETIME();
+IF COL_LENGTH('dbo.GoogleBusinessProfileCategorySyncRun', 'AddedCount') IS NULL
+  ALTER TABLE dbo.GoogleBusinessProfileCategorySyncRun ADD AddedCount int NOT NULL CONSTRAINT DF_GoogleBusinessProfileCategorySyncRun_AddedCount_Alt DEFAULT(0);
+IF COL_LENGTH('dbo.GoogleBusinessProfileCategorySyncRun', 'UpdatedCount') IS NULL
+  ALTER TABLE dbo.GoogleBusinessProfileCategorySyncRun ADD UpdatedCount int NOT NULL CONSTRAINT DF_GoogleBusinessProfileCategorySyncRun_UpdatedCount_Alt DEFAULT(0);
+IF COL_LENGTH('dbo.GoogleBusinessProfileCategorySyncRun', 'MarkedInactiveCount') IS NULL
+  ALTER TABLE dbo.GoogleBusinessProfileCategorySyncRun ADD MarkedInactiveCount int NOT NULL CONSTRAINT DF_GoogleBusinessProfileCategorySyncRun_MarkedInactiveCount_Alt DEFAULT(0);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_GoogleBusinessProfileCategorySyncRun_Region_Language_RanAt' AND object_id=OBJECT_ID('dbo.GoogleBusinessProfileCategorySyncRun'))
+  CREATE INDEX IX_GoogleBusinessProfileCategorySyncRun_Region_Language_RanAt ON dbo.GoogleBusinessProfileCategorySyncRun(RegionCode, LanguageCode, RanAtUtc DESC);
+IF OBJECT_ID('dbo.GbCounty','U') IS NULL
+BEGIN
+  CREATE TABLE dbo.GbCounty(
+    CountyId bigint IDENTITY(1,1) NOT NULL PRIMARY KEY,
+    Name nvarchar(200) NOT NULL,
+    Slug nvarchar(200) NULL,
+    IsActive bit NOT NULL CONSTRAINT DF_GbCounty_IsActive DEFAULT(1),
+    SortOrder int NULL,
+    CreatedUtc datetime2(0) NOT NULL CONSTRAINT DF_GbCounty_CreatedUtc DEFAULT SYSUTCDATETIME(),
+    UpdatedUtc datetime2(0) NOT NULL CONSTRAINT DF_GbCounty_UpdatedUtc DEFAULT SYSUTCDATETIME()
+  );
+END;
+IF COL_LENGTH('dbo.GbCounty', 'Name') IS NULL
+  ALTER TABLE dbo.GbCounty ADD Name nvarchar(200) NOT NULL CONSTRAINT DF_GbCounty_Name DEFAULT N'';
+IF COL_LENGTH('dbo.GbCounty', 'Slug') IS NULL
+  ALTER TABLE dbo.GbCounty ADD Slug nvarchar(200) NULL;
+IF COL_LENGTH('dbo.GbCounty', 'IsActive') IS NULL
+  ALTER TABLE dbo.GbCounty ADD IsActive bit NOT NULL CONSTRAINT DF_GbCounty_IsActive_Alt DEFAULT(1);
+IF COL_LENGTH('dbo.GbCounty', 'SortOrder') IS NULL
+  ALTER TABLE dbo.GbCounty ADD SortOrder int NULL;
+IF COL_LENGTH('dbo.GbCounty', 'CreatedUtc') IS NULL
+  ALTER TABLE dbo.GbCounty ADD CreatedUtc datetime2(0) NOT NULL CONSTRAINT DF_GbCounty_CreatedUtc_Alt DEFAULT SYSUTCDATETIME();
+IF COL_LENGTH('dbo.GbCounty', 'UpdatedUtc') IS NULL
+  ALTER TABLE dbo.GbCounty ADD UpdatedUtc datetime2(0) NOT NULL CONSTRAINT DF_GbCounty_UpdatedUtc_Alt DEFAULT SYSUTCDATETIME();
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_GbCounty_IsActive_Name' AND object_id=OBJECT_ID('dbo.GbCounty'))
+  CREATE INDEX IX_GbCounty_IsActive_Name ON dbo.GbCounty(IsActive, Name);
+IF OBJECT_ID('dbo.GbTown','U') IS NULL
+BEGIN
+  CREATE TABLE dbo.GbTown(
+    TownId bigint IDENTITY(1,1) NOT NULL PRIMARY KEY,
+    CountyId bigint NOT NULL FOREIGN KEY REFERENCES dbo.GbCounty(CountyId),
+    Name nvarchar(200) NOT NULL,
+    Slug nvarchar(200) NULL,
+    Latitude decimal(9,6) NULL,
+    Longitude decimal(9,6) NULL,
+    ExternalId nvarchar(128) NULL,
+    IsActive bit NOT NULL CONSTRAINT DF_GbTown_IsActive DEFAULT(1),
+    SortOrder int NULL,
+    CreatedUtc datetime2(0) NOT NULL CONSTRAINT DF_GbTown_CreatedUtc DEFAULT SYSUTCDATETIME(),
+    UpdatedUtc datetime2(0) NOT NULL CONSTRAINT DF_GbTown_UpdatedUtc DEFAULT SYSUTCDATETIME()
+  );
+END;
+IF COL_LENGTH('dbo.GbTown', 'CountyId') IS NULL
+  ALTER TABLE dbo.GbTown ADD CountyId bigint NOT NULL CONSTRAINT DF_GbTown_CountyId DEFAULT(0);
+IF COL_LENGTH('dbo.GbTown', 'Name') IS NULL
+  ALTER TABLE dbo.GbTown ADD Name nvarchar(200) NOT NULL CONSTRAINT DF_GbTown_Name DEFAULT N'';
+IF COL_LENGTH('dbo.GbTown', 'Slug') IS NULL
+  ALTER TABLE dbo.GbTown ADD Slug nvarchar(200) NULL;
+IF COL_LENGTH('dbo.GbTown', 'Latitude') IS NULL
+  ALTER TABLE dbo.GbTown ADD Latitude decimal(9,6) NULL;
+IF COL_LENGTH('dbo.GbTown', 'Longitude') IS NULL
+  ALTER TABLE dbo.GbTown ADD Longitude decimal(9,6) NULL;
+IF COL_LENGTH('dbo.GbTown', 'ExternalId') IS NULL
+  ALTER TABLE dbo.GbTown ADD ExternalId nvarchar(128) NULL;
+IF COL_LENGTH('dbo.GbTown', 'IsActive') IS NULL
+  ALTER TABLE dbo.GbTown ADD IsActive bit NOT NULL CONSTRAINT DF_GbTown_IsActive_Alt DEFAULT(1);
+IF COL_LENGTH('dbo.GbTown', 'SortOrder') IS NULL
+  ALTER TABLE dbo.GbTown ADD SortOrder int NULL;
+IF COL_LENGTH('dbo.GbTown', 'CreatedUtc') IS NULL
+  ALTER TABLE dbo.GbTown ADD CreatedUtc datetime2(0) NOT NULL CONSTRAINT DF_GbTown_CreatedUtc_Alt DEFAULT SYSUTCDATETIME();
+IF COL_LENGTH('dbo.GbTown', 'UpdatedUtc') IS NULL
+  ALTER TABLE dbo.GbTown ADD UpdatedUtc datetime2(0) NOT NULL CONSTRAINT DF_GbTown_UpdatedUtc_Alt DEFAULT SYSUTCDATETIME();
+IF NOT EXISTS (
+  SELECT 1
+  FROM sys.foreign_key_columns fkc
+  WHERE fkc.parent_object_id = OBJECT_ID('dbo.GbTown')
+    AND fkc.referenced_object_id = OBJECT_ID('dbo.GbCounty')
+)
+  ALTER TABLE dbo.GbTown WITH CHECK ADD CONSTRAINT FK_GbTown_GbCounty FOREIGN KEY (CountyId) REFERENCES dbo.GbCounty(CountyId);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='UX_GbTown_County_Name' AND object_id=OBJECT_ID('dbo.GbTown'))
+  CREATE UNIQUE INDEX UX_GbTown_County_Name ON dbo.GbTown(CountyId, Name);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_GbTown_IsActive_County_Name' AND object_id=OBJECT_ID('dbo.GbTown'))
+  CREATE INDEX IX_GbTown_IsActive_County_Name ON dbo.GbTown(IsActive, CountyId, Name);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_GbTown_CountyId' AND object_id=OBJECT_ID('dbo.GbTown'))
+  CREATE INDEX IX_GbTown_CountyId ON dbo.GbTown(CountyId);
+IF OBJECT_ID('dbo.CategoryLocationKeyword','U') IS NULL
+BEGIN
+  CREATE TABLE dbo.CategoryLocationKeyword(
+    Id int IDENTITY(1,1) NOT NULL PRIMARY KEY,
+    CategoryId nvarchar(255) NOT NULL,
+    LocationId bigint NOT NULL,
+    Keyword nvarchar(255) NOT NULL,
+    KeywordType int NOT NULL CONSTRAINT DF_CategoryLocationKeyword_KeywordType DEFAULT(3),
+    CanonicalKeywordId int NULL,
+    AvgSearchVolume int NULL,
+    Cpc decimal(10,2) NULL,
+    Competition nvarchar(50) NULL,
+    CompetitionIndex int NULL,
+    LowTopOfPageBid decimal(10,2) NULL,
+    HighTopOfPageBid decimal(10,2) NULL,
+    Fingerprint nvarchar(128) NULL,
+    NoData bit NOT NULL CONSTRAINT DF_CategoryLocationKeyword_NoData DEFAULT(0),
+    NoDataReason nvarchar(50) NULL,
+    LastAttemptedUtc datetime2(0) NULL,
+    LastSucceededUtc datetime2(0) NULL,
+    LastStatusCode int NULL,
+    LastStatusMessage nvarchar(255) NULL,
+    CreatedUtc datetime2(0) NOT NULL CONSTRAINT DF_CategoryLocationKeyword_CreatedUtc DEFAULT SYSUTCDATETIME(),
+    UpdatedUtc datetime2(0) NOT NULL CONSTRAINT DF_CategoryLocationKeyword_UpdatedUtc DEFAULT SYSUTCDATETIME()
+  );
+END;
+IF COL_LENGTH('dbo.CategoryLocationKeyword', 'CategoryId') IS NULL
+  ALTER TABLE dbo.CategoryLocationKeyword ADD CategoryId nvarchar(255) NOT NULL CONSTRAINT DF_CategoryLocationKeyword_CategoryId DEFAULT N'';
+IF COL_LENGTH('dbo.CategoryLocationKeyword', 'LocationId') IS NULL
+  ALTER TABLE dbo.CategoryLocationKeyword ADD LocationId bigint NOT NULL CONSTRAINT DF_CategoryLocationKeyword_LocationId DEFAULT(0);
+IF COL_LENGTH('dbo.CategoryLocationKeyword', 'Keyword') IS NULL
+  ALTER TABLE dbo.CategoryLocationKeyword ADD Keyword nvarchar(255) NOT NULL CONSTRAINT DF_CategoryLocationKeyword_Keyword DEFAULT N'';
+IF COL_LENGTH('dbo.CategoryLocationKeyword', 'KeywordType') IS NULL
+  ALTER TABLE dbo.CategoryLocationKeyword ADD KeywordType int NOT NULL CONSTRAINT DF_CategoryLocationKeyword_KeywordType_Alt DEFAULT(3);
+IF COL_LENGTH('dbo.CategoryLocationKeyword', 'CanonicalKeywordId') IS NULL
+  ALTER TABLE dbo.CategoryLocationKeyword ADD CanonicalKeywordId int NULL;
+IF COL_LENGTH('dbo.CategoryLocationKeyword', 'AvgSearchVolume') IS NULL
+  ALTER TABLE dbo.CategoryLocationKeyword ADD AvgSearchVolume int NULL;
+IF COL_LENGTH('dbo.CategoryLocationKeyword', 'Cpc') IS NULL
+  ALTER TABLE dbo.CategoryLocationKeyword ADD Cpc decimal(10,2) NULL;
+IF COL_LENGTH('dbo.CategoryLocationKeyword', 'Competition') IS NULL
+  ALTER TABLE dbo.CategoryLocationKeyword ADD Competition nvarchar(50) NULL;
+IF COL_LENGTH('dbo.CategoryLocationKeyword', 'CompetitionIndex') IS NULL
+  ALTER TABLE dbo.CategoryLocationKeyword ADD CompetitionIndex int NULL;
+IF COL_LENGTH('dbo.CategoryLocationKeyword', 'LowTopOfPageBid') IS NULL
+  ALTER TABLE dbo.CategoryLocationKeyword ADD LowTopOfPageBid decimal(10,2) NULL;
+IF COL_LENGTH('dbo.CategoryLocationKeyword', 'HighTopOfPageBid') IS NULL
+  ALTER TABLE dbo.CategoryLocationKeyword ADD HighTopOfPageBid decimal(10,2) NULL;
+IF COL_LENGTH('dbo.CategoryLocationKeyword', 'Fingerprint') IS NULL
+  ALTER TABLE dbo.CategoryLocationKeyword ADD Fingerprint nvarchar(128) NULL;
+IF COL_LENGTH('dbo.CategoryLocationKeyword', 'NoData') IS NULL
+  ALTER TABLE dbo.CategoryLocationKeyword ADD NoData bit NOT NULL CONSTRAINT DF_CategoryLocationKeyword_NoData_Alt DEFAULT(0);
+IF COL_LENGTH('dbo.CategoryLocationKeyword', 'NoDataReason') IS NULL
+  ALTER TABLE dbo.CategoryLocationKeyword ADD NoDataReason nvarchar(50) NULL;
+IF COL_LENGTH('dbo.CategoryLocationKeyword', 'LastAttemptedUtc') IS NULL
+  ALTER TABLE dbo.CategoryLocationKeyword ADD LastAttemptedUtc datetime2(0) NULL;
+IF COL_LENGTH('dbo.CategoryLocationKeyword', 'LastSucceededUtc') IS NULL
+  ALTER TABLE dbo.CategoryLocationKeyword ADD LastSucceededUtc datetime2(0) NULL;
+IF COL_LENGTH('dbo.CategoryLocationKeyword', 'LastStatusCode') IS NULL
+  ALTER TABLE dbo.CategoryLocationKeyword ADD LastStatusCode int NULL;
+IF COL_LENGTH('dbo.CategoryLocationKeyword', 'LastStatusMessage') IS NULL
+  ALTER TABLE dbo.CategoryLocationKeyword ADD LastStatusMessage nvarchar(255) NULL;
+IF COL_LENGTH('dbo.CategoryLocationKeyword', 'CreatedUtc') IS NULL
+  ALTER TABLE dbo.CategoryLocationKeyword ADD CreatedUtc datetime2(0) NOT NULL CONSTRAINT DF_CategoryLocationKeyword_CreatedUtc_Alt DEFAULT SYSUTCDATETIME();
+IF COL_LENGTH('dbo.CategoryLocationKeyword', 'UpdatedUtc') IS NULL
+  ALTER TABLE dbo.CategoryLocationKeyword ADD UpdatedUtc datetime2(0) NOT NULL CONSTRAINT DF_CategoryLocationKeyword_UpdatedUtc_Alt DEFAULT SYSUTCDATETIME();
+IF EXISTS (
+  SELECT 1
+  FROM sys.check_constraints
+  WHERE name = 'CK_CategoryLocationKeyword_KeywordType'
+    AND parent_object_id = OBJECT_ID('dbo.CategoryLocationKeyword')
+)
+  ALTER TABLE dbo.CategoryLocationKeyword DROP CONSTRAINT CK_CategoryLocationKeyword_KeywordType;
+UPDATE dbo.CategoryLocationKeyword
+SET KeywordType = 3
+WHERE KeywordType NOT IN (1,2,3,4);
+ALTER TABLE dbo.CategoryLocationKeyword
+  WITH CHECK ADD CONSTRAINT CK_CategoryLocationKeyword_KeywordType CHECK (KeywordType IN (1,2,3,4));
+IF NOT EXISTS (
+  SELECT 1
+  FROM sys.foreign_key_columns fkc
+  JOIN sys.columns pc ON pc.object_id = fkc.parent_object_id AND pc.column_id = fkc.parent_column_id
+  JOIN sys.columns rc ON rc.object_id = fkc.referenced_object_id AND rc.column_id = fkc.referenced_column_id
+  WHERE fkc.parent_object_id = OBJECT_ID('dbo.CategoryLocationKeyword')
+    AND fkc.referenced_object_id = OBJECT_ID('dbo.GoogleBusinessProfileCategory')
+    AND pc.name = 'CategoryId'
+    AND rc.name = 'CategoryId'
+)
+  ALTER TABLE dbo.CategoryLocationKeyword WITH CHECK ADD CONSTRAINT FK_CategoryLocationKeyword_GoogleBusinessProfileCategory FOREIGN KEY (CategoryId) REFERENCES dbo.GoogleBusinessProfileCategory(CategoryId);
+IF NOT EXISTS (
+  SELECT 1
+  FROM sys.foreign_key_columns fkc
+  JOIN sys.columns pc ON pc.object_id = fkc.parent_object_id AND pc.column_id = fkc.parent_column_id
+  JOIN sys.columns rc ON rc.object_id = fkc.referenced_object_id AND rc.column_id = fkc.referenced_column_id
+  WHERE fkc.parent_object_id = OBJECT_ID('dbo.CategoryLocationKeyword')
+    AND fkc.referenced_object_id = OBJECT_ID('dbo.GbTown')
+    AND pc.name = 'LocationId'
+    AND rc.name = 'TownId'
+)
+  ALTER TABLE dbo.CategoryLocationKeyword WITH CHECK ADD CONSTRAINT FK_CategoryLocationKeyword_GbTown FOREIGN KEY (LocationId) REFERENCES dbo.GbTown(TownId);
+IF NOT EXISTS (
+  SELECT 1
+  FROM sys.foreign_key_columns fkc
+  JOIN sys.columns pc ON pc.object_id = fkc.parent_object_id AND pc.column_id = fkc.parent_column_id
+  JOIN sys.columns rc ON rc.object_id = fkc.referenced_object_id AND rc.column_id = fkc.referenced_column_id
+  WHERE fkc.parent_object_id = OBJECT_ID('dbo.CategoryLocationKeyword')
+    AND fkc.referenced_object_id = OBJECT_ID('dbo.CategoryLocationKeyword')
+    AND pc.name = 'CanonicalKeywordId'
+    AND rc.name = 'Id'
+)
+  ALTER TABLE dbo.CategoryLocationKeyword WITH CHECK ADD CONSTRAINT FK_CategoryLocationKeyword_CanonicalKeyword FOREIGN KEY (CanonicalKeywordId) REFERENCES dbo.CategoryLocationKeyword(Id);
+IF EXISTS (
+  SELECT 1
+  FROM sys.check_constraints
+  WHERE name = 'CK_CategoryLocationKeyword_SynonymCanonical'
+    AND parent_object_id = OBJECT_ID('dbo.CategoryLocationKeyword')
+)
+  ALTER TABLE dbo.CategoryLocationKeyword DROP CONSTRAINT CK_CategoryLocationKeyword_SynonymCanonical;
+UPDATE k
+SET
+  KeywordType = CASE WHEN k.KeywordType = 2 THEN 3 ELSE k.KeywordType END,
+  CanonicalKeywordId = NULL
+FROM dbo.CategoryLocationKeyword k
+LEFT JOIN dbo.CategoryLocationKeyword c
+  ON c.Id = k.CanonicalKeywordId
+ AND c.CategoryId = k.CategoryId
+ AND c.LocationId = k.LocationId
+WHERE
+  (k.KeywordType = 2 AND (k.CanonicalKeywordId IS NULL OR k.CanonicalKeywordId = k.Id OR c.Id IS NULL))
+  OR
+  (k.KeywordType <> 2 AND k.CanonicalKeywordId IS NOT NULL);
+ALTER TABLE dbo.CategoryLocationKeyword
+  WITH CHECK ADD CONSTRAINT CK_CategoryLocationKeyword_SynonymCanonical CHECK (
+    (KeywordType = 2 AND CanonicalKeywordId IS NOT NULL AND CanonicalKeywordId <> Id)
+    OR
+    (KeywordType <> 2 AND CanonicalKeywordId IS NULL)
+  );
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='UX_CategoryLocationKeyword_Category_Location_Keyword' AND object_id=OBJECT_ID('dbo.CategoryLocationKeyword'))
+  CREATE UNIQUE INDEX UX_CategoryLocationKeyword_Category_Location_Keyword ON dbo.CategoryLocationKeyword(CategoryId, LocationId, Keyword);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='UX_CategoryLocationKeyword_Category_Location_MainTerm' AND object_id=OBJECT_ID('dbo.CategoryLocationKeyword'))
+  CREATE UNIQUE INDEX UX_CategoryLocationKeyword_Category_Location_MainTerm ON dbo.CategoryLocationKeyword(CategoryId, LocationId) WHERE KeywordType = 1;
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_CategoryLocationKeyword_Location_Category' AND object_id=OBJECT_ID('dbo.CategoryLocationKeyword'))
+  CREATE INDEX IX_CategoryLocationKeyword_Location_Category ON dbo.CategoryLocationKeyword(LocationId, CategoryId, KeywordType, UpdatedUtc DESC);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_CategoryLocationKeyword_SynonymCanonical' AND object_id=OBJECT_ID('dbo.CategoryLocationKeyword'))
+  CREATE INDEX IX_CategoryLocationKeyword_SynonymCanonical ON dbo.CategoryLocationKeyword(CategoryId, LocationId, CanonicalKeywordId) WHERE KeywordType = 2;
+IF OBJECT_ID('dbo.CategoryLocationSearchVolume','U') IS NULL
+BEGIN
+  CREATE TABLE dbo.CategoryLocationSearchVolume(
+    Id int IDENTITY(1,1) NOT NULL PRIMARY KEY,
+    CategoryLocationKeywordId int NOT NULL,
+    [Year] int NOT NULL,
+    [Month] int NOT NULL,
+    SearchVolume int NOT NULL
+  );
+END;
+IF COL_LENGTH('dbo.CategoryLocationSearchVolume', 'CategoryLocationKeywordId') IS NULL
+  ALTER TABLE dbo.CategoryLocationSearchVolume ADD CategoryLocationKeywordId int NOT NULL CONSTRAINT DF_CategoryLocationSearchVolume_KeywordId DEFAULT(0);
+IF COL_LENGTH('dbo.CategoryLocationSearchVolume', 'Year') IS NULL
+  ALTER TABLE dbo.CategoryLocationSearchVolume ADD [Year] int NOT NULL CONSTRAINT DF_CategoryLocationSearchVolume_Year DEFAULT(2000);
+IF COL_LENGTH('dbo.CategoryLocationSearchVolume', 'Month') IS NULL
+  ALTER TABLE dbo.CategoryLocationSearchVolume ADD [Month] int NOT NULL CONSTRAINT DF_CategoryLocationSearchVolume_Month DEFAULT(1);
+IF COL_LENGTH('dbo.CategoryLocationSearchVolume', 'SearchVolume') IS NULL
+  ALTER TABLE dbo.CategoryLocationSearchVolume ADD SearchVolume int NOT NULL CONSTRAINT DF_CategoryLocationSearchVolume_SearchVolume DEFAULT(0);
+IF NOT EXISTS (
+  SELECT 1
+  FROM sys.foreign_key_columns fkc
+  JOIN sys.columns pc ON pc.object_id = fkc.parent_object_id AND pc.column_id = fkc.parent_column_id
+  JOIN sys.columns rc ON rc.object_id = fkc.referenced_object_id AND rc.column_id = fkc.referenced_column_id
+  WHERE fkc.parent_object_id = OBJECT_ID('dbo.CategoryLocationSearchVolume')
+    AND fkc.referenced_object_id = OBJECT_ID('dbo.CategoryLocationKeyword')
+    AND pc.name = 'CategoryLocationKeywordId'
+    AND rc.name = 'Id'
+)
+  ALTER TABLE dbo.CategoryLocationSearchVolume WITH CHECK ADD CONSTRAINT FK_CategoryLocationSearchVolume_Keyword FOREIGN KEY (CategoryLocationKeywordId) REFERENCES dbo.CategoryLocationKeyword(Id) ON DELETE CASCADE;
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='UX_CategoryLocationSearchVolume_Keyword_Year_Month' AND object_id=OBJECT_ID('dbo.CategoryLocationSearchVolume'))
+  CREATE UNIQUE INDEX UX_CategoryLocationSearchVolume_Keyword_Year_Month ON dbo.CategoryLocationSearchVolume(CategoryLocationKeywordId, [Year], [Month]);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_CategoryLocationSearchVolume_Keyword' AND object_id=OBJECT_ID('dbo.CategoryLocationSearchVolume'))
+  CREATE INDEX IX_CategoryLocationSearchVolume_Keyword ON dbo.CategoryLocationSearchVolume(CategoryLocationKeywordId, [Year] DESC, [Month] DESC);
+
+IF NOT EXISTS (SELECT 1 FROM dbo.GbCounty WHERE Name = N'Somerset')
+  INSERT INTO dbo.GbCounty(Name, Slug, IsActive, SortOrder, CreatedUtc, UpdatedUtc)
+  VALUES(N'Somerset', N'somerset', 1, 10, SYSUTCDATETIME(), SYSUTCDATETIME());
+IF NOT EXISTS (SELECT 1 FROM dbo.GbCounty WHERE Name = N'Dorset')
+  INSERT INTO dbo.GbCounty(Name, Slug, IsActive, SortOrder, CreatedUtc, UpdatedUtc)
+  VALUES(N'Dorset', N'dorset', 1, 20, SYSUTCDATETIME(), SYSUTCDATETIME());
+IF NOT EXISTS (SELECT 1 FROM dbo.GbCounty WHERE Name = N'Devon')
+  INSERT INTO dbo.GbCounty(Name, Slug, IsActive, SortOrder, CreatedUtc, UpdatedUtc)
+  VALUES(N'Devon', N'devon', 1, 30, SYSUTCDATETIME(), SYSUTCDATETIME());
+IF NOT EXISTS (SELECT 1 FROM dbo.GbCounty WHERE Name = N'Wiltshire')
+  INSERT INTO dbo.GbCounty(Name, Slug, IsActive, SortOrder, CreatedUtc, UpdatedUtc)
+  VALUES(N'Wiltshire', N'wiltshire', 1, 40, SYSUTCDATETIME(), SYSUTCDATETIME());
+
+DECLARE @SeedSomersetCountyId bigint = (SELECT TOP 1 CountyId FROM dbo.GbCounty WHERE Name = N'Somerset' ORDER BY CountyId);
+DECLARE @SeedDorsetCountyId bigint = (SELECT TOP 1 CountyId FROM dbo.GbCounty WHERE Name = N'Dorset' ORDER BY CountyId);
+IF @SeedSomersetCountyId IS NOT NULL
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM dbo.GbTown WHERE CountyId = @SeedSomersetCountyId AND Name = N'Yeovil')
+    INSERT INTO dbo.GbTown(CountyId, Name, Slug, Latitude, Longitude, ExternalId, IsActive, SortOrder, CreatedUtc, UpdatedUtc)
+    VALUES(@SeedSomersetCountyId, N'Yeovil', N'yeovil', NULL, NULL, NULL, 1, 10, SYSUTCDATETIME(), SYSUTCDATETIME());
+  IF NOT EXISTS (SELECT 1 FROM dbo.GbTown WHERE CountyId = @SeedSomersetCountyId AND Name = N'Taunton')
+    INSERT INTO dbo.GbTown(CountyId, Name, Slug, Latitude, Longitude, ExternalId, IsActive, SortOrder, CreatedUtc, UpdatedUtc)
+    VALUES(@SeedSomersetCountyId, N'Taunton', N'taunton', NULL, NULL, NULL, 1, 20, SYSUTCDATETIME(), SYSUTCDATETIME());
+END;
+IF @SeedDorsetCountyId IS NOT NULL
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM dbo.GbTown WHERE CountyId = @SeedDorsetCountyId AND Name = N'Dorchester')
+    INSERT INTO dbo.GbTown(CountyId, Name, Slug, Latitude, Longitude, ExternalId, IsActive, SortOrder, CreatedUtc, UpdatedUtc)
+    VALUES(@SeedDorsetCountyId, N'Dorchester', N'dorchester', NULL, NULL, NULL, 1, 10, SYSUTCDATETIME(), SYSUTCDATETIME());
+END;
+IF COL_LENGTH('dbo.SearchRun', 'CategoryId') IS NULL
+  ALTER TABLE dbo.SearchRun ADD CategoryId nvarchar(255) NULL;
+IF COL_LENGTH('dbo.SearchRun', 'TownId') IS NULL
+  ALTER TABLE dbo.SearchRun ADD TownId bigint NULL;
+
+IF COL_LENGTH('dbo.SearchRun', 'SeedKeyword') IS NOT NULL
+BEGIN
+  EXEC(N'
+  UPDATE sr
+  SET sr.CategoryId = c.CategoryId
+  FROM dbo.SearchRun sr
+  JOIN dbo.GoogleBusinessProfileCategory c
+    ON LOWER(LTRIM(RTRIM(c.CategoryId))) = LOWER(LTRIM(RTRIM(sr.SeedKeyword)))
+  WHERE sr.CategoryId IS NULL;');
+END;
+
+IF COL_LENGTH('dbo.SearchRun', 'LocationName') IS NOT NULL
+BEGIN
+  EXEC(N'
+  ;WITH normalized_runs AS (
+    SELECT
+      sr.SearchRunId,
+      LOWER(LTRIM(RTRIM(sr.LocationName))) AS LocationKey
+    FROM dbo.SearchRun sr
+    WHERE sr.TownId IS NULL
+      AND sr.LocationName IS NOT NULL
+      AND LTRIM(RTRIM(sr.LocationName)) <> N''''
+  ),
+  matches AS (
+    SELECT
+      nr.SearchRunId,
+      t.TownId,
+      COUNT(1) OVER (PARTITION BY nr.SearchRunId) AS MatchCount,
+      ROW_NUMBER() OVER (PARTITION BY nr.SearchRunId ORDER BY t.TownId) AS rn
+    FROM normalized_runs nr
+    JOIN dbo.GbTown t ON 1 = 1
+    JOIN dbo.GbCounty c ON c.CountyId = t.CountyId
+    WHERE nr.LocationKey = LOWER(LTRIM(RTRIM(t.Name)))
+      OR (
+        t.Slug IS NOT NULL
+        AND LTRIM(RTRIM(t.Slug)) <> N''''
+        AND nr.LocationKey = LOWER(LTRIM(RTRIM(t.Slug)))
+      )
+      OR nr.LocationKey = LOWER(LTRIM(RTRIM(CONCAT(t.Name, N'', '', c.Name))))
+      OR nr.LocationKey = LOWER(LTRIM(RTRIM(CONCAT(t.Name, N'' '', c.Name))))
+  )
+  UPDATE sr
+  SET sr.TownId = m.TownId
+  FROM dbo.SearchRun sr
+  JOIN matches m ON m.SearchRunId = sr.SearchRunId
+  WHERE sr.TownId IS NULL
+    AND m.MatchCount = 1
+    AND m.rn = 1;');
+END;
+
+IF COL_LENGTH('dbo.SearchRun', 'CenterLat') IS NOT NULL
+   OR COL_LENGTH('dbo.SearchRun', 'CenterLng') IS NOT NULL
+BEGIN
+  EXEC(N'
+  UPDATE t
+  SET
+    Latitude = COALESCE(t.Latitude, sr.CenterLat),
+    Longitude = COALESCE(t.Longitude, sr.CenterLng),
+    UpdatedUtc = CASE
+      WHEN (t.Latitude IS NULL AND sr.CenterLat IS NOT NULL)
+        OR (t.Longitude IS NULL AND sr.CenterLng IS NOT NULL)
+      THEN SYSUTCDATETIME()
+      ELSE t.UpdatedUtc
+    END
+  FROM dbo.GbTown t
+  JOIN dbo.SearchRun sr ON sr.TownId = t.TownId
+  WHERE (t.Latitude IS NULL AND sr.CenterLat IS NOT NULL)
+     OR (t.Longitude IS NULL AND sr.CenterLng IS NOT NULL);');
+END;
+
+IF COL_LENGTH('dbo.SearchRun', 'CategoryId') IS NOT NULL
+   AND COL_LENGTH('dbo.SearchRun', 'TownId') IS NOT NULL
+BEGIN
+  EXEC(N'
+  ;WITH invalid_runs AS (
+    SELECT SearchRunId
+    FROM dbo.SearchRun
+    WHERE CategoryId IS NULL
+       OR TownId IS NULL
+  )
+  DELETE ps
+  FROM dbo.PlaceSnapshot ps
+  JOIN invalid_runs ir ON ir.SearchRunId = ps.SearchRunId;
+
+  DELETE sr
+  FROM dbo.SearchRun sr
+  WHERE sr.CategoryId IS NULL
+     OR sr.TownId IS NULL;');
+END;
+
+IF COL_LENGTH('dbo.SearchRun', 'CategoryId') IS NOT NULL
+  EXEC(N'ALTER TABLE dbo.SearchRun ALTER COLUMN CategoryId nvarchar(255) NOT NULL;');
+IF COL_LENGTH('dbo.SearchRun', 'TownId') IS NOT NULL
+  EXEC(N'ALTER TABLE dbo.SearchRun ALTER COLUMN TownId bigint NOT NULL;');
+
+IF NOT EXISTS (
+  SELECT 1
+  FROM sys.foreign_key_columns fkc
+  JOIN sys.columns pc ON pc.object_id = fkc.parent_object_id AND pc.column_id = fkc.parent_column_id
+  JOIN sys.columns rc ON rc.object_id = fkc.referenced_object_id AND rc.column_id = fkc.referenced_column_id
+  WHERE fkc.parent_object_id = OBJECT_ID('dbo.SearchRun')
+    AND fkc.referenced_object_id = OBJECT_ID('dbo.GoogleBusinessProfileCategory')
+    AND pc.name = 'CategoryId'
+    AND rc.name = 'CategoryId'
+)
+  AND COL_LENGTH('dbo.SearchRun', 'CategoryId') IS NOT NULL
+  EXEC(N'ALTER TABLE dbo.SearchRun WITH CHECK ADD CONSTRAINT FK_SearchRun_GoogleBusinessProfileCategory FOREIGN KEY (CategoryId) REFERENCES dbo.GoogleBusinessProfileCategory(CategoryId);');
+
+IF NOT EXISTS (
+  SELECT 1
+  FROM sys.foreign_key_columns fkc
+  JOIN sys.columns pc ON pc.object_id = fkc.parent_object_id AND pc.column_id = fkc.parent_column_id
+  JOIN sys.columns rc ON rc.object_id = fkc.referenced_object_id AND rc.column_id = fkc.referenced_column_id
+  WHERE fkc.parent_object_id = OBJECT_ID('dbo.SearchRun')
+    AND fkc.referenced_object_id = OBJECT_ID('dbo.GbTown')
+    AND pc.name = 'TownId'
+    AND rc.name = 'TownId'
+)
+  AND COL_LENGTH('dbo.SearchRun', 'TownId') IS NOT NULL
+  EXEC(N'ALTER TABLE dbo.SearchRun WITH CHECK ADD CONSTRAINT FK_SearchRun_GbTown FOREIGN KEY (TownId) REFERENCES dbo.GbTown(TownId);');
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_SearchRun_CategoryId' AND object_id=OBJECT_ID('dbo.SearchRun'))
+   AND COL_LENGTH('dbo.SearchRun', 'CategoryId') IS NOT NULL
+  EXEC(N'CREATE INDEX IX_SearchRun_CategoryId ON dbo.SearchRun(CategoryId);');
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_SearchRun_TownId' AND object_id=OBJECT_ID('dbo.SearchRun'))
+   AND COL_LENGTH('dbo.SearchRun', 'TownId') IS NOT NULL
+  EXEC(N'CREATE INDEX IX_SearchRun_TownId ON dbo.SearchRun(TownId);');
+
+IF COL_LENGTH('dbo.SearchRun', 'SeedKeyword') IS NOT NULL
+  ALTER TABLE dbo.SearchRun DROP COLUMN SeedKeyword;
+IF COL_LENGTH('dbo.SearchRun', 'LocationName') IS NOT NULL
+  ALTER TABLE dbo.SearchRun DROP COLUMN LocationName;
+IF COL_LENGTH('dbo.SearchRun', 'CenterLat') IS NOT NULL
+  ALTER TABLE dbo.SearchRun DROP COLUMN CenterLat;
+IF COL_LENGTH('dbo.SearchRun', 'CenterLng') IS NOT NULL
+  ALTER TABLE dbo.SearchRun DROP COLUMN CenterLng;
+
 IF OBJECT_ID('dbo.LoginCode','U') IS NULL
 BEGIN
   CREATE TABLE dbo.LoginCode(

@@ -110,6 +110,9 @@ OUTER APPLY (
   ORDER BY s.CapturedAtUtc DESC
 ) latest
 LEFT JOIN dbo.SearchRun sr ON sr.SearchRunId = latest.SearchRunId
+LEFT JOIN dbo.GoogleBusinessProfileCategory cat ON cat.CategoryId = sr.CategoryId
+LEFT JOIN dbo.GbTown town ON town.TownId = sr.TownId
+LEFT JOIN dbo.GbCounty county ON county.CountyId = town.CountyId
 LEFT JOIN dbo.PlaceReviewVelocityStats v ON v.PlaceId=p.PlaceId
 OUTER APPLY (
   SELECT
@@ -163,8 +166,8 @@ OUTER APPLY (
   WHERE u2.PlaceId=p.PlaceId
 ) updCount
 WHERE (@PlaceName IS NULL OR p.DisplayName LIKE '%' + @PlaceName + '%')
-  AND (@Keyword IS NULL OR sr.SeedKeyword = @Keyword)
-  AND (@Location IS NULL OR sr.LocationName = @Location)
+  AND (@Keyword IS NULL OR cat.DisplayName = @Keyword)
+  AND (@Location IS NULL OR CONCAT(town.Name, N', ', county.Name) = @Location)
 ORDER BY {orderBy};";
 
         await using var conn = (Microsoft.Data.SqlClient.SqlConnection)await connectionFactory.OpenConnectionAsync(ct);
@@ -185,18 +188,21 @@ ORDER BY {orderBy};";
         await using var conn = (Microsoft.Data.SqlClient.SqlConnection)await connectionFactory.OpenConnectionAsync(ct);
 
         var keywords = (await conn.QueryAsync<string>(new CommandDefinition(@"
-SELECT DISTINCT SeedKeyword
-FROM dbo.SearchRun
-WHERE SeedKeyword IS NOT NULL
-  AND LTRIM(RTRIM(SeedKeyword)) <> N''
-ORDER BY SeedKeyword;", cancellationToken: ct))).ToList();
+SELECT DISTINCT cat.DisplayName
+FROM dbo.SearchRun sr
+JOIN dbo.GoogleBusinessProfileCategory cat ON cat.CategoryId = sr.CategoryId
+WHERE cat.DisplayName IS NOT NULL
+  AND LTRIM(RTRIM(cat.DisplayName)) <> N''
+ORDER BY cat.DisplayName;", cancellationToken: ct))).ToList();
 
         var locations = (await conn.QueryAsync<string>(new CommandDefinition(@"
-SELECT DISTINCT LocationName
-FROM dbo.SearchRun
-WHERE LocationName IS NOT NULL
-  AND LTRIM(RTRIM(LocationName)) <> N''
-ORDER BY LocationName;", cancellationToken: ct))).ToList();
+SELECT DISTINCT CONCAT(town.Name, N', ', county.Name) AS LocationName
+FROM dbo.SearchRun sr
+JOIN dbo.GbTown town ON town.TownId = sr.TownId
+JOIN dbo.GbCounty county ON county.CountyId = town.CountyId
+WHERE town.Name IS NOT NULL
+  AND county.Name IS NOT NULL
+ORDER BY CONCAT(town.Name, N', ', county.Name);", cancellationToken: ct))).ToList();
 
         return new PlacesRunFilterOptions(keywords, locations);
     }

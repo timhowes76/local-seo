@@ -1,0 +1,84 @@
+@model GbTownCreateModel
+@{
+    ViewData["Title"] = "Add Town (GB)";
+    var returnQ = (ViewBag.ReturnQ as string ?? string.Empty).Trim();
+    var returnStatus = (ViewBag.ReturnStatus as string ?? "active").Trim().ToLowerInvariant();
+    var returnCountyId = ViewBag.ReturnCountyId is long countyIdValue && countyIdValue > 0
+        ? countyIdValue
+        : (long?)null;
+    var returnPage = ViewBag.ReturnPage is int p ? Math.Max(1, p) : 1;
+    var returnPageSize = ViewBag.ReturnPageSize is int ps ? Math.Clamp(ps, 10, 200) : 50;
+
+    var statusQuery = Uri.EscapeDataString(returnStatus);
+    var searchQuery = string.IsNullOrWhiteSpace(returnQ) ? string.Empty : $"&q={Uri.EscapeDataString(returnQ)}";
+    var countyQuery = returnCountyId.HasValue ? $"&countyId={returnCountyId.Value}" : string.Empty;
+    var backUrl = $"/admin/data-lists/towns-gb?status={statusQuery}{searchQuery}{countyQuery}&page={returnPage}&pageSize={returnPageSize}";
+    var actionUrl = $"/admin/data-lists/towns-gb/add?status={statusQuery}{searchQuery}{countyQuery}&page={returnPage}&pageSize={returnPageSize}";
+}
+
+<div class="page-stack">
+    <section class="card">
+        <div class="toolbar">
+            <a href="@backUrl" class="btn btn-secondary">Back to Towns</a>
+        </div>
+    </section>
+
+    <section class="card">
+        <h2 class="card-title">Add Town</h2>
+        <form method="post" action="@actionUrl" class="form-grid">
+            @Html.AntiForgeryToken()
+
+            <div class="form-row">
+                <label for="CountyId">County</label>
+                <select id="CountyId" name="CountyId" required>
+                    <option value="">Select County</option>
+                    @foreach (var county in Model.CountyOptions)
+                    {
+                        var countyLabel = county.IsActive ? county.Name : $"{county.Name} (Inactive)";
+                        if (Model.CountyId == county.CountyId)
+                        {
+                            <option value="@county.CountyId" selected>@countyLabel</option>
+                        }
+                        else
+                        {
+                            <option value="@county.CountyId">@countyLabel</option>
+                        }
+                    }
+                </select>
+            </div>
+
+            <div class="form-row">
+                <label for="Name">Town Name</label>
+                <input id="Name" name="Name" type="text" value="@Model.Name" required />
+            </div>
+
+            <div class="form-row">
+                <label for="Slug">Slug</label>
+                <input id="Slug" name="Slug" type="text" value="@Model.Slug" />
+            </div>
+
+            <div class="form-row">
+                <label for="ExternalId">External ID</label>
+                <input id="ExternalId" name="ExternalId" type="text" value="@Model.ExternalId" />
+            </div>
+
+            <div class="form-row">
+                <label class="inline-group" for="IsActive">
+                    @if (Model.IsActive)
+                    {
+                        <input id="IsActive" name="IsActive" type="checkbox" value="true" checked />
+                    }
+                    else
+                    {
+                        <input id="IsActive" name="IsActive" type="checkbox" value="true" />
+                    }
+                    <span>Active</span>
+                </label>
+            </div>
+
+            <div class="toolbar">
+                <button type="submit">Add Town</button>
+            </div>
+        </form>
+    </section>
+</div>

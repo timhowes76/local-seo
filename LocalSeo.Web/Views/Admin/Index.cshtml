@@ -10,6 +10,12 @@
     }
 
     <section class="card">
+        <h2 class="card-title">Data Lists</h2>
+        <p class="muted">Manage admin-maintained data lists and category dictionaries.</p>
+        <a href="/admin/data-lists" class="btn btn-secondary">Open Data Lists</a>
+    </section>
+
+    <section class="card">
         <h2 class="card-title">DataForSEO</h2>
         <p class="muted">Monitor async task lifecycle and import status.</p>
         <a href="/admin/dataforseo-tasks" class="btn btn-secondary">Open DataForSEO Tasks</a>
@@ -21,13 +27,4 @@
         <a href="/admin/settings" class="btn btn-secondary">Open Settings</a>
     </section>
 
-    <section class="card">
-        <h2 class="card-title">Maintenance</h2>
-        <p>Clear all stored run history from the app database.</p>
-        <p class="muted">This deletes rows from <code>DataForSeoReviewTask</code>, <code>PlaceReview</code>, <code>SearchRun</code>, <code>PlaceSnapshot</code>, and <code>Place</code>.</p>
-        <form method="post" action="/admin/clear-runs" onsubmit="return confirm('Clear all run data? This cannot be undone.');">
-            @Html.AntiForgeryToken()
-            <button type="submit">Clear All Run Data</button>
-        </form>
-    </section>
 </div>

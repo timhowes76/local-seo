@@ -1,0 +1,83 @@
+@model GbCountySortViewModel
+@{
+    ViewData["Title"] = "Sort Counties (GB)";
+    var statusMessage = TempData["Status"] as string;
+}
+
+<div class="page-stack">
+    @if (!string.IsNullOrWhiteSpace(statusMessage))
+    {
+        <div class="notice">@statusMessage</div>
+    }
+
+    <section class="card">
+        <div class="toolbar">
+            <a href="/admin/data-lists/counties-gb" class="btn btn-secondary">Back to Counties</a>
+        </div>
+    </section>
+
+    <section class="card">
+        <h2 class="card-title">Drag To Reorder Counties</h2>
+        @if (Model.Rows.Count == 0)
+        {
+            <p class="muted">No counties available.</p>
+        }
+        else
+        {
+            <form method="post" action="/admin/data-lists/counties-gb/sort">
+                @Html.AntiForgeryToken()
+                <input type="hidden" id="orderInput" name="order" value="" />
+                <ul id="county-sort-list" class="sort-list">
+                @foreach (var row in Model.Rows)
+                {
+                    <li class="sort-item" draggable="true" data-id="@row.CountyId">
+                        <span>@row.Name</span>
+                        <span class="muted">@((row.IsActive ? "Active" : "Inactive"))</span>
+                    </li>
+                }
+                </ul>
+                <div class="toolbar">
+                    <button type="submit">Save Order</button>
+                </div>
+            </form>
+        }
+    </section>
+</div>
+
+<script>
+    (() => {
+        const list = document.getElementById("county-sort-list");
+        const orderInput = document.getElementById("orderInput");
+        if (!(list instanceof HTMLElement) || !(orderInput instanceof HTMLInputElement)) return;
+
+        let dragging = null;
+        list.querySelectorAll(".sort-item").forEach((item) => {
+            item.addEventListener("dragstart", () => {
+                dragging = item;
+                item.classList.add("is-dragging");
+            });
+            item.addEventListener("dragend", () => {
+                item.classList.remove("is-dragging");
+                dragging = null;
+            });
+            item.addEventListener("dragover", (e) => {
+                e.preventDefault();
+                if (!dragging || dragging === item) return;
+                const rect = item.getBoundingClientRect();
+                const shouldInsertBefore = e.clientY < rect.top + rect.height / 2;
+                if (shouldInsertBefore) {
+                    list.insertBefore(dragging, item);
+                } else {
+                    list.insertBefore(dragging, item.nextSibling);
+                }
+            });
+        });
+
+        list.closest("form")?.addEventListener("submit", () => {
+            const ids = Array.from(list.querySelectorAll(".sort-item"))
+                .map(x => x.getAttribute("data-id"))
+                .filter(x => x);
+            orderInput.value = ids.join(",");
+        });
+    })();
+</script>

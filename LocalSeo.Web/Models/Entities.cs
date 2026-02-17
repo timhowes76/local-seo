@@ -2,6 +2,9 @@ namespace LocalSeo.Web.Models;
 
 public sealed record SearchRun(
     long SearchRunId,
+    string CategoryId,
+    long TownId,
+    long CountyId,
     string SeedKeyword,
     string LocationName,
     decimal? CenterLat,
@@ -40,7 +43,11 @@ public sealed record PlaceSnapshotRow(
     int? DaysSinceLastUpdate,
     string? UpdateStatusLabel,
     string? StatusLabel,
-    int? MomentumScore);
+    int? MomentumScore)
+{
+    public int? AvgClicks { get; init; }
+    public int? LastMonthClicks { get; init; }
+}
 public sealed record PlaceHistoryRow(
     long SearchRunId,
     int RankPosition,
@@ -82,7 +89,20 @@ public sealed record DataForSeoTaskRow(
 public sealed record RunDetailsViewModel(
     SearchRun Run,
     IReadOnlyList<PlaceSnapshotRow> Snapshots,
-    IReadOnlyList<RunTaskProgressRow> TaskProgress);
+    IReadOnlyList<RunTaskProgressRow> TaskProgress)
+{
+    public RunKeyphraseTrafficSummary? KeyphraseTraffic { get; init; }
+}
+
+public sealed record RunKeyphraseTrafficSummary(
+    string CategoryId,
+    long TownId,
+    IReadOnlyList<WeightedSearchVolumePoint> Last12Months,
+    int WeightedAvgSearchVolume,
+    int? WeightedLastMonthSearchVolume,
+    int? LatestMonthYear,
+    int? LatestMonthNumber,
+    string KeyphrasesUrl);
 
 public sealed record RunReviewComparisonViewModel(
     SearchRun Run,
@@ -166,7 +186,16 @@ public sealed class PlaceDetailsViewModel
     public IReadOnlyList<PlaceDataTaskStatusRow> DataTaskStatuses { get; init; } = [];
     public PlaceReviewVelocityDetailsDto? ReviewVelocity { get; init; }
     public PlaceUpdateVelocityDetailsDto? UpdateVelocity { get; init; }
+    public PlaceEstimatedTrafficSummary? EstimatedTraffic { get; init; }
 }
+
+public sealed record PlaceEstimatedTrafficSummary(
+    int CurrentMapPosition,
+    int EstimatedMonthlyMapVisits,
+    int EstimatedVisitsAtPosition3,
+    int EstimatedVisitsAtPosition1,
+    int? OpportunityToPosition3,
+    int? OpportunityToPosition1);
 
 public sealed record PlaceVelocityListItemDto(
     string PlaceId,
@@ -240,16 +269,20 @@ public sealed record CompetitorVelocityItemDto(
 
 public sealed class SearchFormModel
 {
-    public string SeedKeyword { get; set; } = string.Empty;
-    public string LocationName { get; set; } = string.Empty;
+    public string CategoryId { get; set; } = string.Empty;
+    public long? CountyId { get; set; }
+    public long? TownId { get; set; }
     public int RadiusMeters { get; set; } = 5000;
     public int ResultLimit { get; set; } = 20;
     public bool FetchEnhancedGoogleData { get; set; }
     public bool FetchGoogleReviews { get; set; }
     public bool FetchGoogleUpdates { get; set; }
     public bool FetchGoogleQuestionsAndAnswers { get; set; }
-    public decimal? CenterLat { get; set; }
-    public decimal? CenterLng { get; set; }
+    public IReadOnlyList<GoogleBusinessProfileCategoryLookupItem> CategoryOptions { get; set; } = [];
+    public IReadOnlyList<GbCountyLookupItem> CountyOptions { get; set; } = [];
+    public IReadOnlyList<GbTownLookupItem> TownOptions { get; set; } = [];
+    public CategoryKeyphrasesViewModel? Keyphrases { get; set; }
+    public string? KeyphrasesError { get; set; }
     public long? RerunSourceRunId { get; set; }
 }
 
@@ -321,6 +354,18 @@ public sealed class AdminSettingsModel
     public int GoogleReviewsRefreshHours { get; set; } = 24;
     public int GoogleUpdatesRefreshHours { get; set; } = 24;
     public int GoogleQuestionsAndAnswersRefreshHours { get; set; } = 24;
+    public int SearchVolumeRefreshCooldownDays { get; set; } = 30;
+    public int MapPackClickSharePercent { get; set; } = 50;
+    public int MapPackCtrPosition1Percent { get; set; } = 38;
+    public int MapPackCtrPosition2Percent { get; set; } = 23;
+    public int MapPackCtrPosition3Percent { get; set; } = 16;
+    public int MapPackCtrPosition4Percent { get; set; } = 7;
+    public int MapPackCtrPosition5Percent { get; set; } = 5;
+    public int MapPackCtrPosition6Percent { get; set; } = 4;
+    public int MapPackCtrPosition7Percent { get; set; } = 3;
+    public int MapPackCtrPosition8Percent { get; set; } = 2;
+    public int MapPackCtrPosition9Percent { get; set; } = 1;
+    public int MapPackCtrPosition10Percent { get; set; } = 1;
 }
 
 public sealed record GooglePlace(

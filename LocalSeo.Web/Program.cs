@@ -44,8 +44,12 @@ builder.Services.AddScoped<DbBootstrapper>();
 builder.Services.AddScoped<ILoginService, LoginService>();
 builder.Services.AddScoped<IGooglePlacesClient, GooglePlacesClient>();
 builder.Services.AddScoped<ISearchIngestionService, SearchIngestionService>();
-builder.Services.AddScoped<IAdminMaintenanceService, AdminMaintenanceService>();
 builder.Services.AddScoped<IAdminSettingsService, AdminSettingsService>();
+builder.Services.AddScoped<IGbLocationDataListService, GbLocationDataListService>();
+builder.Services.AddScoped<ICategoryLocationKeywordService, CategoryLocationKeywordService>();
+builder.Services.AddScoped<IGoogleBusinessProfileRefreshTokenStore, LocalSecureGoogleRefreshTokenStore>();
+builder.Services.AddScoped<IGoogleBusinessProfileOAuthService, GoogleBusinessProfileOAuthService>();
+builder.Services.AddScoped<IGoogleBusinessProfileCategoryService, GoogleBusinessProfileCategoryService>();
 builder.Services.AddScoped<IDataForSeoAccountStatusService, DataForSeoAccountStatusService>();
 builder.Services.AddScoped<IEmailSender, SendGridEmailSender>();
 builder.Services.AddScoped<ICodeHasher, CodeHasher>();
@@ -70,6 +74,12 @@ if (!app.Environment.IsDevelopment())
     app.UseExceptionHandler("/Home/Error");
     app.UseHsts();
 }
+
+app.UseWhen(
+    context =>
+        string.Equals(context.Request.Host.Host, "localhost", StringComparison.OrdinalIgnoreCase)
+        && context.Request.Host.Port == 5000,
+    branch => branch.UseDeveloperExceptionPage());
 
 app.UseHttpsRedirection();
 app.UseStaticFiles();

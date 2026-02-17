@@ -12,6 +12,53 @@
     var isAuthenticated = User.Identity?.IsAuthenticated == true;
     var pageTitle = (ViewData["Title"] as string) ?? (ViewContext.RouteData.Values["controller"]?.ToString() ?? "Dashboard");
     var currentController = (ViewContext.RouteData.Values["controller"]?.ToString() ?? string.Empty).ToLowerInvariant();
+    var breadcrumbMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["admin"] = "Admin",
+        ["data-lists"] = "Data Lists",
+        ["counties-gb"] = "Counties (GB)",
+        ["towns-gb"] = "Towns (GB)",
+        ["google-business-profile-categories"] = "Google Business Profile Categories",
+        ["search"] = "Search",
+        ["runs"] = "Runs",
+        ["places"] = "Places",
+        ["settings"] = "Settings",
+        ["location"] = "Location",
+        ["category"] = "Category",
+        ["keyphrases"] = "Keyphrases",
+        ["categories"] = "Categories"
+    };
+    var breadcrumbs = new List<(string Label, string Url, bool IsCurrent)>();
+    var path = (Context.Request.Path.Value ?? "/").TrimEnd('/');
+    if (isAuthenticated)
+    {
+        breadcrumbs.Add(("Home", "/", path == string.Empty || path == "/"));
+        var pathSegments = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        if (pathSegments.Length > 0)
+        {
+            var cumulative = string.Empty;
+            for (var i = 0; i < pathSegments.Length; i++)
+            {
+                var segment = pathSegments[i];
+                cumulative += "/" + segment;
+                var isCurrent = i == pathSegments.Length - 1;
+                var label = breadcrumbMap.TryGetValue(segment, out var mappedLabel)
+                    ? mappedLabel
+                    : segment;
+                if (!breadcrumbMap.ContainsKey(segment))
+                {
+                    if (long.TryParse(segment, out var idValue))
+                        label = $"#{idValue}";
+                    else if (segment.Length > 24 && segment.All(ch => char.IsLetterOrDigit(ch) || ch is '-' or '_'))
+                        label = "Item";
+                    else
+                        label = string.Join(' ', segment.Split(new[] { '-', '_' }, StringSplitOptions.RemoveEmptyEntries)
+                            .Select(part => part.Length == 0 ? part : char.ToUpperInvariant(part[0]) + part[1..].ToLowerInvariant()));
+                }
+                breadcrumbs.Add((label, cumulative, isCurrent));
+            }
+        }
+    }
 }
 
 @if (isAuthenticated)
@@ -45,14 +92,41 @@
 
         <div class="main-shell">
             <header class="topbar">
-                <h1 class="topbar-title">@pageTitle</h1>
-                <div class="topbar-actions">
-                    <span class="topbar-user">@User.Identity?.Name</span>
-                    <form method="post" action="/logout">
-                        @Html.AntiForgeryToken()
-                        <button type="submit" class="btn btn-secondary">Logout</button>
-                    </form>
+                <div class="topbar-main">
+                    <h1 class="topbar-title">@pageTitle</h1>
+                    <div class="topbar-actions">
+                        <span class="topbar-user">@User.Identity?.Name</span>
+                        <form method="post" action="/logout">
+                            @Html.AntiForgeryToken()
+                            <button type="submit" class="btn btn-secondary">Logout</button>
+                        </form>
+                    </div>
                 </div>
+                @if (breadcrumbs.Count > 1)
+                {
+                    <nav class="breadcrumbs" aria-label="Breadcrumb">
+                        <ol>
+                            @for (var i = 0; i < breadcrumbs.Count; i++)
+                            {
+                                var crumb = breadcrumbs[i];
+                                <li>
+                                    @if (crumb.IsCurrent)
+                                    {
+                                        <span aria-current="page">@crumb.Label</span>
+                                    }
+                                    else
+                                    {
+                                        <a href="@crumb.Url">@crumb.Label</a>
+                                    }
+                                    @if (i < breadcrumbs.Count - 1)
+                                    {
+                                        <span class="breadcrumbs-separator">/</span>
+                                    }
+                                </li>
+                            }
+                        </ol>
+                    </nav>
+                }
             </header>
             <main class="content-shell">
                 @RenderBody()

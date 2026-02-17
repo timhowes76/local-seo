@@ -1,0 +1,52 @@
+@model GoogleBusinessProfileCategoryCreateModel
+@{
+    ViewData["Title"] = "Add GBP Category";
+    var returnQ = (ViewBag.ReturnQ as string ?? string.Empty).Trim();
+    var returnStatus = (ViewBag.ReturnStatus as string ?? "active").Trim().ToLowerInvariant();
+    var returnPage = ViewBag.ReturnPage is int p ? Math.Max(1, p) : 1;
+    var returnPageSize = ViewBag.ReturnPageSize is int ps ? Math.Clamp(ps, 10, 200) : 50;
+
+    var statusQuery = Uri.EscapeDataString(returnStatus);
+    var searchQuery = string.IsNullOrWhiteSpace(returnQ) ? string.Empty : $"&q={Uri.EscapeDataString(returnQ)}";
+    var backUrl = $"/admin/data-lists/google-business-profile-categories?status={statusQuery}{searchQuery}&page={returnPage}&pageSize={returnPageSize}";
+    var actionUrl = $"/admin/data-lists/google-business-profile-categories/add?status={statusQuery}{searchQuery}&page={returnPage}&pageSize={returnPageSize}";
+}
+
+<div class="page-stack">
+    <section class="card">
+        <div class="toolbar">
+            <a href="@backUrl" class="btn btn-secondary">Back to Categories</a>
+        </div>
+    </section>
+
+    <section class="card">
+        <h2 class="card-title">Add Category</h2>
+        <form method="post" action="@actionUrl" class="form-grid">
+            @Html.AntiForgeryToken()
+
+            <div class="form-row">
+                <label for="CategoryId">Category ID</label>
+                <input id="CategoryId" name="CategoryId" type="text" value="@Model.CategoryId" required />
+            </div>
+
+            <div class="form-row">
+                <label for="DisplayName">Display Name</label>
+                <input id="DisplayName" name="DisplayName" type="text" value="@Model.DisplayName" required />
+            </div>
+
+            <div class="form-row">
+                <label for="RegionCode">Region Code</label>
+                <input id="RegionCode" name="RegionCode" type="text" value="@Model.RegionCode" required />
+            </div>
+
+            <div class="form-row">
+                <label for="LanguageCode">Language Code</label>
+                <input id="LanguageCode" name="LanguageCode" type="text" value="@Model.LanguageCode" required />
+            </div>
+
+            <div class="toolbar">
+                <button type="submit">Add Category</button>
+            </div>
+        </form>
+    </section>
+</div>

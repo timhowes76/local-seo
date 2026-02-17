@@ -18,6 +18,12 @@ public sealed class DataForSeoOptions
     public string QuestionsAndAnswersTaskPostPath { get; set; } = "/v3/business_data/google/questions_and_answers/task_post";
     public string QuestionsAndAnswersTaskGetPathFormat { get; set; } = "/v3/business_data/google/questions_and_answers/task_get/{0}";
     public string QuestionsAndAnswersTasksReadyPath { get; set; } = "/v3/business_data/google/questions_and_answers/tasks_ready";
+    public string SearchVolumePath { get; set; } = "/v3/keywords_data/google_ads/search_volume/live";
+    public string SearchVolumeLocationName { get; set; } = "United Kingdom";
+    public string SearchVolumeLanguageName { get; set; } = "English";
+    public int SearchVolumeLocationCode { get; set; } = 2826;
+    public int SearchVolumeLanguageCode { get; set; } = 1000;
+    public bool SearchVolumeSearchPartners { get; set; }
     public string LanguageCode { get; set; } = "en";
     public int Depth { get; set; } = 100;
     public string SortBy { get; set; } = "newest";

@@ -20,8 +20,12 @@ public class RunsController(ISearchIngestionService ingestionService) : Controll
             return NotFound();
 
         var snapshots = await ingestionService.GetRunSnapshotsAsync(id, ct);
+        var keyphraseTraffic = await ingestionService.GetRunKeyphraseTrafficSummaryAsync(id, ct);
         var taskProgress = await ingestionService.GetRunTaskProgressAsync(run, ct);
-        return View(new RunDetailsViewModel(run, snapshots, taskProgress));
+        return View(new RunDetailsViewModel(run, snapshots, taskProgress)
+        {
+            KeyphraseTraffic = keyphraseTraffic
+        });
     }
 
     [HttpGet("/runs/{id:long}/compare-reviews")]

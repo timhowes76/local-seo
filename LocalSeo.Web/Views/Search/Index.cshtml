@@ -3,6 +3,7 @@
     ViewData["Title"] = "Search";
     var statusMessage = TempData["Status"] as string;
     var isRerun = Model.RerunSourceRunId.HasValue;
+    var keyphrases = Model.Keyphrases;
 }
 <div class="page-stack">
     @if (!string.IsNullOrWhiteSpace(statusMessage))
@@ -24,29 +25,61 @@
             @Html.AntiForgeryToken()
             <input asp-for="RerunSourceRunId" type="hidden" />
             <div class="form-row">
-                <label asp-for="SeedKeyword">Seed Keyword</label>
-                <input asp-for="SeedKeyword" required />
+                <label asp-for="CategoryId">Google Business Profile Category</label>
+                <select asp-for="CategoryId" required>
+                    <option value="">Select category</option>
+                    @foreach (var category in Model.CategoryOptions)
+                    {
+                        if (string.Equals(category.CategoryId, Model.CategoryId, StringComparison.OrdinalIgnoreCase))
+                        {
+                            <option value="@category.CategoryId" selected>@category.DisplayName (@category.CategoryId)</option>
+                        }
+                        else
+                        {
+                            <option value="@category.CategoryId">@category.DisplayName (@category.CategoryId)</option>
+                        }
+                    }
+                </select>
+                @Html.ValidationMessageFor(x => x.CategoryId)
             </div>
-            <div class="form-row">
-                <label asp-for="LocationName">Location Name</label>
-                <input asp-for="LocationName" required />
-            </div>
-            @if (Model.CenterLat.HasValue && Model.CenterLng.HasValue)
-            {
+            <div class="search-location-row">
                 <div class="form-row">
-                    <label asp-for="CenterLat">Center Latitude</label>
-                    <input asp-for="CenterLat" readonly />
+                    <label asp-for="CountyId">County</label>
+                    <select asp-for="CountyId" id="CountyId" required>
+                        <option value="">Select county</option>
+                        @foreach (var county in Model.CountyOptions)
+                        {
+                            if (Model.CountyId.HasValue && county.CountyId == Model.CountyId.Value)
+                            {
+                                <option value="@county.CountyId" selected>@county.Name</option>
+                            }
+                            else
+                            {
+                                <option value="@county.CountyId">@county.Name</option>
+                            }
+                        }
+                    </select>
+                    @Html.ValidationMessageFor(x => x.CountyId)
                 </div>
                 <div class="form-row">
-                    <label asp-for="CenterLng">Center Longitude</label>
-                    <input asp-for="CenterLng" readonly />
+                    <label asp-for="TownId">Town</label>
+                    <select asp-for="TownId" id="TownId" required>
+                        <option value="">Select town</option>
+                        @foreach (var town in Model.TownOptions)
+                        {
+                            if (Model.TownId.HasValue && town.TownId == Model.TownId.Value)
+                            {
+                                <option value="@town.TownId" selected>@town.Name</option>
+                            }
+                            else
+                            {
+                                <option value="@town.TownId">@town.Name</option>
+                            }
+                        }
+                    </select>
+                    @Html.ValidationMessageFor(x => x.TownId)
                 </div>
-            }
-            else
-            {
-                <input asp-for="CenterLat" type="hidden" />
-                <input asp-for="CenterLng" type="hidden" />
-            }
+            </div>
             <div class="form-row">
                 <label for="RadiusKm">Radius</label>
                 <input id="RadiusKm" name="RadiusKm" type="range" min="1" max="100" step="1" value="@Math.Max(1, Model.RadiusMeters / 1000)" />
@@ -75,9 +108,237 @@
             </div>
             <div>
                 <button type="submit" id="run-search-btn">Run Search</button>
+                <button type="button" id="view-keyphrases-btn" class="btn btn-secondary">View Keyphrases for Selection</button>
             </div>
         </form>
     </section>
+
+    @if (!string.IsNullOrWhiteSpace(Model.KeyphrasesError))
+    {
+        <section class="card">
+            <h2 class="card-title">Keyphrases</h2>
+            <p class="muted">@Model.KeyphrasesError</p>
+        </section>
+    }
+    else if (keyphrases is not null)
+    {
+        <section class="card">
+            <div class="toolbar">
+                <h2 class="card-title">Keyphrases for @keyphrases.LocationName, @keyphrases.CountyName</h2>
+                <form method="post" action="/search/keyphrases/refresh-eligible">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="categoryId" value="@Model.CategoryId" />
+                    <input type="hidden" name="countyId" value="@(Model.CountyId ?? 0)" />
+                    <input type="hidden" name="townId" value="@(Model.TownId ?? 0)" />
+                    <button type="submit" class="btn btn-secondary">Refresh Eligible</button>
+                </form>
+            </div>
+            <p class="muted">Category: @keyphrases.CategoryDisplayName</p>
+            <p class="muted">Refresh cooldown: @keyphrases.SearchVolumeRefreshCooldownDays day(s)</p>
+        </section>
+
+        <section class="card">
+            <h2 class="card-title">Add New Keyphrase</h2>
+            <form id="SearchKeyphraseAddForm" method="post" action="/search/keyphrases/add" class="form-grid">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="categoryId" value="@Model.CategoryId" />
+                <input type="hidden" name="countyId" value="@(Model.CountyId ?? 0)" />
+                <input type="hidden" name="townId" value="@(Model.TownId ?? 0)" />
+                <input id="SearchExpectedMainKeyword" type="hidden" value="@keyphrases.ExpectedMainKeyword" />
+                <input id="SearchRequiredLocationName" type="hidden" value="@keyphrases.LocationName" />
+                <div class="form-row">
+                    <label for="SearchKeyphraseKeyword">Keyword</label>
+                    <input id="SearchKeyphraseKeyword" name="Keyword" type="text" value="@keyphrases.AddForm.Keyword" maxlength="255" required />
+                    <div id="SearchKeywordValidationMessage" class="form-help form-help-error is-hidden"></div>
+                </div>
+                <div class="form-row">
+                    <label>Keyword Type</label>
+                    <div class="inline-group">
+                        <input id="SearchKeywordTypeMain" name="KeywordType" type="radio" value="@CategoryLocationKeywordTypes.MainTerm" @(keyphrases.AddForm.KeywordType == CategoryLocationKeywordTypes.MainTerm ? "checked" : null) />
+                        <label for="SearchKeywordTypeMain">Main Term</label>
+                    </div>
+                    <div class="inline-group">
+                        <input id="SearchKeywordTypeModifier" name="KeywordType" type="radio" value="@CategoryLocationKeywordTypes.Modifier" @(keyphrases.AddForm.KeywordType == CategoryLocationKeywordTypes.Modifier ? "checked" : null) />
+                        <label for="SearchKeywordTypeModifier">Modifier</label>
+                    </div>
+                    <div class="inline-group">
+                        <input id="SearchKeywordTypeAdjacent" name="KeywordType" type="radio" value="@CategoryLocationKeywordTypes.Adjacent" @(keyphrases.AddForm.KeywordType == CategoryLocationKeywordTypes.Adjacent ? "checked" : null) />
+                        <label for="SearchKeywordTypeAdjacent">Adjacent</label>
+                    </div>
+                    <p id="SearchMainTermRuleText" class="form-help">Main Term is only available when the keyword exactly matches "@keyphrases.ExpectedMainKeyword".</p>
+                    <p class="form-help">Modifier = Same core service intent, refined by qualifier, Adjacent = Different but related service intent e.g.</p>
+                    <div class="keyword-type-help-grid">
+                        <div>
+                            <strong>Main Term</strong>
+                            <div>Hairdresser Yeovil</div>
+                        </div>
+                        <div>
+                            <strong>Modifiers</strong>
+                            <div>cheap hairdresser yeovil</div>
+                            <div>best hairdresser yeovil</div>
+                            <div>walk in hairdresser yeovil</div>
+                            <div>hairdresser yeovil town centre</div>
+                            <div>ladies hairdresser yeovil</div>
+                        </div>
+                        <div>
+                            <strong>Adjacent</strong>
+                            <div>barber yeovil</div>
+                            <div>beauty salon yeovil</div>
+                            <div>nail salon yeovil</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="toolbar">
+                    <button type="submit">Add Keyphrase + Fetch Volume</button>
+                </div>
+            </form>
+        </section>
+
+        <section class="card">
+            <h2 class="card-title">Keyphrases</h2>
+            @if (keyphrases.Rows.Count == 0)
+            {
+                <p class="muted">No keyphrases added yet.</p>
+            }
+            else
+            {
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Keyword</th>
+                                <th>Keyword Type</th>
+                                <th>Synonym Of</th>
+                                <th>Avg Search Volume</th>
+                                <th>Data</th>
+                                <th>Search Volume (Last 12 Months)</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        @foreach (var row in keyphrases.Rows)
+                        {
+                            var keywordTypeLabel = row.KeywordType switch
+                            {
+                                1 => "MainTerm",
+                                2 => "Synonym",
+                                3 => "Modifier",
+                                4 => "Adjacent",
+                                _ => "Unknown"
+                            };
+                            var hasData = !row.NoData && row.AvgSearchVolume.HasValue;
+                            var maxVolume = row.Last12Months.Count == 0 ? 0 : row.Last12Months.Max(x => x.SearchVolume);
+                            <tr>
+                                <td>@row.Keyword</td>
+                                <td>@keywordTypeLabel</td>
+                                <td>@(row.KeywordType == CategoryLocationKeywordTypes.Synonym && !string.IsNullOrWhiteSpace(row.SynonymOfKeyword) ? row.SynonymOfKeyword : "-")</td>
+                                <td>@(row.AvgSearchVolume?.ToString("N0") ?? "N/A")</td>
+                                <td>
+                                    @if (hasData)
+                                    {
+                                        <span class="data-indicator data-indicator-yes" aria-label="Data available">&#10003;</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="data-indicator data-indicator-no" aria-label="No data">&#10007;</span>
+                                    }
+                                </td>
+                                <td>
+                                    @if (row.Last12Months.Count == 0)
+                                    {
+                                        <span class="muted">No monthly data</span>
+                                    }
+                                    else
+                                    {
+                                        <div class="sparkline">
+                                            @foreach (var point in row.Last12Months)
+                                            {
+                                                var heightPercent = maxVolume <= 0 ? 0 : Math.Max(5, (int)Math.Round((point.SearchVolume * 100.0) / maxVolume));
+                                                <span class="sparkline-bar" title="@point.Year-@point.Month.ToString("00"): @point.SearchVolume" style="height:@heightPercent%"></span>
+                                            }
+                                        </div>
+                                        <div class="muted">
+                                            Data as of: @(row.DataAsOfUtc?.ToString("yyyy-MM") ?? "N/A")
+                                        </div>
+                                    }
+                                </td>
+                                <td>
+                                    <div class="toolbar">
+                                        @if (row.IsRefreshEligible)
+                                        {
+                                            <form method="post" action="/search/keyphrases/@row.Id/refresh">
+                                                @Html.AntiForgeryToken()
+                                                <input type="hidden" name="categoryId" value="@Model.CategoryId" />
+                                                <input type="hidden" name="countyId" value="@(Model.CountyId ?? 0)" />
+                                                <input type="hidden" name="townId" value="@(Model.TownId ?? 0)" />
+                                                <button type="submit" class="btn btn-secondary">Refresh</button>
+                                            </form>
+                                        }
+                                        @if (row.KeywordType != CategoryLocationKeywordTypes.MainTerm && row.KeywordType != CategoryLocationKeywordTypes.Adjacent)
+                                        {
+                                            <form method="post" action="/search/keyphrases/@row.Id/set-type">
+                                                @Html.AntiForgeryToken()
+                                                <input type="hidden" name="keywordType" value="@CategoryLocationKeywordTypes.Adjacent" />
+                                                <input type="hidden" name="categoryId" value="@Model.CategoryId" />
+                                                <input type="hidden" name="countyId" value="@(Model.CountyId ?? 0)" />
+                                                <input type="hidden" name="townId" value="@(Model.TownId ?? 0)" />
+                                                <button type="submit" class="btn btn-secondary">Set Adjacent</button>
+                                            </form>
+                                        }
+                                        @if (row.KeywordType == CategoryLocationKeywordTypes.Adjacent)
+                                        {
+                                            <form method="post" action="/search/keyphrases/@row.Id/set-type">
+                                                @Html.AntiForgeryToken()
+                                                <input type="hidden" name="keywordType" value="@CategoryLocationKeywordTypes.Modifier" />
+                                                <input type="hidden" name="categoryId" value="@Model.CategoryId" />
+                                                <input type="hidden" name="countyId" value="@(Model.CountyId ?? 0)" />
+                                                <input type="hidden" name="townId" value="@(Model.TownId ?? 0)" />
+                                                <button type="submit" class="btn btn-secondary">Set Modifier</button>
+                                            </form>
+                                        }
+                                        <form method="post" action="/search/keyphrases/@row.Id/delete" onsubmit="return confirm('Delete this keyphrase and its monthly data?');">
+                                            @Html.AntiForgeryToken()
+                                            <input type="hidden" name="categoryId" value="@Model.CategoryId" />
+                                            <input type="hidden" name="countyId" value="@(Model.CountyId ?? 0)" />
+                                            <input type="hidden" name="townId" value="@(Model.TownId ?? 0)" />
+                                            <button type="submit" class="btn btn-secondary">Delete</button>
+                                        </form>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </section>
+
+        <section class="card">
+            <h2 class="card-title">Total Search Volume (Last 12 Months)</h2>
+            @if (keyphrases.WeightedTotalLast12Months.Count == 0)
+            {
+                <p class="muted">No monthly data available yet.</p>
+            }
+            else
+            {
+                var maxTotal = keyphrases.WeightedTotalLast12Months.Max(x => x.WeightedSearchVolume);
+                <div class="volume-chart">
+                    @foreach (var point in keyphrases.WeightedTotalLast12Months)
+                    {
+                        var heightPercent = maxTotal <= 0 ? 0 : Math.Max(5, (int)Math.Round((point.WeightedSearchVolume * 100m) / maxTotal));
+                        <div class="volume-chart-column">
+                            <div class="volume-chart-plot">
+                                <span class="volume-chart-bar" style="height:@heightPercent%" title="@point.Year-@point.Month.ToString("00"): @point.WeightedSearchVolume.ToString("N1")"></span>
+                            </div>
+                            <span class="volume-chart-label">@point.Year-@point.Month.ToString("00")</span>
+                            <span class="volume-chart-value">@point.WeightedSearchVolume.ToString("N0")</span>
+                        </div>
+                    }
+                </div>
+            }
+            <p class="muted">Calculated as Main Term monthly volume plus 70% of each Modifier and Adjacent monthly volume. Synonyms are excluded to avoid double counting.</p>
+        </section>
+    }
 </div>
 
 <div id="search-loading-overlay" class="loading-overlay is-hidden" role="dialog" aria-live="polite" aria-modal="true" aria-label="Search is running">
@@ -96,6 +357,20 @@
         const form = document.getElementById("search-form");
         const runButton = document.getElementById("run-search-btn");
         const loadingOverlay = document.getElementById("search-loading-overlay");
+        const countySelect = document.getElementById("CountyId");
+        const townSelect = document.getElementById("TownId");
+        const categorySelect = document.getElementById("CategoryId");
+        const viewKeyphrasesButton = document.getElementById("view-keyphrases-btn");
+        const keyphraseAddForm = document.getElementById("SearchKeyphraseAddForm");
+        const keyphraseInput = document.getElementById("SearchKeyphraseKeyword");
+        const keyphraseMainType = document.getElementById("SearchKeywordTypeMain");
+        const keyphraseModifierType = document.getElementById("SearchKeywordTypeModifier");
+        const keyphraseExpectedMain = document.getElementById("SearchExpectedMainKeyword")?.value ?? "";
+        const keyphraseRequiredLocation = document.getElementById("SearchRequiredLocationName")?.value ?? "";
+        const keyphraseMainRuleText = document.getElementById("SearchMainTermRuleText");
+        const keyphraseValidationMessage = document.getElementById("SearchKeywordValidationMessage");
+        const initialTownId = "@(Model.TownId?.ToString() ?? string.Empty)";
+        const rerunId = "@(Model.RerunSourceRunId?.ToString() ?? string.Empty)";
         if (!kmSlider || !metersInput || !kmDisplay) return;
 
         const syncFromKm = () => {
@@ -120,6 +395,149 @@
                 showLoadingState();
             });
         }
+
+        const buildTownOption = (town, selectedTownId) => {
+            const option = document.createElement("option");
+            option.value = String(town.townId);
+            option.textContent = town.name;
+            if (selectedTownId && String(town.townId) === String(selectedTownId)) {
+                option.selected = true;
+            }
+            return option;
+        };
+
+        const resetTownOptions = () => {
+            if (!(townSelect instanceof HTMLSelectElement)) return;
+            townSelect.innerHTML = "";
+            const placeholder = document.createElement("option");
+            placeholder.value = "";
+            placeholder.textContent = "Select town";
+            townSelect.appendChild(placeholder);
+        };
+
+        const loadTowns = async (selectedTownId) => {
+            if (!(countySelect instanceof HTMLSelectElement) || !(townSelect instanceof HTMLSelectElement)) return;
+            const countyId = countySelect.value;
+            resetTownOptions();
+            if (!countyId) return;
+
+            try {
+                const response = await fetch(`/search/towns?countyId=${encodeURIComponent(countyId)}`, {
+                    headers: { "Accept": "application/json" }
+                });
+                if (!response.ok) return;
+                const towns = await response.json();
+                for (const town of towns) {
+                    townSelect.appendChild(buildTownOption(town, selectedTownId));
+                }
+            } catch {
+                // Ignore and keep form usable without dynamic loading.
+            }
+        };
+
+        const navigateToSelection = (includeTown) => {
+            const query = new URLSearchParams();
+            const categoryId = categorySelect instanceof HTMLSelectElement ? categorySelect.value : "";
+            const countyId = countySelect instanceof HTMLSelectElement ? countySelect.value : "";
+            const townId = townSelect instanceof HTMLSelectElement ? townSelect.value : "";
+            if (rerunId) query.set("rerunId", rerunId);
+            if (categoryId) query.set("categoryId", categoryId);
+            if (countyId) query.set("countyId", countyId);
+            if (includeTown && townId) query.set("townId", townId);
+            window.location.href = query.toString() ? `/search?${query}` : "/search";
+        };
+
+        if (countySelect instanceof HTMLSelectElement) {
+            countySelect.addEventListener("change", () => {
+                navigateToSelection(false);
+            });
+
+            if (countySelect.value && (!(townSelect instanceof HTMLSelectElement) || townSelect.options.length <= 1)) {
+                loadTowns(initialTownId);
+            }
+        }
+
+        if (categorySelect instanceof HTMLSelectElement) {
+            categorySelect.addEventListener("change", () => {
+                navigateToSelection(true);
+            });
+        }
+
+        if (townSelect instanceof HTMLSelectElement) {
+            townSelect.addEventListener("change", () => {
+                navigateToSelection(true);
+            });
+        }
+
+        if (viewKeyphrasesButton instanceof HTMLButtonElement) {
+            viewKeyphrasesButton.addEventListener("click", () => {
+                navigateToSelection(true);
+            });
+        }
+
+        const normalizeKeyword = (value) =>
+            (value || "")
+                .toLowerCase()
+                .replace(/[^a-z0-9]+/g, " ")
+                .trim()
+                .replace(/\s+/g, " ");
+
+        const normalizedExpectedMain = normalizeKeyword(keyphraseExpectedMain);
+        const normalizedRequiredLocation = normalizeKeyword(keyphraseRequiredLocation);
+
+        const setKeyphraseValidationMessage = (message) => {
+            if (!keyphraseValidationMessage) return;
+            if (!message) {
+                keyphraseValidationMessage.textContent = "";
+                keyphraseValidationMessage.classList.add("is-hidden");
+                return;
+            }
+            keyphraseValidationMessage.textContent = message;
+            keyphraseValidationMessage.classList.remove("is-hidden");
+        };
+
+        const updateKeyphraseMainAvailability = () => {
+            const normalizedKeyword = normalizeKeyword(keyphraseInput?.value);
+            const canSelectMain = normalizedKeyword.length > 0 && normalizedKeyword === normalizedExpectedMain;
+            if (keyphraseMainType) {
+                keyphraseMainType.disabled = !canSelectMain;
+                if (!canSelectMain && keyphraseMainType.checked && keyphraseModifierType) {
+                    keyphraseModifierType.checked = true;
+                }
+            }
+            if (keyphraseMainRuleText) {
+                keyphraseMainRuleText.textContent = canSelectMain
+                    ? "Main Term can be selected for this keyword."
+                    : `Main Term is only available when the keyword exactly matches "${keyphraseExpectedMain}".`;
+            }
+            return canSelectMain;
+        };
+
+        keyphraseInput?.addEventListener("input", () => {
+            updateKeyphraseMainAvailability();
+            setKeyphraseValidationMessage("");
+        });
+
+        if (keyphraseAddForm instanceof HTMLFormElement) {
+            keyphraseAddForm.addEventListener("submit", (event) => {
+                const normalizedKeyword = normalizeKeyword(keyphraseInput?.value);
+                const hasLocation = normalizedRequiredLocation.length > 0
+                    && (` ${normalizedKeyword} `).includes(` ${normalizedRequiredLocation} `);
+                if (!hasLocation) {
+                    event.preventDefault();
+                    setKeyphraseValidationMessage(`Please include the location "${keyphraseRequiredLocation}" in the keyphrase.`);
+                    return;
+                }
+                if (keyphraseMainType?.checked && !updateKeyphraseMainAvailability()) {
+                    event.preventDefault();
+                    setKeyphraseValidationMessage(`Main Term is only allowed when the keyphrase exactly matches "${keyphraseExpectedMain}".`);
+                    return;
+                }
+                setKeyphraseValidationMessage("");
+            });
+        }
+
+        updateKeyphraseMainAvailability();
 
         kmSlider.addEventListener("input", syncFromKm);
         syncFromKm();
