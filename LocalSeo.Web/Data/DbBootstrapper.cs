@@ -1096,6 +1096,25 @@ IF COL_LENGTH('dbo.SearchRun', 'CenterLat') IS NOT NULL
 IF COL_LENGTH('dbo.SearchRun', 'CenterLng') IS NOT NULL
   ALTER TABLE dbo.SearchRun DROP COLUMN CenterLng;
 
+IF OBJECT_ID('dbo.ZohoOAuthToken','U') IS NULL
+BEGIN
+  CREATE TABLE dbo.ZohoOAuthToken(
+    TokenKey nvarchar(100) NOT NULL PRIMARY KEY,
+    ProtectedRefreshToken nvarchar(max) NULL,
+    AccessToken nvarchar(max) NULL,
+    AccessTokenExpiresAtUtc datetime2(0) NULL,
+    UpdatedAtUtc datetime2(0) NOT NULL CONSTRAINT DF_ZohoOAuthToken_UpdatedAtUtc DEFAULT SYSUTCDATETIME()
+  );
+END;
+IF COL_LENGTH('dbo.ZohoOAuthToken', 'ProtectedRefreshToken') IS NULL
+  ALTER TABLE dbo.ZohoOAuthToken ADD ProtectedRefreshToken nvarchar(max) NULL;
+IF COL_LENGTH('dbo.ZohoOAuthToken', 'AccessToken') IS NULL
+  ALTER TABLE dbo.ZohoOAuthToken ADD AccessToken nvarchar(max) NULL;
+IF COL_LENGTH('dbo.ZohoOAuthToken', 'AccessTokenExpiresAtUtc') IS NULL
+  ALTER TABLE dbo.ZohoOAuthToken ADD AccessTokenExpiresAtUtc datetime2(0) NULL;
+IF COL_LENGTH('dbo.ZohoOAuthToken', 'UpdatedAtUtc') IS NULL
+  ALTER TABLE dbo.ZohoOAuthToken ADD UpdatedAtUtc datetime2(0) NOT NULL CONSTRAINT DF_ZohoOAuthToken_UpdatedAtUtc_Alt DEFAULT SYSUTCDATETIME();
+
 IF OBJECT_ID('dbo.LoginCode','U') IS NULL
 BEGIN
   CREATE TABLE dbo.LoginCode(

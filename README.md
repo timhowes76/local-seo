@@ -51,12 +51,38 @@ Set via `appsettings.json` and/or environment variables:
 - `DataForSeo__SortBy` (default `newest`)
 - `DataForSeo__MaxPollAttempts` (default `10`)
 - `DataForSeo__PollDelayMs` (default `1000`)
+- `ZohoOAuth__AccountsBaseUrl` (EU: `https://accounts.zoho.eu`, US: `https://accounts.zoho.com`)
+- `ZohoOAuth__CrmApiBaseUrl` (EU: `https://www.zohoapis.eu/crm/v2`, US: `https://www.zohoapis.com/crm/v2`)
+- `ZohoOAuth__ClientId`
+- `ZohoOAuth__ClientSecret` (store in secrets manager / env var for production)
+- `ZohoOAuth__RedirectUri` (e.g. `https://your-domain/zoho/oauth/callback`)
+- `ZohoOAuth__Scopes` (default `ZohoCRM.modules.leads.ALL,ZohoCRM.settings.modules.READ`)
 
 ### Google OAuth setup checklist (GBP Categories sync)
 - Authorized redirect URI:
   `https://briskly-viceless-kayleen.ngrok-free.dev/admin/google/oauth/callback`
 - Authorized JavaScript origin (if needed):
   `https://briskly-viceless-kayleen.ngrok-free.dev`
+
+### Zoho CRM OAuth setup checklist
+- Use a Zoho server-based OAuth client with redirect URI:
+  `https://briskly-viceless-kayleen.ngrok-free.dev/zoho/oauth/callback`
+- For local HTTPS development, trust the ASP.NET Core dev certificate once:
+  ```bash
+  dotnet dev-certs https --trust
+  ```
+- Start the one-time consent flow as an authenticated staff user:
+  `GET /integrations/zoho/connect`
+- Callback endpoints supported by the app:
+  - `GET /zoho/oauth/callback`
+  - `GET /integrations/zoho/callback`
+- Smoke test endpoint after connect:
+  `GET /integrations/zoho/ping`
+
+### Zoho client secret rotation
+- Create a new client secret in Zoho and update only `ZohoOAuth__ClientSecret` in your secret store/environment.
+- Restart the app instances so new config is loaded.
+- Existing refresh tokens stay valid unless revoked; if revoked, rerun `/integrations/zoho/connect`.
 
 ## Run
 1. Create SQL DB and set `ConnectionStrings__Sql`.

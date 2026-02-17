@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using System.Net.Http.Headers;
 using LocalSeo.Web.Data;
 using LocalSeo.Web.Options;
 using LocalSeo.Web.Services;
@@ -16,6 +17,7 @@ builder.Services.Configure<GoogleOptions>(builder.Configuration.GetSection("Goog
 builder.Services.Configure<SendGridOptions>(builder.Configuration.GetSection("SendGrid"));
 builder.Services.Configure<PlacesOptions>(builder.Configuration.GetSection("Places"));
 builder.Services.Configure<DataForSeoOptions>(builder.Configuration.GetSection("DataForSeo"));
+builder.Services.Configure<ZohoOAuthOptions>(builder.Configuration.GetSection("ZohoOAuth"));
 
 builder.Services.AddControllersWithViews();
 builder.Services.AddHttpClient();
@@ -49,6 +51,19 @@ builder.Services.AddScoped<IGbLocationDataListService, GbLocationDataListService
 builder.Services.AddScoped<ICategoryLocationKeywordService, CategoryLocationKeywordService>();
 builder.Services.AddScoped<IGoogleBusinessProfileRefreshTokenStore, LocalSecureGoogleRefreshTokenStore>();
 builder.Services.AddScoped<IGoogleBusinessProfileOAuthService, GoogleBusinessProfileOAuthService>();
+builder.Services.AddScoped<IZohoTokenStore, SqlZohoTokenStore>();
+builder.Services.AddScoped<IZohoOAuthService, ZohoOAuthService>();
+builder.Services.AddScoped<IZohoTokenService, ZohoTokenService>();
+builder.Services.AddHttpClient<IZohoCrmClient, ZohoCrmClient>((sp, client) =>
+{
+    var zohoOptions = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<ZohoOAuthOptions>>().Value;
+    var crmBaseUrl = (zohoOptions.CrmApiBaseUrl ?? string.Empty).Trim().TrimEnd('/');
+    if (Uri.TryCreate($"{crmBaseUrl}/", UriKind.Absolute, out var baseAddress))
+        client.BaseAddress = baseAddress;
+
+    client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+    client.Timeout = TimeSpan.FromSeconds(30);
+});
 builder.Services.AddScoped<IGoogleBusinessProfileCategoryService, GoogleBusinessProfileCategoryService>();
 builder.Services.AddScoped<IDataForSeoAccountStatusService, DataForSeoAccountStatusService>();
 builder.Services.AddScoped<IEmailSender, SendGridEmailSender>();
