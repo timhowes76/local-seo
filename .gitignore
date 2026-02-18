@@ -3,3 +3,5 @@
 LocalSeo.Web/appsettings.json
 LocalSeo.Web/appsettings.*.json
 LocalSeo.Web/App_Data/
+_build_tmp/
+**/_build_tmp/
