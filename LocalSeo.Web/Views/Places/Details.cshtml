@@ -101,6 +101,9 @@
     var totalReviewPages = Math.Max(1, Model.TotalReviewPages);
     var hasPrevReviewPage = reviewPage > 1;
     var hasNextReviewPage = reviewPage < totalReviewPages;
+    var createZohoLeadUrl = requestedRunId.HasValue
+        ? $"/places/{Model.PlaceId}/zoho/create-lead?runId={requestedRunId.Value}"
+        : $"/places/{Model.PlaceId}/zoho/create-lead";
 }
 
 <div class="page-stack">
@@ -133,6 +136,41 @@
             <div><strong>Rating:</strong> @(Model.ActiveRating?.ToString() ?? "N/A")</div>
             <div><strong>Number of Reviews:</strong> @(Model.ActiveUserRatingCount?.ToString() ?? "N/A")</div>
             <div><strong>Number of Question &amp; Answers:</strong> @(Model.QuestionAnswerCount?.ToString() ?? "0")</div>
+            <div class="zoho-lead-row">
+                <strong>Zoho Lead:</strong>
+                @if (Model.ZohoLeadCreated)
+                {
+                    <span class="data-indicator data-indicator-yes" title="Zoho lead created">&#10003;</span>
+                    <span class="status-pill status-healthy">Created</span>
+                    <div class="zoho-lead-meta">
+                        @if (Model.ZohoLeadCreatedAtUtc.HasValue)
+                        {
+                            <span>Created at @Model.ZohoLeadCreatedAtUtc.Value.ToString("u") UTC</span>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(Model.ZohoLeadId))
+                        {
+                            <span>Lead ID: <code>@Model.ZohoLeadId</code></span>
+                        }
+                    </div>
+                }
+                else
+                {
+                    <form method="post" action="@createZohoLeadUrl" class="zoho-create-form">
+                        @Html.AntiForgeryToken()
+                        <button type="submit">Create Lead In Zoho</button>
+                    </form>
+                }
+                @if (!string.IsNullOrWhiteSpace(Model.ZohoLastError))
+                {
+                    <div class="zoho-sync-error">
+                        <strong>Last Zoho error:</strong> @Model.ZohoLastError
+                        @if (Model.ZohoLastSyncAtUtc.HasValue)
+                        {
+                            <span>(@Model.ZohoLastSyncAtUtc.Value.ToString("u") UTC)</span>
+                        }
+                    </div>
+                }
+            </div>
         </section>
 
         <section class="card">

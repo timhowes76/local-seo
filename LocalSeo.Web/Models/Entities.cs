@@ -157,6 +157,7 @@ public sealed class PlaceDetailsViewModel
     public string? PrimaryCategory { get; init; }
     public string? NationalPhoneNumber { get; init; }
     public string? WebsiteUri { get; init; }
+    public DateTime? OpeningDate { get; init; }
     public decimal? Lat { get; init; }
     public decimal? Lng { get; init; }
     public string? Description { get; init; }
@@ -187,6 +188,11 @@ public sealed class PlaceDetailsViewModel
     public PlaceReviewVelocityDetailsDto? ReviewVelocity { get; init; }
     public PlaceUpdateVelocityDetailsDto? UpdateVelocity { get; init; }
     public PlaceEstimatedTrafficSummary? EstimatedTraffic { get; init; }
+    public bool ZohoLeadCreated { get; init; }
+    public DateTime? ZohoLeadCreatedAtUtc { get; init; }
+    public string? ZohoLeadId { get; init; }
+    public DateTime? ZohoLastSyncAtUtc { get; init; }
+    public string? ZohoLastError { get; init; }
 }
 
 public sealed record PlaceEstimatedTrafficSummary(
@@ -366,6 +372,9 @@ public sealed class AdminSettingsModel
     public int MapPackCtrPosition8Percent { get; set; } = 2;
     public int MapPackCtrPosition9Percent { get; set; } = 1;
     public int MapPackCtrPosition10Percent { get; set; } = 1;
+    public string ZohoLeadOwnerName { get; set; } = "Richard Howes";
+    public string ZohoLeadOwnerId { get; set; } = "1108404000000068001";
+    public string ZohoLeadNextAction { get; set; } = "Make first contact";
 }
 
 public sealed record GooglePlace(

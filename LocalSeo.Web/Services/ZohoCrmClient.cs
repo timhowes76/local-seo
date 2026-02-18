@@ -9,6 +9,9 @@ public interface IZohoCrmClient
 {
     Task<JsonDocument> SearchLeadsAsync(string criteria, CancellationToken ct = default);
     Task<JsonDocument> CreateLeadAsync(object leadPayload, CancellationToken ct = default);
+    Task<JsonDocument> UpsertLeadAsync(object leadPayload, IReadOnlyList<string> duplicateCheckFields, CancellationToken ct = default);
+    Task<JsonDocument> UpdateLeadAsync(string leadId, object leadPayload, CancellationToken ct = default);
+    Task<JsonDocument> GetLeadByIdAsync(string leadId, CancellationToken ct = default);
     Task<JsonDocument> PingAsync(CancellationToken ct = default);
 }
 
@@ -39,6 +42,58 @@ public sealed class ZohoCrmClient(
             request.Content = JsonContent.Create(new { data = new[] { leadPayload } });
             return request;
         }, ct);
+    }
+
+    public Task<JsonDocument> UpsertLeadAsync(object leadPayload, IReadOnlyList<string> duplicateCheckFields, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(leadPayload);
+        ArgumentNullException.ThrowIfNull(duplicateCheckFields);
+
+        var fields = duplicateCheckFields
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Select(x => x.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        if (fields.Length == 0)
+            throw new InvalidOperationException("At least one duplicate-check field is required for Zoho lead upsert.");
+
+        return SendWithAuthRetryAsync(() =>
+        {
+            var request = new HttpRequestMessage(HttpMethod.Post, "Leads/upsert");
+            request.Content = JsonContent.Create(new
+            {
+                data = new[] { leadPayload },
+                duplicate_check_fields = fields
+            });
+            return request;
+        }, ct);
+    }
+
+    public Task<JsonDocument> UpdateLeadAsync(string leadId, object leadPayload, CancellationToken ct = default)
+    {
+        var normalizedLeadId = (leadId ?? string.Empty).Trim();
+        if (normalizedLeadId.Length == 0)
+            throw new InvalidOperationException("Zoho lead ID is required.");
+
+        ArgumentNullException.ThrowIfNull(leadPayload);
+        var payload = BuildUpdatePayload(normalizedLeadId, leadPayload);
+
+        return SendWithAuthRetryAsync(() =>
+        {
+            var request = new HttpRequestMessage(HttpMethod.Put, "Leads");
+            request.Content = JsonContent.Create(new { data = new[] { payload } });
+            return request;
+        }, ct);
+    }
+
+    public Task<JsonDocument> GetLeadByIdAsync(string leadId, CancellationToken ct = default)
+    {
+        var normalizedLeadId = (leadId ?? string.Empty).Trim();
+        if (normalizedLeadId.Length == 0)
+            throw new InvalidOperationException("Zoho lead ID is required.");
+
+        var encodedLeadId = Uri.EscapeDataString(normalizedLeadId);
+        return SendWithAuthRetryAsync(() => new HttpRequestMessage(HttpMethod.Get, $"Leads/{encodedLeadId}"), ct);
     }
 
     public Task<JsonDocument> PingAsync(CancellationToken ct = default)
@@ -152,5 +207,29 @@ public sealed class ZohoCrmClient(
             return string.Empty;
         var compact = body.Replace(Environment.NewLine, " ").Trim();
         return compact.Length <= 500 ? compact : $"{compact[..500]}...";
+    }
+
+    private static Dictionary<string, object?> BuildUpdatePayload(string leadId, object leadPayload)
+    {
+        var payload = new Dictionary<string, object?>(StringComparer.Ordinal)
+        {
+            ["id"] = leadId
+        };
+
+        switch (leadPayload)
+        {
+            case IReadOnlyDictionary<string, object> readOnlyPayload:
+                foreach (var pair in readOnlyPayload)
+                    payload[pair.Key] = pair.Value;
+                break;
+            case IDictionary<string, object> payloadDictionary:
+                foreach (var pair in payloadDictionary)
+                    payload[pair.Key] = pair.Value;
+                break;
+            default:
+                throw new InvalidOperationException("Zoho lead update payload must be a dictionary.");
+        }
+
+        return payload;
     }
 }

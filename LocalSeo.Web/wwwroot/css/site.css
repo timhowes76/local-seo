@@ -376,6 +376,27 @@ button:disabled,
     flex-wrap: wrap;
 }
 
+.zoho-lead-row {
+    display: grid;
+    gap: 6px;
+}
+
+.zoho-create-form {
+    margin-top: 2px;
+}
+
+.zoho-lead-meta {
+    display: grid;
+    gap: 2px;
+    color: #475569;
+    font-size: 13px;
+}
+
+.zoho-sync-error {
+    color: #9f1c1c;
+    font-size: 13px;
+}
+
 .places-filter-line {
     display: flex;
     align-items: center;

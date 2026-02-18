@@ -55,6 +55,8 @@ public class AdminController(
         ValidatePercent(nameof(model.MapPackCtrPosition8Percent), model.MapPackCtrPosition8Percent);
         ValidatePercent(nameof(model.MapPackCtrPosition9Percent), model.MapPackCtrPosition9Percent);
         ValidatePercent(nameof(model.MapPackCtrPosition10Percent), model.MapPackCtrPosition10Percent);
+        if (string.IsNullOrWhiteSpace(model.ZohoLeadNextAction))
+            ModelState.AddModelError(nameof(model.ZohoLeadNextAction), "Next Action is required.");
 
         if (!ModelState.IsValid)
             return View("Settings", model);

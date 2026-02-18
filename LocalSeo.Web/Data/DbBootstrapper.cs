@@ -58,6 +58,11 @@ BEGIN
     ServiceAreasJson nvarchar(max) NULL,
     OtherCategoriesJson nvarchar(max) NULL,
     PlaceTopicsJson nvarchar(max) NULL,
+    ZohoLeadCreated bit NOT NULL CONSTRAINT DF_Place_ZohoLeadCreated DEFAULT(0),
+    ZohoLeadCreatedAtUtc datetime2(0) NULL,
+    ZohoLeadId nvarchar(64) NULL,
+    ZohoLastSyncAtUtc datetime2(0) NULL,
+    ZohoLastError nvarchar(2000) NULL,
     LastSeenUtc datetime2(0) NOT NULL CONSTRAINT DF_Place_LastSeenUtc DEFAULT SYSUTCDATETIME()
   );
 END;
@@ -99,6 +104,16 @@ IF COL_LENGTH('dbo.Place', 'OtherCategoriesJson') IS NULL
   ALTER TABLE dbo.Place ADD OtherCategoriesJson nvarchar(max) NULL;
 IF COL_LENGTH('dbo.Place', 'PlaceTopicsJson') IS NULL
   ALTER TABLE dbo.Place ADD PlaceTopicsJson nvarchar(max) NULL;
+IF COL_LENGTH('dbo.Place', 'ZohoLeadCreated') IS NULL
+  ALTER TABLE dbo.Place ADD ZohoLeadCreated bit NOT NULL CONSTRAINT DF_Place_ZohoLeadCreated_Alt DEFAULT(0);
+IF COL_LENGTH('dbo.Place', 'ZohoLeadCreatedAtUtc') IS NULL
+  ALTER TABLE dbo.Place ADD ZohoLeadCreatedAtUtc datetime2(0) NULL;
+IF COL_LENGTH('dbo.Place', 'ZohoLeadId') IS NULL
+  ALTER TABLE dbo.Place ADD ZohoLeadId nvarchar(64) NULL;
+IF COL_LENGTH('dbo.Place', 'ZohoLastSyncAtUtc') IS NULL
+  ALTER TABLE dbo.Place ADD ZohoLastSyncAtUtc datetime2(0) NULL;
+IF COL_LENGTH('dbo.Place', 'ZohoLastError') IS NULL
+  ALTER TABLE dbo.Place ADD ZohoLastError nvarchar(2000) NULL;
 IF OBJECT_ID('dbo.PlaceSnapshot','U') IS NULL
 BEGIN
   CREATE TABLE dbo.PlaceSnapshot(
@@ -538,6 +553,9 @@ BEGIN
     MapPackCtrPosition8Percent int NOT NULL CONSTRAINT DF_AppSettings_MapPackCtrPosition8Percent DEFAULT(2),
     MapPackCtrPosition9Percent int NOT NULL CONSTRAINT DF_AppSettings_MapPackCtrPosition9Percent DEFAULT(1),
     MapPackCtrPosition10Percent int NOT NULL CONSTRAINT DF_AppSettings_MapPackCtrPosition10Percent DEFAULT(1),
+    ZohoLeadOwnerName nvarchar(200) NOT NULL CONSTRAINT DF_AppSettings_ZohoLeadOwnerName DEFAULT(N'Richard Howes'),
+    ZohoLeadOwnerId nvarchar(50) NOT NULL CONSTRAINT DF_AppSettings_ZohoLeadOwnerId DEFAULT(N'1108404000000068001'),
+    ZohoLeadNextAction nvarchar(300) NOT NULL CONSTRAINT DF_AppSettings_ZohoLeadNextAction DEFAULT(N'Make first contact'),
     UpdatedAtUtc datetime2(0) NOT NULL CONSTRAINT DF_AppSettings_UpdatedAtUtc DEFAULT SYSUTCDATETIME()
   );
 END;
@@ -573,6 +591,12 @@ IF COL_LENGTH('dbo.AppSettings', 'MapPackCtrPosition9Percent') IS NULL
   ALTER TABLE dbo.AppSettings ADD MapPackCtrPosition9Percent int NOT NULL CONSTRAINT DF_AppSettings_MapPackCtrPosition9Percent_Alt DEFAULT(1);
 IF COL_LENGTH('dbo.AppSettings', 'MapPackCtrPosition10Percent') IS NULL
   ALTER TABLE dbo.AppSettings ADD MapPackCtrPosition10Percent int NOT NULL CONSTRAINT DF_AppSettings_MapPackCtrPosition10Percent_Alt DEFAULT(1);
+IF COL_LENGTH('dbo.AppSettings', 'ZohoLeadOwnerName') IS NULL
+  ALTER TABLE dbo.AppSettings ADD ZohoLeadOwnerName nvarchar(200) NOT NULL CONSTRAINT DF_AppSettings_ZohoLeadOwnerName_Alt DEFAULT(N'Richard Howes');
+IF COL_LENGTH('dbo.AppSettings', 'ZohoLeadOwnerId') IS NULL
+  ALTER TABLE dbo.AppSettings ADD ZohoLeadOwnerId nvarchar(50) NOT NULL CONSTRAINT DF_AppSettings_ZohoLeadOwnerId_Alt DEFAULT(N'1108404000000068001');
+IF COL_LENGTH('dbo.AppSettings', 'ZohoLeadNextAction') IS NULL
+  ALTER TABLE dbo.AppSettings ADD ZohoLeadNextAction nvarchar(300) NOT NULL CONSTRAINT DF_AppSettings_ZohoLeadNextAction_Alt DEFAULT(N'Make first contact');
 IF COL_LENGTH('dbo.AppSettings', 'UpdatedAtUtc') IS NULL
   ALTER TABLE dbo.AppSettings ADD UpdatedAtUtc datetime2(0) NOT NULL CONSTRAINT DF_AppSettings_UpdatedAtUtc_Alt DEFAULT SYSUTCDATETIME();
 EXEC(N'
@@ -595,10 +619,13 @@ WHEN MATCHED THEN UPDATE SET
   MapPackCtrPosition7Percent = CASE WHEN target.MapPackCtrPosition7Percent IS NULL OR target.MapPackCtrPosition7Percent < 0 OR target.MapPackCtrPosition7Percent > 100 THEN 3 ELSE target.MapPackCtrPosition7Percent END,
   MapPackCtrPosition8Percent = CASE WHEN target.MapPackCtrPosition8Percent IS NULL OR target.MapPackCtrPosition8Percent < 0 OR target.MapPackCtrPosition8Percent > 100 THEN 2 ELSE target.MapPackCtrPosition8Percent END,
   MapPackCtrPosition9Percent = CASE WHEN target.MapPackCtrPosition9Percent IS NULL OR target.MapPackCtrPosition9Percent < 0 OR target.MapPackCtrPosition9Percent > 100 THEN 1 ELSE target.MapPackCtrPosition9Percent END,
-  MapPackCtrPosition10Percent = CASE WHEN target.MapPackCtrPosition10Percent IS NULL OR target.MapPackCtrPosition10Percent < 0 OR target.MapPackCtrPosition10Percent > 100 THEN 1 ELSE target.MapPackCtrPosition10Percent END
+  MapPackCtrPosition10Percent = CASE WHEN target.MapPackCtrPosition10Percent IS NULL OR target.MapPackCtrPosition10Percent < 0 OR target.MapPackCtrPosition10Percent > 100 THEN 1 ELSE target.MapPackCtrPosition10Percent END,
+  ZohoLeadOwnerName = CASE WHEN target.ZohoLeadOwnerName IS NULL OR LEN(LTRIM(RTRIM(target.ZohoLeadOwnerName))) = 0 THEN N''Richard Howes'' ELSE LEFT(target.ZohoLeadOwnerName, 200) END,
+  ZohoLeadOwnerId = CASE WHEN target.ZohoLeadOwnerId IS NULL OR LEN(LTRIM(RTRIM(target.ZohoLeadOwnerId))) = 0 THEN N''1108404000000068001'' ELSE LEFT(target.ZohoLeadOwnerId, 50) END,
+  ZohoLeadNextAction = CASE WHEN target.ZohoLeadNextAction IS NULL OR LEN(LTRIM(RTRIM(target.ZohoLeadNextAction))) = 0 THEN N''Make first contact'' ELSE LEFT(target.ZohoLeadNextAction, 300) END
 WHEN NOT MATCHED THEN
-  INSERT(AppSettingsId, EnhancedGoogleDataRefreshHours, GoogleReviewsRefreshHours, GoogleUpdatesRefreshHours, GoogleQuestionsAndAnswersRefreshHours, SearchVolumeRefreshCooldownDays, MapPackClickSharePercent, MapPackCtrPosition1Percent, MapPackCtrPosition2Percent, MapPackCtrPosition3Percent, MapPackCtrPosition4Percent, MapPackCtrPosition5Percent, MapPackCtrPosition6Percent, MapPackCtrPosition7Percent, MapPackCtrPosition8Percent, MapPackCtrPosition9Percent, MapPackCtrPosition10Percent, UpdatedAtUtc)
-  VALUES(1, 24, 24, 24, 24, 30, 50, 38, 23, 16, 7, 5, 4, 3, 2, 1, 1, SYSUTCDATETIME());
+  INSERT(AppSettingsId, EnhancedGoogleDataRefreshHours, GoogleReviewsRefreshHours, GoogleUpdatesRefreshHours, GoogleQuestionsAndAnswersRefreshHours, SearchVolumeRefreshCooldownDays, MapPackClickSharePercent, MapPackCtrPosition1Percent, MapPackCtrPosition2Percent, MapPackCtrPosition3Percent, MapPackCtrPosition4Percent, MapPackCtrPosition5Percent, MapPackCtrPosition6Percent, MapPackCtrPosition7Percent, MapPackCtrPosition8Percent, MapPackCtrPosition9Percent, MapPackCtrPosition10Percent, ZohoLeadOwnerName, ZohoLeadOwnerId, ZohoLeadNextAction, UpdatedAtUtc)
+  VALUES(1, 24, 24, 24, 24, 30, 50, 38, 23, 16, 7, 5, 4, 3, 2, 1, 1, N''Richard Howes'', N''1108404000000068001'', N''Make first contact'', SYSUTCDATETIME());
 ');
 IF OBJECT_ID('dbo.GoogleBusinessProfileCategory','U') IS NULL
 BEGIN

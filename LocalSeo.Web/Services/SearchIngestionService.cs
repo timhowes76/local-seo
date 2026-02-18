@@ -750,6 +750,7 @@ SELECT
   TypesCsv,
   NationalPhoneNumber,
   WebsiteUri,
+  OpeningDate,
   SearchLocationName,
   QuestionAnswerCount,
   Lat,
@@ -760,7 +761,12 @@ SELECT
   PlaceTopicsJson,
   IsServiceAreaBusiness,
   BusinessStatus,
-  RegularOpeningHoursJson
+  RegularOpeningHoursJson,
+  ZohoLeadCreated,
+  ZohoLeadCreatedAtUtc,
+  ZohoLeadId,
+  ZohoLastSyncAtUtc,
+  ZohoLastError
 FROM dbo.Place
 WHERE PlaceId=@PlaceId", new { PlaceId = placeId }, cancellationToken: ct));
 
@@ -960,6 +966,7 @@ ORDER BY COALESCE(AnswerTimestampUtc, QuestionTimestampUtc, LastSeenUtc) DESC, P
             PrimaryCategory = primaryCategory,
             NationalPhoneNumber = PreferNonEmpty(place.NationalPhoneNumber, liveDetails?.NationalPhoneNumber),
             WebsiteUri = PreferNonEmpty(place.WebsiteUri, liveDetails?.WebsiteUri),
+            OpeningDate = place.OpeningDate,
             SearchLocationName = place.SearchLocationName,
             QuestionAnswerCount = place.QuestionAnswerCount,
             Lat = place.Lat ?? liveDetails?.Lat,
@@ -990,7 +997,12 @@ ORDER BY COALESCE(AnswerTimestampUtc, QuestionTimestampUtc, LastSeenUtc) DESC, P
             DataTaskStatuses = taskStatuses,
             ReviewVelocity = await reviewVelocityService.GetPlaceReviewVelocityAsync(placeId, ct),
             UpdateVelocity = await reviewVelocityService.GetPlaceUpdateVelocityAsync(placeId, ct),
-            EstimatedTraffic = estimatedTraffic
+            EstimatedTraffic = estimatedTraffic,
+            ZohoLeadCreated = place.ZohoLeadCreated,
+            ZohoLeadCreatedAtUtc = place.ZohoLeadCreatedAtUtc,
+            ZohoLeadId = place.ZohoLeadId,
+            ZohoLastSyncAtUtc = place.ZohoLastSyncAtUtc,
+            ZohoLastError = place.ZohoLastError
         };
     }
 
@@ -1421,6 +1433,7 @@ ORDER BY m.[Year] DESC, m.[Month] DESC;", new
         string? TypesCsv,
         string? NationalPhoneNumber,
         string? WebsiteUri,
+        DateTime? OpeningDate,
         string? SearchLocationName,
         int? QuestionAnswerCount,
         decimal? Lat,
@@ -1431,7 +1444,12 @@ ORDER BY m.[Year] DESC, m.[Month] DESC;", new
         string? PlaceTopicsJson,
         bool? IsServiceAreaBusiness,
         string? BusinessStatus,
-        string? RegularOpeningHoursJson);
+        string? RegularOpeningHoursJson,
+        bool ZohoLeadCreated,
+        DateTime? ZohoLeadCreatedAtUtc,
+        string? ZohoLeadId,
+        DateTime? ZohoLastSyncAtUtc,
+        string? ZohoLastError);
 
     private sealed record SearchRunCenterRow(long SearchRunId, decimal? CenterLat, decimal? CenterLng);
 

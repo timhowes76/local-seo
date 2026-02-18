@@ -10,7 +10,8 @@ public class PlacesController(
     ISearchIngestionService ingestionService,
     IReviewVelocityService reviewVelocityService,
     IDataForSeoTaskTracker dataForSeoTaskTracker,
-    IReviewsProviderResolver reviewsProviderResolver) : Controller
+    IReviewsProviderResolver reviewsProviderResolver,
+    IZohoLeadSyncService zohoLeadSyncService) : Controller
 {
     [HttpGet("/places")]
     public async Task<IActionResult> Index([FromQuery] string? sort, [FromQuery] string? direction, [FromQuery] string? placeName, [FromQuery] string? keyword, [FromQuery] string? location, CancellationToken ct)
@@ -40,6 +41,26 @@ public class PlacesController(
 
         ViewBag.RequestedRunId = runId;
         return View(model);
+    }
+
+    [HttpPost("/places/{id}/zoho/create-lead")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> CreateZohoLead(string id, [FromQuery] long? runId, CancellationToken ct)
+    {
+        var place = await ingestionService.GetPlaceDetailsAsync(id, runId, ct);
+        if (place is null)
+            return NotFound();
+
+        if (place.ZohoLeadCreated && !string.IsNullOrWhiteSpace(place.ZohoLeadId))
+        {
+            TempData["Status"] = $"Zoho lead already exists for this place (Lead ID {place.ZohoLeadId}).";
+            return RedirectToAction(nameof(Details), new { id, runId });
+        }
+
+        var localSeoLink = $"{Request.Scheme}://{Request.Host}/places/{Uri.EscapeDataString(id)}";
+        var result = await zohoLeadSyncService.CreateLeadForPlaceAsync(id, localSeoLink, ct);
+        TempData["Status"] = result.Message;
+        return RedirectToAction(nameof(Details), new { id, runId });
     }
 
     [HttpPost("/places/{id}/data/populate")]

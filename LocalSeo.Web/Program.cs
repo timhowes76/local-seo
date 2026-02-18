@@ -54,6 +54,7 @@ builder.Services.AddScoped<IGoogleBusinessProfileOAuthService, GoogleBusinessPro
 builder.Services.AddScoped<IZohoTokenStore, SqlZohoTokenStore>();
 builder.Services.AddScoped<IZohoOAuthService, ZohoOAuthService>();
 builder.Services.AddScoped<IZohoTokenService, ZohoTokenService>();
+builder.Services.AddScoped<IZohoLeadSyncService, ZohoLeadSyncService>();
 builder.Services.AddHttpClient<IZohoCrmClient, ZohoCrmClient>((sp, client) =>
 {
     var zohoOptions = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<ZohoOAuthOptions>>().Value;

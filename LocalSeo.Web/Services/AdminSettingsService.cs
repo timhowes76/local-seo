@@ -32,7 +32,10 @@ SELECT TOP 1
   MapPackCtrPosition7Percent,
   MapPackCtrPosition8Percent,
   MapPackCtrPosition9Percent,
-  MapPackCtrPosition10Percent
+  MapPackCtrPosition10Percent,
+  ZohoLeadOwnerName,
+  ZohoLeadOwnerId,
+  ZohoLeadNextAction
 FROM dbo.AppSettings
 WHERE AppSettingsId = 1;", cancellationToken: ct));
 
@@ -58,7 +61,10 @@ WHERE AppSettingsId = 1;", cancellationToken: ct));
             MapPackCtrPosition7Percent = Math.Clamp(model.MapPackCtrPosition7Percent, 0, 100),
             MapPackCtrPosition8Percent = Math.Clamp(model.MapPackCtrPosition8Percent, 0, 100),
             MapPackCtrPosition9Percent = Math.Clamp(model.MapPackCtrPosition9Percent, 0, 100),
-            MapPackCtrPosition10Percent = Math.Clamp(model.MapPackCtrPosition10Percent, 0, 100)
+            MapPackCtrPosition10Percent = Math.Clamp(model.MapPackCtrPosition10Percent, 0, 100),
+            ZohoLeadOwnerName = NormalizeText(model.ZohoLeadOwnerName, 200, "Richard Howes"),
+            ZohoLeadOwnerId = NormalizeText(model.ZohoLeadOwnerId, 50, "1108404000000068001"),
+            ZohoLeadNextAction = NormalizeText(model.ZohoLeadNextAction, 300, "Make first contact")
         };
 
         await using var conn = (Microsoft.Data.SqlClient.SqlConnection)await connectionFactory.OpenConnectionAsync(ct);
@@ -83,10 +89,23 @@ WHEN MATCHED THEN UPDATE SET
   MapPackCtrPosition8Percent = @MapPackCtrPosition8Percent,
   MapPackCtrPosition9Percent = @MapPackCtrPosition9Percent,
   MapPackCtrPosition10Percent = @MapPackCtrPosition10Percent,
+  ZohoLeadOwnerName = @ZohoLeadOwnerName,
+  ZohoLeadOwnerId = @ZohoLeadOwnerId,
+  ZohoLeadNextAction = @ZohoLeadNextAction,
   UpdatedAtUtc = SYSUTCDATETIME()
 WHEN NOT MATCHED THEN
-  INSERT(AppSettingsId, EnhancedGoogleDataRefreshHours, GoogleReviewsRefreshHours, GoogleUpdatesRefreshHours, GoogleQuestionsAndAnswersRefreshHours, SearchVolumeRefreshCooldownDays, MapPackClickSharePercent, MapPackCtrPosition1Percent, MapPackCtrPosition2Percent, MapPackCtrPosition3Percent, MapPackCtrPosition4Percent, MapPackCtrPosition5Percent, MapPackCtrPosition6Percent, MapPackCtrPosition7Percent, MapPackCtrPosition8Percent, MapPackCtrPosition9Percent, MapPackCtrPosition10Percent, UpdatedAtUtc)
-  VALUES(1, @EnhancedGoogleDataRefreshHours, @GoogleReviewsRefreshHours, @GoogleUpdatesRefreshHours, @GoogleQuestionsAndAnswersRefreshHours, @SearchVolumeRefreshCooldownDays, @MapPackClickSharePercent, @MapPackCtrPosition1Percent, @MapPackCtrPosition2Percent, @MapPackCtrPosition3Percent, @MapPackCtrPosition4Percent, @MapPackCtrPosition5Percent, @MapPackCtrPosition6Percent, @MapPackCtrPosition7Percent, @MapPackCtrPosition8Percent, @MapPackCtrPosition9Percent, @MapPackCtrPosition10Percent, SYSUTCDATETIME());",
+  INSERT(AppSettingsId, EnhancedGoogleDataRefreshHours, GoogleReviewsRefreshHours, GoogleUpdatesRefreshHours, GoogleQuestionsAndAnswersRefreshHours, SearchVolumeRefreshCooldownDays, MapPackClickSharePercent, MapPackCtrPosition1Percent, MapPackCtrPosition2Percent, MapPackCtrPosition3Percent, MapPackCtrPosition4Percent, MapPackCtrPosition5Percent, MapPackCtrPosition6Percent, MapPackCtrPosition7Percent, MapPackCtrPosition8Percent, MapPackCtrPosition9Percent, MapPackCtrPosition10Percent, ZohoLeadOwnerName, ZohoLeadOwnerId, ZohoLeadNextAction, UpdatedAtUtc)
+  VALUES(1, @EnhancedGoogleDataRefreshHours, @GoogleReviewsRefreshHours, @GoogleUpdatesRefreshHours, @GoogleQuestionsAndAnswersRefreshHours, @SearchVolumeRefreshCooldownDays, @MapPackClickSharePercent, @MapPackCtrPosition1Percent, @MapPackCtrPosition2Percent, @MapPackCtrPosition3Percent, @MapPackCtrPosition4Percent, @MapPackCtrPosition5Percent, @MapPackCtrPosition6Percent, @MapPackCtrPosition7Percent, @MapPackCtrPosition8Percent, @MapPackCtrPosition9Percent, @MapPackCtrPosition10Percent, @ZohoLeadOwnerName, @ZohoLeadOwnerId, @ZohoLeadNextAction, SYSUTCDATETIME());",
             normalized, cancellationToken: ct));
+    }
+
+    private static string NormalizeText(string? value, int maxLength, string fallback)
+    {
+        var trimmed = (value ?? string.Empty).Trim();
+        if (trimmed.Length == 0)
+            trimmed = fallback;
+        if (trimmed.Length > maxLength)
+            trimmed = trimmed[..maxLength];
+        return trimmed;
     }
 }
