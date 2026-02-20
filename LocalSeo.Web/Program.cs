@@ -75,8 +75,6 @@ builder.Services.AddHttpClient<IZohoCrmClient, ZohoCrmClient>((sp, client) =>
 });
 builder.Services.AddScoped<IGoogleBusinessProfileCategoryService, GoogleBusinessProfileCategoryService>();
 builder.Services.AddScoped<IDataForSeoAccountStatusService, DataForSeoAccountStatusService>();
-builder.Services.AddScoped<IEmailSender, SendGridEmailSender>();
-builder.Services.AddScoped<IDataForSeoSocialProfilesService, DataForSeoSocialProfilesService>();
 builder.Services.AddScoped<ISendGridEmailService, SendGridEmailService>();
 builder.Services.AddScoped<ICodeHasher, CodeHasher>();
 builder.Services.AddScoped<IReviewsProviderResolver, ReviewsProviderResolver>();
