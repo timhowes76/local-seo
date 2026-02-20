@@ -53,6 +53,19 @@ public sealed class ZohoLeadSyncService(
         }
 
         var settings = await adminSettingsService.GetAsync(ct);
+        var leadFieldMap = await ResolveLeadFieldMapAsync(ct);
+        logger.LogInformation(
+            "Zoho lead field map resolved. NextAction={NextActionField}, Facebook={FacebookField}, CustomerOrPartner={CustomerOrPartnerField}, LinkedIn={LinkedInField}, Instagram={InstagramField}, YouTube={YouTubeField}, TikTok={TikTokField}, Pinterest={PinterestField}, XTwitter={XTwitterField}, Bluesky={BlueskyField}",
+            leadFieldMap.NextActionApiName,
+            leadFieldMap.FacebookApiName,
+            leadFieldMap.CustomerOrPartnerApiName,
+            leadFieldMap.LinkedInApiName,
+            leadFieldMap.InstagramApiName,
+            leadFieldMap.YouTubeApiName,
+            leadFieldMap.TikTokApiName,
+            leadFieldMap.PinterestApiName,
+            leadFieldMap.XTwitterApiName,
+            leadFieldMap.BlueskyApiName);
         var websiteHost = NormalizeWebsiteHost(place.WebsiteUri);
         var descriptionEntry = BuildDescriptionEntry(nowUtc);
         var address = ParseAddress(place.FormattedAddress);
@@ -126,7 +139,15 @@ SELECT TOP 1
   NationalPhoneNumber,
   WebsiteUri,
   FormattedAddress,
-  OpeningDate,
+  LogoUrl,
+  FacebookUrl,
+  InstagramUrl,
+  LinkedInUrl,
+  XUrl,
+  YouTubeUrl,
+  TikTokUrl,
+  PinterestUrl,
+  BlueskyUrl,
   ZohoLeadCreated,
   ZohoLeadId
 FROM dbo.Place
@@ -231,7 +252,16 @@ WHERE PlaceId = @PlaceId;", new { PlaceId = placeId }, cancellationToken: ct));
             ["Established"] = place.OpeningDate?.ToString("yyyy-MM-dd"),
             ["NextAction"] = NormalizeNullable(settings.ZohoLeadNextAction),
             ["LocalSeoLink"] = localSeoLink,
-            ["Description"] = description
+            ["Description"] = description,
+            [fieldMap.LinkedInApiName] = NormalizeNullable(place.LinkedInUrl),
+            [fieldMap.FacebookApiName] = NormalizeNullable(place.FacebookUrl),
+            [fieldMap.InstagramApiName] = NormalizeNullable(place.InstagramUrl),
+            [fieldMap.YouTubeApiName] = NormalizeNullable(place.YouTubeUrl),
+            [fieldMap.TikTokApiName] = NormalizeNullable(place.TikTokUrl),
+            [fieldMap.PinterestApiName] = NormalizeNullable(place.PinterestUrl),
+            [fieldMap.XTwitterApiName] = NormalizeNullable(place.XUrl),
+            [fieldMap.BlueskyApiName] = NormalizeNullable(place.BlueskyUrl),
+            [fieldMap.CustomerOrPartnerApiName] = "Customer"
         };
 
         var ownerId = NormalizeNullable(settings.ZohoLeadOwnerId);
@@ -247,9 +277,102 @@ WHERE PlaceId = @PlaceId;", new { PlaceId = placeId }, cancellationToken: ct));
         {
             ["LocalSeoLink"] = localSeoLink,
             ["Description"] = description,
-            ["Opportunity"] = "Local SEO"
+            ["Opportunity"] = "Local SEO",
+            [fieldMap.NextActionApiName] = NormalizeNullable(settings.ZohoLeadNextAction),
+            [fieldMap.LinkedInApiName] = NormalizeNullable(place.LinkedInUrl),
+            [fieldMap.FacebookApiName] = NormalizeNullable(place.FacebookUrl),
+            [fieldMap.InstagramApiName] = NormalizeNullable(place.InstagramUrl),
+            [fieldMap.YouTubeApiName] = NormalizeNullable(place.YouTubeUrl),
+            [fieldMap.TikTokApiName] = NormalizeNullable(place.TikTokUrl),
+            [fieldMap.PinterestApiName] = NormalizeNullable(place.PinterestUrl),
+            [fieldMap.XTwitterApiName] = NormalizeNullable(place.XUrl),
+            [fieldMap.BlueskyApiName] = NormalizeNullable(place.BlueskyUrl),
+            [fieldMap.CustomerOrPartnerApiName] = "Customer"
         };
         return CompactPayload(payload);
+    }
+
+    private async Task<ZohoLeadFieldMap> ResolveLeadFieldMapAsync(CancellationToken ct)
+    {
+        try
+        {
+            using var response = await zohoCrmClient.GetLeadFieldsAsync(ct);
+            return ParseLeadFieldMap(response.RootElement);
+        }
+        catch (Exception ex) when (!ct.IsCancellationRequested)
+        {
+            logger.LogWarning(ex, "Could not resolve Zoho Leads field metadata. Falling back to default API names.");
+            return ZohoLeadFieldMap.Default;
+        }
+    }
+
+    private static ZohoLeadFieldMap ParseLeadFieldMap(JsonElement root)
+    {
+        if (!root.TryGetProperty("fields", out var fieldsNode) || fieldsNode.ValueKind != JsonValueKind.Array)
+            return ZohoLeadFieldMap.Default;
+
+        var byLabel = new Dictionary<string, string>(StringComparer.Ordinal);
+        var byApiName = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var field in fieldsNode.EnumerateArray())
+        {
+            var label = GetString(field, "field_label");
+            var apiName = GetString(field, "api_name");
+            if (string.IsNullOrWhiteSpace(apiName))
+                continue;
+
+            var normalizedApi = NormalizeFieldToken(apiName);
+            if (normalizedApi.Length > 0 && !byApiName.ContainsKey(normalizedApi))
+                byApiName[normalizedApi] = apiName.Trim();
+
+            var normalizedLabel = NormalizeFieldToken(label);
+            if (normalizedLabel.Length > 0 && !byLabel.ContainsKey(normalizedLabel))
+                byLabel[normalizedLabel] = apiName.Trim();
+        }
+
+        return new ZohoLeadFieldMap(
+            ResolveApiName(byLabel, byApiName, "Next_Action", "Next Action", "Next_Action", "NextAction"),
+            ResolveApiName(byLabel, byApiName, "Company_LinkedIn", "LinkedIn", "Company_LinkedIn", "LinkedIn_URL", "LinkedIn_Link"),
+            ResolveApiName(byLabel, byApiName, "Company_Facebook", "Facebook", "Company_Facebook", "Facebook_Page", "Facebook_URL", "Facebook_Link"),
+            ResolveApiName(byLabel, byApiName, "Instagram", "Instagram"),
+            ResolveApiName(byLabel, byApiName, "YouTube", "YouTube"),
+            ResolveApiName(byLabel, byApiName, "TikTok", "TikTok"),
+            ResolveApiName(byLabel, byApiName, "Pinterest", "Pinterest"),
+            ResolveApiName(byLabel, byApiName, "X_Twitter", "X (Twitter)", "X Twitter", "X_Twitter", "Twitter"),
+            ResolveApiName(byLabel, byApiName, "Bluesky", "Bluesky"),
+            ResolveApiName(byLabel, byApiName, "Customer_or_Partner", "Customer or Partner?", "Customer or Partner", "Customer_or_Partner", "Customer_or_Partner_"));
+    }
+
+    private static string ResolveApiName(
+        IReadOnlyDictionary<string, string> byLabel,
+        IReadOnlyDictionary<string, string> byApiName,
+        string fallbackApiName,
+        params string[] candidates)
+    {
+        foreach (var candidate in candidates)
+        {
+            var normalized = NormalizeFieldToken(candidate);
+            if (normalized.Length == 0)
+                continue;
+            if (byApiName.TryGetValue(normalized, out var apiFromName))
+                return apiFromName;
+            if (byLabel.TryGetValue(normalized, out var apiFromLabel))
+                return apiFromLabel;
+        }
+
+        return fallbackApiName;
+    }
+
+    private static string NormalizeFieldToken(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return string.Empty;
+
+        var chars = value
+            .Trim()
+            .ToLowerInvariant()
+            .Where(char.IsLetterOrDigit)
+            .ToArray();
+        return new string(chars);
     }
 
     private static Dictionary<string, object> CompactPayload(IReadOnlyDictionary<string, object?> payload)
@@ -508,6 +631,13 @@ WHERE PlaceId = @PlaceId;", new
         return trimmed.Length == 0 ? null : trimmed;
     }
 
+    private static string? ToZohoDateString(DateTime? value)
+    {
+        if (!value.HasValue)
+            return null;
+        return value.Value.ToString("yyyy-MM-dd");
+    }
+
     private static string CoalesceOrDefault(string? value, string fallback)
     {
         var normalizedValue = NormalizeNullable(value);
@@ -543,7 +673,9 @@ WHERE PlaceId = @PlaceId;", new
         string? FormattedAddress,
         DateTime? OpeningDate,
         bool ZohoLeadCreated,
-        string? ZohoLeadId);
+        string? ZohoLeadId,
+        string? CompanyNumber,
+        DateTime? DateOfCreation);
 
     private sealed record ExistingLeadMatch(string LeadId, string MatchReason);
     private sealed record LeadDuplicateCheck(string FieldName, string? Value, string MatchReason);
@@ -555,5 +687,33 @@ WHERE PlaceId = @PlaceId;", new
         string? Province,
         string? PostalCode,
         string? Country);
+    private sealed record LeadPhotoPayload(
+        MemoryStream ContentStream,
+        string FileName,
+        string ContentType);
+    private sealed record ZohoLeadFieldMap(
+        string NextActionApiName,
+        string LinkedInApiName,
+        string FacebookApiName,
+        string InstagramApiName,
+        string YouTubeApiName,
+        string TikTokApiName,
+        string PinterestApiName,
+        string XTwitterApiName,
+        string BlueskyApiName,
+        string CustomerOrPartnerApiName)
+    {
+        public static ZohoLeadFieldMap Default { get; } = new(
+            "Next_Action",
+            "Company_LinkedIn",
+            "Company_Facebook",
+            "Instagram",
+            "YouTube",
+            "TikTok",
+            "Pinterest",
+            "X_Twitter",
+            "Bluesky",
+            "Customer_or_Partner");
+    }
     private sealed record ZohoMutationResult(string? LeadId, string? Action);
 }

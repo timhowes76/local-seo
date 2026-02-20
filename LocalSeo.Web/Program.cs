@@ -18,6 +18,7 @@ builder.Services.Configure<SendGridOptions>(builder.Configuration.GetSection("Se
 builder.Services.Configure<PlacesOptions>(builder.Configuration.GetSection("Places"));
 builder.Services.Configure<DataForSeoOptions>(builder.Configuration.GetSection("DataForSeo"));
 builder.Services.Configure<ZohoOAuthOptions>(builder.Configuration.GetSection("ZohoOAuth"));
+builder.Services.Configure<CompaniesHouseOptions>(builder.Configuration.GetSection("CompaniesHouse"));
 
 builder.Services.AddControllersWithViews();
 builder.Services.AddHttpClient();
@@ -72,6 +73,20 @@ builder.Services.AddHttpClient<IZohoCrmClient, ZohoCrmClient>((sp, client) =>
 
     client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
     client.Timeout = TimeSpan.FromSeconds(30);
+});
+builder.Services.AddHttpClient<ICompaniesHouseService, CompaniesHouseService>((sp, client) =>
+{
+    var companiesHouseOptions = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<CompaniesHouseOptions>>().Value;
+    var baseUrl = (companiesHouseOptions.BaseUrl ?? string.Empty).Trim().TrimEnd('/');
+    if (Uri.TryCreate($"{baseUrl}/", UriKind.Absolute, out var baseAddress))
+        client.BaseAddress = baseAddress;
+
+    client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+    client.Timeout = TimeSpan.FromSeconds(30);
+});
+builder.Services.AddHttpClient<ICompaniesHouseAccountsSyncService, CompaniesHouseAccountsSyncService>((sp, client) =>
+{
+    client.Timeout = TimeSpan.FromSeconds(60);
 });
 builder.Services.AddScoped<IGoogleBusinessProfileCategoryService, GoogleBusinessProfileCategoryService>();
 builder.Services.AddScoped<IDataForSeoAccountStatusService, DataForSeoAccountStatusService>();

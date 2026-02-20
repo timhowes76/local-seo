@@ -3,6 +3,7 @@ using LocalSeo.Web.Data;
 using LocalSeo.Web.Models;
 using LocalSeo.Web.Options;
 using Microsoft.Extensions.Options;
+using System.Globalization;
 using System.Text;
 using System.Text.Json;
 
@@ -18,7 +19,11 @@ public interface ISearchIngestionService
     Task<IReadOnlyList<RunTaskProgressRow>> GetRunTaskProgressAsync(SearchRun run, CancellationToken ct);
     Task<RunReviewComparisonViewModel?> GetRunReviewComparisonAsync(long runId, CancellationToken ct);
     Task<PlaceDetailsViewModel?> GetPlaceDetailsAsync(string placeId, long? runId, CancellationToken ct, int reviewPage = 1, int reviewPageSize = 25);
-}
+
+    Task<bool> UpdatePlaceSocialLinksAsync(PlaceSocialLinksEditModel model, CancellationToken ct);
+    Task<bool> SavePlaceFinancialAsync(string placeId, PlaceFinancialInfoUpsert financialInfo, CancellationToken ct);
+    Task<PlaceFinancialInfo?> GetPlaceFinancialAsync(string placeId, CancellationToken ct);
+
 
 public sealed class SearchIngestionService(
     ISqlConnectionFactory connectionFactory,
@@ -734,6 +739,427 @@ ORDER BY PlaceId, [Year], [Month];",
         return new RunReviewComparisonViewModel(run, rows, series);
     }
 
+<<<<<<< HEAD
+=======
+    public async Task<bool> UpdatePlaceSocialLinksAsync(PlaceSocialLinksEditModel model, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(model);
+
+        var placeId = (model.PlaceId ?? string.Empty).Trim();
+        if (placeId.Length == 0)
+            throw new InvalidOperationException("Place ID is required.");
+
+        var facebookUrl = NormalizeSocialUrl(model.FacebookUrl, "Facebook URL");
+        var instagramUrl = NormalizeSocialUrl(model.InstagramUrl, "Instagram URL");
+        var linkedInUrl = NormalizeSocialUrl(model.LinkedInUrl, "LinkedIn URL");
+        var xUrl = NormalizeSocialUrl(model.XUrl, "X URL");
+        var youTubeUrl = NormalizeSocialUrl(model.YouTubeUrl, "YouTube URL");
+        var tikTokUrl = NormalizeSocialUrl(model.TikTokUrl, "TikTok URL");
+        var pinterestUrl = NormalizeSocialUrl(model.PinterestUrl, "Pinterest URL");
+        var blueskyUrl = NormalizeSocialUrl(model.BlueskyUrl, "Bluesky URL");
+
+        await using var conn = (Microsoft.Data.SqlClient.SqlConnection)await connectionFactory.OpenConnectionAsync(ct);
+        var touched = await conn.ExecuteAsync(new CommandDefinition(@"
+UPDATE dbo.Place
+SET
+  FacebookUrl = @FacebookUrl,
+  InstagramUrl = @InstagramUrl,
+  LinkedInUrl = @LinkedInUrl,
+  XUrl = @XUrl,
+  YouTubeUrl = @YouTubeUrl,
+  TikTokUrl = @TikTokUrl,
+  PinterestUrl = @PinterestUrl,
+  BlueskyUrl = @BlueskyUrl,
+  LastSeenUtc = SYSUTCDATETIME()
+WHERE PlaceId = @PlaceId;", new
+        {
+            PlaceId = placeId,
+            FacebookUrl = facebookUrl,
+            InstagramUrl = instagramUrl,
+            LinkedInUrl = linkedInUrl,
+            XUrl = xUrl,
+            YouTubeUrl = youTubeUrl,
+            TikTokUrl = tikTokUrl,
+            PinterestUrl = pinterestUrl,
+            BlueskyUrl = blueskyUrl
+        }, cancellationToken: ct));
+
+        return touched > 0;
+    }
+
+    public async Task<bool> SavePlaceFinancialAsync(string placeId, PlaceFinancialInfoUpsert financialInfo, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(financialInfo);
+
+        var normalizedPlaceId = (placeId ?? string.Empty).Trim();
+        if (normalizedPlaceId.Length == 0)
+            throw new InvalidOperationException("Place ID is required.");
+
+        var normalizedCompanyNumber = (financialInfo.CompanyNumber ?? string.Empty).Trim();
+        if (normalizedCompanyNumber.Length == 0)
+            throw new InvalidOperationException("Company number is required.");
+        if (normalizedCompanyNumber.Length > 32)
+            normalizedCompanyNumber = normalizedCompanyNumber[..32];
+
+        var normalizedCompanyType = string.IsNullOrWhiteSpace(financialInfo.CompanyType)
+            ? null
+            : financialInfo.CompanyType.Trim();
+        if (normalizedCompanyType is not null && normalizedCompanyType.Length > 80)
+            normalizedCompanyType = normalizedCompanyType[..80];
+
+        var normalizedCompanyStatus = string.IsNullOrWhiteSpace(financialInfo.CompanyStatus)
+            ? null
+            : financialInfo.CompanyStatus.Trim();
+        if (normalizedCompanyStatus is not null && normalizedCompanyStatus.Length > 80)
+            normalizedCompanyStatus = normalizedCompanyStatus[..80];
+
+        var officers = (financialInfo.Officers ?? [])
+            .Select(x => new
+            {
+                FirstNames = NormalizeAndTrim(x.FirstNames, 200),
+                LastName = NormalizeAndTrim(x.LastName, 200),
+                CountryOfResidence = NormalizeAndTrim(x.CountryOfResidence, 100),
+                DateOfBirth = x.DateOfBirth?.Date,
+                Nationality = NormalizeAndTrim(x.Nationality, 100),
+                Role = NormalizeAndTrim(x.Role, 80),
+                Appointed = x.Appointed?.Date,
+                Resigned = x.Resigned?.Date
+            })
+            .Where(x =>
+                x.FirstNames is not null
+                || x.LastName is not null
+                || x.CountryOfResidence is not null
+                || x.DateOfBirth.HasValue
+                || x.Nationality is not null
+                || x.Role is not null
+                || x.Appointed.HasValue
+                || x.Resigned.HasValue)
+            .ToList();
+
+        var pscEntries = (financialInfo.PersonsWithSignificantControl ?? [])
+            .Select(x =>
+            {
+                var normalizedPscCompanyNumber = NormalizeAndTrim(x.CompanyNumber, 32) ?? normalizedCompanyNumber;
+                var normalizedPscId = NormalizeAndTrim(x.PscId, 120);
+                var normalizedNameRaw = NormalizeAndTrim(x.NameRaw, 300);
+                var normalizedFirstNames = NormalizeAndTrim(x.FirstNames, 150);
+                var normalizedLastName = NormalizeAndTrim(x.LastName, 150);
+                var normalizedCountryOfResidence = NormalizeAndTrim(x.CountryOfResidence, 100);
+                var normalizedNationality = NormalizeAndTrim(x.Nationality, 100);
+                var normalizedItemKind = NormalizeAndTrim(x.PscItemKind, 120);
+                var normalizedLinkSelf = NormalizeAndTrim(x.PscLinkSelf, 500);
+                var normalizedSourceEtag = NormalizeAndTrim(x.SourceEtag, 100);
+                var normalizedRawJson = string.IsNullOrWhiteSpace(x.RawJson) ? null : x.RawJson.Trim();
+                var normalizedBirthMonth = x.BirthMonth is >= 1 and <= 12 ? x.BirthMonth : null;
+                var normalizedBirthYear = x.BirthYear is >= 1 and <= 9999 ? x.BirthYear : null;
+                var normalizedRetrievedUtc = x.RetrievedUtc == default ? DateTime.UtcNow : x.RetrievedUtc;
+                var normalizedNatureCodes = (x.NatureCodes ?? [])
+                    .Select(code => NormalizeAndTrim(code, 200))
+                    .Where(code => code is not null)
+                    .Cast<string>()
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+                return new NormalizedPscUpsertRow(
+                    normalizedPscCompanyNumber,
+                    normalizedItemKind,
+                    normalizedLinkSelf,
+                    normalizedPscId,
+                    normalizedNameRaw,
+                    normalizedFirstNames,
+                    normalizedLastName,
+                    normalizedCountryOfResidence,
+                    normalizedNationality,
+                    normalizedBirthMonth,
+                    normalizedBirthYear,
+                    x.NotifiedOn?.Date,
+                    x.CeasedOn?.Date,
+                    normalizedSourceEtag,
+                    normalizedRetrievedUtc,
+                    normalizedRawJson,
+                    normalizedNatureCodes);
+            })
+            .Where(x =>
+                x.PscItemKind is not null
+                || x.PscLinkSelf is not null
+                || x.PscId is not null
+                || x.NameRaw is not null
+                || x.FirstNames is not null
+                || x.LastName is not null
+                || x.CountryOfResidence is not null
+                || x.Nationality is not null
+                || x.BirthMonth.HasValue
+                || x.BirthYear.HasValue
+                || x.NotifiedOn.HasValue
+                || x.CeasedOn.HasValue
+                || x.SourceEtag is not null
+                || x.NatureCodes.Count > 0)
+            .ToList();
+
+        var pscDedupKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var dedupedPscEntries = new List<NormalizedPscUpsertRow>();
+        foreach (var psc in pscEntries)
+        {
+            var fallbackKey = string.Concat(
+                "fallback|",
+                psc.NameRaw ?? string.Empty,
+                "|",
+                psc.BirthMonth?.ToString(CultureInfo.InvariantCulture) ?? string.Empty,
+                "|",
+                psc.BirthYear?.ToString(CultureInfo.InvariantCulture) ?? string.Empty,
+                "|",
+                psc.CeasedOn?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? string.Empty);
+            var dedupKey = psc.PscId is not null
+                ? $"id|{psc.PscItemKind ?? string.Empty}|{psc.PscId}"
+                : fallbackKey;
+            if (!pscDedupKeys.Add(dedupKey))
+                continue;
+            dedupedPscEntries.Add(psc);
+        }
+
+        await using var conn = (Microsoft.Data.SqlClient.SqlConnection)await connectionFactory.OpenConnectionAsync(ct);
+        var placeExists = await conn.ExecuteScalarAsync<int>(new CommandDefinition(@"
+SELECT COUNT(1)
+FROM dbo.Place
+WHERE PlaceId = @PlaceId;", new { PlaceId = normalizedPlaceId }, cancellationToken: ct));
+        if (placeExists <= 0)
+            return false;
+
+        await using var tx = await conn.BeginTransactionAsync(ct);
+        await conn.ExecuteAsync(new CommandDefinition(@"
+IF EXISTS (SELECT 1 FROM dbo.PlacesFinancial WHERE PlaceId = @PlaceId)
+BEGIN
+  UPDATE dbo.PlacesFinancial
+  SET
+    DateOfCreation = @DateOfCreation,
+    CompanyNumber = @CompanyNumber,
+    CompanyType = @CompanyType,
+    LastAccountsFiled = @LastAccountsFiled,
+    NextAccountsDue = @NextAccountsDue,
+    CompanyStatus = @CompanyStatus,
+    HasLiquidated = @HasLiquidated,
+    HasCharges = @HasCharges,
+    HasInsolvencyHistory = @HasInsolvencyHistory,
+    LastUpdatedUtc = SYSUTCDATETIME()
+  WHERE PlaceId = @PlaceId;
+END
+ELSE
+BEGIN
+  INSERT INTO dbo.PlacesFinancial(
+    PlaceId,
+    DateOfCreation,
+    CompanyNumber,
+    CompanyType,
+    LastAccountsFiled,
+    NextAccountsDue,
+    CompanyStatus,
+    HasLiquidated,
+    HasCharges,
+    HasInsolvencyHistory
+  )
+  VALUES(
+    @PlaceId,
+    @DateOfCreation,
+    @CompanyNumber,
+    @CompanyType,
+    @LastAccountsFiled,
+    @NextAccountsDue,
+    @CompanyStatus,
+    @HasLiquidated,
+    @HasCharges,
+    @HasInsolvencyHistory
+  );
+END;", new
+        {
+            PlaceId = normalizedPlaceId,
+            DateOfCreation = financialInfo.DateOfCreation?.Date,
+            CompanyNumber = normalizedCompanyNumber,
+            CompanyType = normalizedCompanyType,
+            LastAccountsFiled = financialInfo.LastAccountsFiled?.Date,
+            NextAccountsDue = financialInfo.NextAccountsDue?.Date,
+            CompanyStatus = normalizedCompanyStatus,
+            HasLiquidated = financialInfo.HasLiquidated,
+            HasCharges = financialInfo.HasCharges,
+            HasInsolvencyHistory = financialInfo.HasInsolvencyHistory
+        }, transaction: tx, cancellationToken: ct));
+
+        await conn.ExecuteAsync(new CommandDefinition(@"
+DELETE FROM dbo.PlacesFinancialOfficers
+WHERE PlaceId = @PlaceId;", new { PlaceId = normalizedPlaceId }, transaction: tx, cancellationToken: ct));
+
+        if (officers.Count > 0)
+        {
+            await conn.ExecuteAsync(new CommandDefinition(@"
+INSERT INTO dbo.PlacesFinancialOfficers(
+  PlaceId,
+  FirstNames,
+  LastName,
+  CountryOfResidence,
+  DateOfBirth,
+  Nationality,
+  Role,
+  Appointed,
+  Resigned
+)
+VALUES(
+  @PlaceId,
+  @FirstNames,
+  @LastName,
+  @CountryOfResidence,
+  @DateOfBirth,
+  @Nationality,
+  @Role,
+  @Appointed,
+  @Resigned
+);",
+                officers.Select(x => new
+                {
+                    PlaceId = normalizedPlaceId,
+                    x.FirstNames,
+                    x.LastName,
+                    x.CountryOfResidence,
+                    x.DateOfBirth,
+                    x.Nationality,
+                    x.Role,
+                    x.Appointed,
+                    x.Resigned
+                }),
+                transaction: tx,
+                cancellationToken: ct));
+        }
+
+        await conn.ExecuteAsync(new CommandDefinition(@"
+DELETE n
+FROM dbo.PlaceFinancialPSC_NatureOfControl n
+JOIN dbo.PlaceFinancialPersonsOfSignificantControl p ON p.Id = n.PSCId
+WHERE p.PlaceId = @PlaceId;
+
+DELETE FROM dbo.PlaceFinancialPersonsOfSignificantControl
+WHERE PlaceId = @PlaceId;", new { PlaceId = normalizedPlaceId }, transaction: tx, cancellationToken: ct));
+
+        foreach (var psc in dedupedPscEntries)
+        {
+            var pscDbId = await conn.ExecuteScalarAsync<long>(new CommandDefinition(@"
+INSERT INTO dbo.PlaceFinancialPersonsOfSignificantControl(
+  PlaceId,
+  CompanyNumber,
+  PscItemKind,
+  PscLinkSelf,
+  PscId,
+  NameRaw,
+  FirstNames,
+  LastName,
+  CountryOfResidence,
+  Nationality,
+  BirthMonth,
+  BirthYear,
+  NotifiedOn,
+  CeasedOn,
+  SourceEtag,
+  RetrievedUtc,
+  RawJson
+)
+VALUES(
+  @PlaceId,
+  @CompanyNumber,
+  @PscItemKind,
+  @PscLinkSelf,
+  @PscId,
+  @NameRaw,
+  @FirstNames,
+  @LastName,
+  @CountryOfResidence,
+  @Nationality,
+  @BirthMonth,
+  @BirthYear,
+  @NotifiedOn,
+  @CeasedOn,
+  @SourceEtag,
+  @RetrievedUtc,
+  @RawJson
+);
+SELECT CAST(SCOPE_IDENTITY() AS bigint);", new
+            {
+                PlaceId = normalizedPlaceId,
+                psc.CompanyNumber,
+                psc.PscItemKind,
+                psc.PscLinkSelf,
+                psc.PscId,
+                psc.NameRaw,
+                psc.FirstNames,
+                psc.LastName,
+                psc.CountryOfResidence,
+                psc.Nationality,
+                psc.BirthMonth,
+                psc.BirthYear,
+                psc.NotifiedOn,
+                psc.CeasedOn,
+                psc.SourceEtag,
+                psc.RetrievedUtc,
+                psc.RawJson
+            }, transaction: tx, cancellationToken: ct));
+
+            if (psc.NatureCodes.Count <= 0)
+                continue;
+
+            await conn.ExecuteAsync(new CommandDefinition(@"
+INSERT INTO dbo.PlaceFinancialPSC_NatureOfControl(
+  PSCId,
+  NatureCode
+)
+VALUES(
+  @PSCId,
+  @NatureCode
+);", psc.NatureCodes.Select(code => new
+            {
+                PSCId = pscDbId,
+                NatureCode = code
+            }), transaction: tx, cancellationToken: ct));
+        }
+
+        await tx.CommitAsync(ct);
+
+        return true;
+    }
+
+    public async Task<PlaceFinancialInfo?> GetPlaceFinancialAsync(string placeId, CancellationToken ct)
+    {
+        var normalizedPlaceId = (placeId ?? string.Empty).Trim();
+        if (normalizedPlaceId.Length == 0)
+            throw new InvalidOperationException("Place ID is required.");
+
+        await using var conn = (Microsoft.Data.SqlClient.SqlConnection)await connectionFactory.OpenConnectionAsync(ct);
+        var row = await conn.QuerySingleOrDefaultAsync<PlaceFinancialRow>(new CommandDefinition(@"
+SELECT TOP 1
+  PlaceId,
+  DateOfCreation,
+  CompanyNumber,
+  CompanyType,
+  LastAccountsFiled,
+  NextAccountsDue,
+  CompanyStatus,
+  HasLiquidated,
+  HasCharges,
+  HasInsolvencyHistory
+FROM dbo.PlacesFinancial
+WHERE PlaceId = @PlaceId;", new { PlaceId = normalizedPlaceId }, cancellationToken: ct));
+
+        if (row is null || string.IsNullOrWhiteSpace(row.CompanyNumber))
+            return null;
+
+        return new PlaceFinancialInfo(
+            row.PlaceId,
+            row.DateOfCreation,
+            row.CompanyNumber,
+            row.CompanyType,
+            row.LastAccountsFiled,
+            row.NextAccountsDue,
+            row.CompanyStatus,
+            row.HasLiquidated,
+            row.HasCharges,
+            row.HasInsolvencyHistory);
+    }
+
+>>>>>>> 7911747 (Integration with companies house)
     public async Task<PlaceDetailsViewModel?> GetPlaceDetailsAsync(string placeId, long? runId, CancellationToken ct, int reviewPage = 1, int reviewPageSize = 25)
     {
         await using var conn = (Microsoft.Data.SqlClient.SqlConnection)await connectionFactory.OpenConnectionAsync(ct);
@@ -742,6 +1168,7 @@ ORDER BY PlaceId, [Year], [Month];",
 
         var place = await conn.QuerySingleOrDefaultAsync<PlaceDetailsRow>(new CommandDefinition(@"
 SELECT
+<<<<<<< HEAD
   PlaceId,
   DisplayName,
   FormattedAddress,
@@ -769,6 +1196,54 @@ SELECT
   ZohoLastError
 FROM dbo.Place
 WHERE PlaceId=@PlaceId", new { PlaceId = placeId }, cancellationToken: ct));
+=======
+  p.PlaceId,
+  p.DisplayName,
+  p.LogoUrl,
+  p.MainPhotoUrl,
+  p.FormattedAddress,
+  p.PrimaryType,
+  p.PrimaryCategory,
+  p.TypesCsv,
+  p.NationalPhoneNumber,
+  p.WebsiteUri,
+  p.FacebookUrl,
+  p.InstagramUrl,
+  p.LinkedInUrl,
+  p.XUrl,
+  p.YouTubeUrl,
+  p.TikTokUrl,
+  p.PinterestUrl,
+  p.BlueskyUrl,
+  p.SearchLocationName,
+  p.QuestionAnswerCount,
+  p.Lat,
+  p.Lng,
+  p.Description,
+  p.PhotoCount,
+  p.OtherCategoriesJson,
+  p.PlaceTopicsJson,
+  p.IsServiceAreaBusiness,
+  p.BusinessStatus,
+  p.RegularOpeningHoursJson,
+  p.ZohoLeadCreated,
+  p.ZohoLeadCreatedAtUtc,
+  p.ZohoLeadId,
+  p.ZohoLastSyncAtUtc,
+  p.ZohoLastError,
+  pf.DateOfCreation AS FinancialDateOfCreation,
+  pf.CompanyNumber AS FinancialCompanyNumber,
+  pf.CompanyType AS FinancialCompanyType,
+  pf.LastAccountsFiled AS FinancialLastAccountsFiled,
+  pf.NextAccountsDue AS FinancialNextAccountsDue,
+  pf.CompanyStatus AS FinancialCompanyStatus,
+  pf.HasLiquidated AS FinancialHasLiquidated,
+  pf.HasCharges AS FinancialHasCharges,
+  pf.HasInsolvencyHistory AS FinancialHasInsolvencyHistory
+FROM dbo.Place p
+LEFT JOIN dbo.PlacesFinancial pf ON pf.PlaceId = p.PlaceId
+WHERE p.PlaceId=@PlaceId", new { PlaceId = placeId }, cancellationToken: ct));
+>>>>>>> 7911747 (Integration with companies house)
 
         if (place is null)
             return null;
@@ -940,6 +1415,173 @@ ORDER BY COALESCE(AnswerTimestampUtc, QuestionTimestampUtc, LastSeenUtc) DESC, P
                 x.LastSeenUtc))
             .ToList();
 
+        var financialOfficers = (await conn.QueryAsync<PlaceFinancialOfficerRow>(new CommandDefinition(@"
+SELECT
+  Id,
+  PlaceId,
+  FirstNames,
+  LastName,
+  CountryOfResidence,
+  DateOfBirth,
+  Nationality,
+  Role,
+  Appointed,
+  Resigned
+FROM dbo.PlacesFinancialOfficers
+WHERE PlaceId = @PlaceId;", new { PlaceId = placeId }, cancellationToken: ct)))
+            .Select(x => new PlaceFinancialOfficerInfo(
+                x.Id,
+                x.PlaceId,
+                x.FirstNames,
+                x.LastName,
+                x.CountryOfResidence,
+                x.DateOfBirth,
+                x.Nationality,
+                x.Role,
+                x.Appointed,
+                x.Resigned))
+            .OrderBy(x => x.Resigned.HasValue ? 1 : 0)
+            .ThenBy(x => x.Resigned.HasValue ? DateTime.MaxValue : (x.Appointed ?? DateTime.MaxValue))
+            .ThenByDescending(x => x.Resigned ?? DateTime.MinValue)
+            .ThenBy(x => x.Id)
+            .ToList();
+
+        var financialPscRows = (await conn.QueryAsync<PlaceFinancialPscRow>(new CommandDefinition(@"
+SELECT
+  Id,
+  PlaceId,
+  CompanyNumber,
+  PscItemKind,
+  PscLinkSelf,
+  PscId,
+  NameRaw,
+  FirstNames,
+  LastName,
+  CountryOfResidence,
+  Nationality,
+  BirthMonth,
+  BirthYear,
+  NotifiedOn,
+  CeasedOn,
+  SourceEtag,
+  RetrievedUtc,
+  RawJson
+FROM dbo.PlaceFinancialPersonsOfSignificantControl
+WHERE PlaceId = @PlaceId;", new { PlaceId = placeId }, cancellationToken: ct))).ToList();
+
+        IReadOnlyList<PlaceFinancialPscNatureRow> financialPscNatureRows = [];
+        if (financialPscRows.Count > 0)
+        {
+            var pscIds = financialPscRows.Select(x => x.Id).ToArray();
+            financialPscNatureRows = (await conn.QueryAsync<PlaceFinancialPscNatureRow>(new CommandDefinition(@"
+SELECT
+  PSCId,
+  NatureCode
+FROM dbo.PlaceFinancialPSC_NatureOfControl
+WHERE PSCId IN @PSCIds;", new { PSCIds = pscIds }, cancellationToken: ct))).ToList();
+        }
+
+        var natureCodesByPscId = financialPscNatureRows
+            .GroupBy(x => x.PSCId)
+            .ToDictionary(
+                g => g.Key,
+                g => (IReadOnlyList<string>)g
+                    .Select(x => x.NatureCode)
+                    .Where(x => !string.IsNullOrWhiteSpace(x))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList());
+
+        var financialPscs = financialPscRows
+            .Select(x =>
+            {
+                var natureCodes = natureCodesByPscId.TryGetValue(x.Id, out var values)
+                    ? values
+                    : [];
+
+                return new PlaceFinancialPersonOfSignificantControlInfo(
+                    x.Id,
+                    x.PlaceId,
+                    x.CompanyNumber,
+                    x.PscItemKind,
+                    x.PscLinkSelf,
+                    x.PscId,
+                    x.NameRaw,
+                    x.FirstNames,
+                    x.LastName,
+                    x.CountryOfResidence,
+                    x.Nationality,
+                    x.BirthMonth,
+                    x.BirthYear,
+                    x.NotifiedOn,
+                    x.CeasedOn,
+                    x.SourceEtag,
+                    x.RetrievedUtc,
+                    x.RawJson,
+                    natureCodes,
+                    BuildOwnershipRightsDisplay(natureCodes),
+                    BuildVotingRightsDisplay(natureCodes),
+                    HasNatureCode(natureCodes, "right-to-appoint-and-remove-directors"),
+                    HasNatureCode(natureCodes, "significant-influence-or-control"),
+                    NatureCodesContain(natureCodes, "as-trust"),
+                    NatureCodesContain(natureCodes, "as-firm"),
+                    BuildLlpRightsDisplay(natureCodes));
+            })
+            .OrderBy(x => x.CeasedOn.HasValue ? 1 : 0)
+            .ThenBy(x => x.CeasedOn ?? DateTime.MaxValue)
+            .ThenBy(x => x.LastName)
+            .ThenBy(x => x.FirstNames)
+            .ToList();
+
+        var matchedFinancialData = ApplyFinancialOfficerPscMatches(financialOfficers, financialPscs);
+        financialOfficers = matchedFinancialData.Officers.ToList();
+        financialPscs = matchedFinancialData.Pscs.ToList();
+
+        var financialAccounts = (await conn.QueryAsync<PlaceFinancialAccountRow>(new CommandDefinition(@"
+SELECT
+  Id,
+  PlaceId,
+  CompanyNumber,
+  TransactionId,
+  FilingDate,
+  MadeUpDate,
+  AccountsType,
+  DocumentId,
+  DocumentMetadataUrl,
+  ContentType,
+  OriginalFileName,
+  LocalRelativePath,
+  FileSizeBytes,
+  RetrievedUtc,
+  IsLatest,
+  RawJson
+FROM dbo.PlaceFinancialAccounts
+WHERE PlaceId = @PlaceId
+ORDER BY
+  CASE WHEN MadeUpDate IS NULL THEN 1 ELSE 0 END,
+  MadeUpDate DESC,
+  CASE WHEN FilingDate IS NULL THEN 1 ELSE 0 END,
+  FilingDate DESC,
+  RetrievedUtc DESC,
+  Id DESC;", new { PlaceId = placeId }, cancellationToken: ct)))
+            .Select(x => new PlaceFinancialAccountInfo(
+                x.Id,
+                x.PlaceId,
+                x.CompanyNumber,
+                x.TransactionId,
+                x.FilingDate,
+                x.MadeUpDate,
+                x.AccountsType,
+                x.DocumentId,
+                x.DocumentMetadataUrl,
+                x.ContentType,
+                x.OriginalFileName,
+                x.LocalRelativePath,
+                x.FileSizeBytes,
+                x.RetrievedUtc,
+                x.IsLatest,
+                x.RawJson))
+            .ToList();
+
         var effectiveTypesCsv = ChooseBestTypesCsv(place.TypesCsv, liveDetails?.TypesCsv);
         var primaryType = SelectBestPrimaryType(
             PreferSpecificType(place.PrimaryType, liveDetails?.PrimaryType),
@@ -995,9 +1637,25 @@ ORDER BY COALESCE(AnswerTimestampUtc, QuestionTimestampUtc, LastSeenUtc) DESC, P
             QuestionsAndAnswers = questionsAndAnswers,
             History = history,
             DataTaskStatuses = taskStatuses,
+            FinancialOfficers = financialOfficers,
+            FinancialPersonsOfSignificantControl = financialPscs,
+            FinancialAccounts = financialAccounts,
             ReviewVelocity = await reviewVelocityService.GetPlaceReviewVelocityAsync(placeId, ct),
             UpdateVelocity = await reviewVelocityService.GetPlaceUpdateVelocityAsync(placeId, ct),
             EstimatedTraffic = estimatedTraffic,
+            FinancialInfo = string.IsNullOrWhiteSpace(place.FinancialCompanyNumber)
+                ? null
+                : new PlaceFinancialInfo(
+                    place.PlaceId,
+                    place.FinancialDateOfCreation,
+                    place.FinancialCompanyNumber!,
+                    place.FinancialCompanyType,
+                    place.FinancialLastAccountsFiled,
+                    place.FinancialNextAccountsDue,
+                    place.FinancialCompanyStatus,
+                    place.FinancialHasLiquidated ?? false,
+                    place.FinancialHasCharges ?? false,
+                    place.FinancialHasInsolvencyHistory ?? false),
             ZohoLeadCreated = place.ZohoLeadCreated,
             ZohoLeadCreatedAtUtc = place.ZohoLeadCreatedAtUtc,
             ZohoLeadId = place.ZohoLeadId,
@@ -1254,6 +1912,316 @@ ORDER BY m.[Year] DESC, m.[Month] DESC;", new
         return $"{days}d {hours}h ago";
     }
 
+<<<<<<< HEAD
+=======
+    private static string BuildOwnershipRightsDisplay(IReadOnlyList<string> natureCodes)
+        => BuildBracketedRightsDisplay(natureCodes, code => code.StartsWith("ownership-of-shares-", StringComparison.OrdinalIgnoreCase));
+
+    private static string BuildVotingRightsDisplay(IReadOnlyList<string> natureCodes)
+        => BuildBracketedRightsDisplay(
+            natureCodes,
+            code => code.StartsWith("voting-rights-", StringComparison.OrdinalIgnoreCase)
+                && code.IndexOf("as-llp-member", StringComparison.OrdinalIgnoreCase) < 0);
+
+    private static string BuildBracketedRightsDisplay(IReadOnlyList<string> natureCodes, Func<string, bool> include)
+    {
+        if (natureCodes.Count == 0)
+            return "N/A";
+
+        var ranges = natureCodes
+            .Where(include)
+            .Select(MapNatureCodeToBracketRange)
+            .Where(x => x is not null)
+            .Cast<string>()
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (ranges.Count == 0)
+            return "N/A";
+        return string.Join(", ", ranges);
+    }
+
+    private static bool HasNatureCode(IReadOnlyList<string> natureCodes, string targetCode)
+    {
+        return natureCodes.Any(code => string.Equals(code, targetCode, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static bool NatureCodesContain(IReadOnlyList<string> natureCodes, string fragment)
+    {
+        return natureCodes.Any(code => code.IndexOf(fragment, StringComparison.OrdinalIgnoreCase) >= 0);
+    }
+
+    private static string BuildLlpRightsDisplay(IReadOnlyList<string> natureCodes)
+    {
+        if (natureCodes.Count == 0)
+            return "N/A";
+
+        var matches = natureCodes
+            .Where(code =>
+                code.IndexOf("as-llp-member", StringComparison.OrdinalIgnoreCase) >= 0
+                || code.IndexOf("right-to-appoint-and-remove-members", StringComparison.OrdinalIgnoreCase) >= 0
+                || code.StartsWith("right-to-share-surplus-assets-", StringComparison.OrdinalIgnoreCase))
+            .Select(HumanizeNatureCode)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (matches.Count == 0)
+            return "N/A";
+        return string.Join(", ", matches);
+    }
+
+    private static string? MapNatureCodeToBracketRange(string code)
+    {
+        var normalized = NormalizeKey(code).Replace('_', '-');
+        if (normalized.Contains("25-to-50-percent", StringComparison.Ordinal))
+            return "25%-50%";
+        if (normalized.Contains("50-to-75-percent", StringComparison.Ordinal))
+            return "50%-75%";
+        if (normalized.Contains("75-to-100-percent", StringComparison.Ordinal))
+            return "75%-100%";
+
+        if (normalized.Contains("more-than-25-percent-but-not-more-than-50-percent", StringComparison.Ordinal))
+            return "25%-50%";
+        if (normalized.Contains("more-than-50-percent-but-less-than-75-percent", StringComparison.Ordinal))
+            return "50%-75%";
+        if (normalized.Contains("75-percent-or-more", StringComparison.Ordinal))
+            return "75%-100%";
+
+        return null;
+    }
+
+    private static string HumanizeNatureCode(string code)
+    {
+        var tokens = code
+            .Split(['-', '_', ' '], StringSplitOptions.RemoveEmptyEntries)
+            .Select(token =>
+            {
+                if (string.Equals(token, "llp", StringComparison.OrdinalIgnoreCase))
+                    return "LLP";
+                if (token.All(char.IsDigit))
+                    return token;
+                return char.ToUpperInvariant(token[0]) + token[1..].ToLowerInvariant();
+            });
+        return string.Join(' ', tokens);
+    }
+
+    private static (IReadOnlyList<PlaceFinancialOfficerInfo> Officers, IReadOnlyList<PlaceFinancialPersonOfSignificantControlInfo> Pscs)
+        ApplyFinancialOfficerPscMatches(
+            IReadOnlyList<PlaceFinancialOfficerInfo> officers,
+            IReadOnlyList<PlaceFinancialPersonOfSignificantControlInfo> pscs)
+    {
+        if (officers.Count == 0 || pscs.Count == 0)
+            return (officers, pscs);
+
+        var matchedOfficerIndices = new HashSet<int>();
+        var matchedPscIndices = new HashSet<int>();
+
+        var officerKeys = officers
+            .Select(BuildOfficerMatchKeys)
+            .ToList();
+        var pscKeys = pscs
+            .Select(BuildPscMatchKeys)
+            .ToList();
+
+        for (var pscIndex = 0; pscIndex < pscs.Count; pscIndex++)
+        {
+            if (pscs[pscIndex].CeasedOn.HasValue)
+                continue;
+
+            var pscCandidates = pscKeys[pscIndex];
+            if (pscCandidates.Count == 0)
+                continue;
+
+            for (var officerIndex = 0; officerIndex < officers.Count; officerIndex++)
+            {
+                if (officers[officerIndex].Resigned.HasValue)
+                    continue;
+
+                var officerCandidates = officerKeys[officerIndex];
+                if (officerCandidates.Count == 0)
+                    continue;
+
+                if (!HasFinancialMatch(officerCandidates, pscCandidates))
+                    continue;
+
+                matchedPscIndices.Add(pscIndex);
+                matchedOfficerIndices.Add(officerIndex);
+            }
+        }
+
+        var updatedOfficers = officers
+            .Select((officer, index) => officer with { IsPossiblePscMatch = matchedOfficerIndices.Contains(index) })
+            .ToList();
+        var updatedPscs = pscs
+            .Select((psc, index) => psc with { IsPossibleOfficerMatch = matchedPscIndices.Contains(index) })
+            .ToList();
+
+        return (updatedOfficers, updatedPscs);
+    }
+
+    private static bool HasFinancialMatch(
+        IReadOnlyList<FinancialMatchKey> officerCandidates,
+        IReadOnlyList<FinancialMatchKey> pscCandidates)
+    {
+        foreach (var officerKey in officerCandidates)
+        {
+            foreach (var pscKey in pscCandidates)
+            {
+                if (!string.Equals(pscKey.LastName, officerKey.LastName, StringComparison.Ordinal))
+                    continue;
+                if (pscKey.BirthMonth != officerKey.BirthMonth || pscKey.BirthYear != officerKey.BirthYear)
+                    continue;
+
+                var exactFirstNameMatch = string.Equals(pscKey.FirstName, officerKey.FirstName, StringComparison.Ordinal);
+                var initialMatch = pscKey.FirstInitial == officerKey.FirstInitial;
+                if (!exactFirstNameMatch && !initialMatch)
+                    continue;
+
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static IReadOnlyList<FinancialMatchKey> BuildOfficerMatchKeys(PlaceFinancialOfficerInfo officer)
+    {
+        if (!officer.DateOfBirth.HasValue)
+            return [];
+
+        return BuildFinancialMatchKeys(
+            officer.FirstNames,
+            officer.LastName,
+            officer.DateOfBirth.Value.Month,
+            officer.DateOfBirth.Value.Year);
+    }
+
+    private static IReadOnlyList<FinancialMatchKey> BuildPscMatchKeys(PlaceFinancialPersonOfSignificantControlInfo psc)
+    {
+        if (!psc.BirthMonth.HasValue || !psc.BirthYear.HasValue)
+            return [];
+
+        return BuildFinancialMatchKeys(
+            psc.FirstNames,
+            psc.LastName,
+            psc.BirthMonth.Value,
+            psc.BirthYear.Value);
+    }
+
+    private static IReadOnlyList<FinancialMatchKey> BuildFinancialMatchKeys(
+        string? firstNamesValue,
+        string? lastNameValue,
+        int birthMonth,
+        int birthYear)
+    {
+        var candidates = new List<FinancialMatchKey>();
+        foreach (var pair in BuildNameCandidatePairs(firstNamesValue, lastNameValue))
+        {
+            var key = CreateFinancialMatchKey(pair.FirstName, pair.LastName, birthMonth, birthYear);
+            if (key is null)
+                continue;
+            candidates.Add(key);
+        }
+
+        return candidates
+            .Distinct()
+            .ToList();
+    }
+
+    private static IReadOnlyList<(string? FirstName, string? LastName)> BuildNameCandidatePairs(
+        string? firstNamesValue,
+        string? lastNameValue)
+    {
+        var pairs = new List<(string? FirstName, string? LastName)>
+        {
+            (firstNamesValue, lastNameValue)
+        };
+
+        if (!string.IsNullOrWhiteSpace(firstNamesValue) && !string.IsNullOrWhiteSpace(lastNameValue))
+        {
+            var first = firstNamesValue.Trim();
+            var last = lastNameValue.Trim();
+            if (!string.Equals(first, last, StringComparison.OrdinalIgnoreCase))
+                pairs.Add((lastNameValue, firstNamesValue));
+        }
+
+        return pairs;
+    }
+
+    private static FinancialMatchKey? CreateFinancialMatchKey(
+        string? firstNamesValue,
+        string? lastNameValue,
+        int birthMonth,
+        int birthYear)
+    {
+        if (birthMonth is < 1 or > 12 || birthYear is < 1 or > 9999)
+            return null;
+
+        var lastName = NormalizeNameForMatch(lastNameValue);
+        var firstName = NormalizeNameForMatch(ExtractFirstNameToken(firstNamesValue));
+        if (lastName is null || firstName is null)
+            return null;
+
+        return new FinancialMatchKey(lastName, firstName, firstName[0], birthMonth, birthYear);
+    }
+
+    private static string? ExtractFirstNameToken(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        var trimmed = value.Trim();
+        var separators = new[] { ' ', ',', '.', '-', '/', '\\' };
+        var token = trimmed
+            .Split(separators, StringSplitOptions.RemoveEmptyEntries)
+            .FirstOrDefault();
+        return token;
+    }
+
+    private static string? NormalizeNameForMatch(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        var chars = value
+            .Trim()
+            .Where(char.IsLetterOrDigit)
+            .Select(char.ToUpperInvariant)
+            .ToArray();
+        if (chars.Length == 0)
+            return null;
+
+        return new string(chars);
+    }
+
+    private static string? NormalizeSocialUrl(string? value, string label)
+    {
+        var normalized = (value ?? string.Empty).Trim();
+        if (normalized.Length == 0)
+            return null;
+
+        if (!Uri.TryCreate(normalized, UriKind.Absolute, out var uri) ||
+            (!string.Equals(uri.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase) &&
+             !string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)))
+        {
+            throw new InvalidOperationException($"{label} must be a valid http/https URL.");
+        }
+
+        return uri.AbsoluteUri.TrimEnd('/');
+    }
+
+    private static string? NormalizeAndTrim(string? value, int maxLength)
+    {
+        var normalized = (value ?? string.Empty).Trim();
+        if (normalized.Length == 0)
+            return null;
+
+        return normalized.Length <= maxLength
+            ? normalized
+            : normalized[..maxLength];
+    }
+
+>>>>>>> 7911747 (Integration with companies house)
     private static IReadOnlyList<string> SplitTypes(string? csv)
     {
         if (string.IsNullOrWhiteSpace(csv))
@@ -1449,7 +2417,108 @@ ORDER BY m.[Year] DESC, m.[Month] DESC;", new
         DateTime? ZohoLeadCreatedAtUtc,
         string? ZohoLeadId,
         DateTime? ZohoLastSyncAtUtc,
-        string? ZohoLastError);
+        string? ZohoLastError,
+        DateTime? FinancialDateOfCreation,
+        string? FinancialCompanyNumber,
+        string? FinancialCompanyType,
+        DateTime? FinancialLastAccountsFiled,
+        DateTime? FinancialNextAccountsDue,
+        string? FinancialCompanyStatus,
+        bool? FinancialHasLiquidated,
+        bool? FinancialHasCharges,
+        bool? FinancialHasInsolvencyHistory);
+
+    private sealed record PlaceFinancialRow(
+        string PlaceId,
+        DateTime? DateOfCreation,
+        string CompanyNumber,
+        string? CompanyType,
+        DateTime? LastAccountsFiled,
+        DateTime? NextAccountsDue,
+        string? CompanyStatus,
+        bool HasLiquidated,
+        bool HasCharges,
+        bool HasInsolvencyHistory);
+
+    private sealed record PlaceFinancialOfficerRow(
+        long Id,
+        string PlaceId,
+        string? FirstNames,
+        string? LastName,
+        string? CountryOfResidence,
+        DateTime? DateOfBirth,
+        string? Nationality,
+        string? Role,
+        DateTime? Appointed,
+        DateTime? Resigned);
+
+    private sealed record PlaceFinancialPscRow(
+        long Id,
+        string PlaceId,
+        string CompanyNumber,
+        string? PscItemKind,
+        string? PscLinkSelf,
+        string? PscId,
+        string? NameRaw,
+        string? FirstNames,
+        string? LastName,
+        string? CountryOfResidence,
+        string? Nationality,
+        byte? BirthMonth,
+        int? BirthYear,
+        DateTime? NotifiedOn,
+        DateTime? CeasedOn,
+        string? SourceEtag,
+        DateTime RetrievedUtc,
+        string? RawJson);
+
+    private sealed record PlaceFinancialPscNatureRow(
+        long PSCId,
+        string NatureCode);
+
+    private sealed record PlaceFinancialAccountRow(
+        long Id,
+        string PlaceId,
+        string CompanyNumber,
+        string? TransactionId,
+        DateTime? FilingDate,
+        DateTime? MadeUpDate,
+        string? AccountsType,
+        string DocumentId,
+        string DocumentMetadataUrl,
+        string? ContentType,
+        string? OriginalFileName,
+        string LocalRelativePath,
+        long? FileSizeBytes,
+        DateTime RetrievedUtc,
+        bool IsLatest,
+        string? RawJson);
+
+    private sealed record NormalizedPscUpsertRow(
+        string CompanyNumber,
+        string? PscItemKind,
+        string? PscLinkSelf,
+        string? PscId,
+        string? NameRaw,
+        string? FirstNames,
+        string? LastName,
+        string? CountryOfResidence,
+        string? Nationality,
+        byte? BirthMonth,
+        int? BirthYear,
+        DateTime? NotifiedOn,
+        DateTime? CeasedOn,
+        string? SourceEtag,
+        DateTime RetrievedUtc,
+        string? RawJson,
+        IReadOnlyList<string> NatureCodes);
+
+    private sealed record FinancialMatchKey(
+        string LastName,
+        string FirstName,
+        char FirstInitial,
+        int BirthMonth,
+        int BirthYear);
 
     private sealed record SearchRunCenterRow(long SearchRunId, decimal? CenterLat, decimal? CenterLng);
 

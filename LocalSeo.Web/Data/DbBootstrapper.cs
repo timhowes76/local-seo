@@ -114,6 +114,228 @@ IF COL_LENGTH('dbo.Place', 'ZohoLastSyncAtUtc') IS NULL
   ALTER TABLE dbo.Place ADD ZohoLastSyncAtUtc datetime2(0) NULL;
 IF COL_LENGTH('dbo.Place', 'ZohoLastError') IS NULL
   ALTER TABLE dbo.Place ADD ZohoLastError nvarchar(2000) NULL;
+IF OBJECT_ID('dbo.PlacesFinancial','U') IS NULL
+BEGIN
+  CREATE TABLE dbo.PlacesFinancial(
+    PlaceId nvarchar(128) NOT NULL PRIMARY KEY FOREIGN KEY REFERENCES dbo.Place(PlaceId),
+    DateOfCreation date NULL,
+    CompanyNumber nvarchar(32) NOT NULL,
+    CompanyType nvarchar(80) NULL,
+    LastAccountsFiled datetime2(0) NULL,
+    NextAccountsDue datetime2(0) NULL,
+    CompanyStatus nvarchar(80) NULL,
+    HasLiquidated bit NOT NULL CONSTRAINT DF_PlacesFinancial_HasLiquidated DEFAULT(0),
+    HasCharges bit NOT NULL CONSTRAINT DF_PlacesFinancial_HasCharges DEFAULT(0),
+    HasInsolvencyHistory bit NOT NULL CONSTRAINT DF_PlacesFinancial_HasInsolvencyHistory DEFAULT(0),
+    LastUpdatedUtc datetime2(0) NOT NULL CONSTRAINT DF_PlacesFinancial_LastUpdatedUtc DEFAULT SYSUTCDATETIME()
+  );
+END;
+IF COL_LENGTH('dbo.PlacesFinancial', 'DateOfCreation') IS NULL
+  ALTER TABLE dbo.PlacesFinancial ADD DateOfCreation date NULL;
+IF COL_LENGTH('dbo.PlacesFinancial', 'CompanyNumber') IS NULL
+  ALTER TABLE dbo.PlacesFinancial ADD CompanyNumber nvarchar(32) NOT NULL CONSTRAINT DF_PlacesFinancial_CompanyNumber_Alt DEFAULT N'';
+IF COL_LENGTH('dbo.PlacesFinancial', 'CompanyType') IS NULL
+  ALTER TABLE dbo.PlacesFinancial ADD CompanyType nvarchar(80) NULL;
+IF COL_LENGTH('dbo.PlacesFinancial', 'LastAccountsFiled') IS NULL
+  ALTER TABLE dbo.PlacesFinancial ADD LastAccountsFiled datetime2(0) NULL;
+IF COL_LENGTH('dbo.PlacesFinancial', 'NextAccountsDue') IS NULL
+  ALTER TABLE dbo.PlacesFinancial ADD NextAccountsDue datetime2(0) NULL;
+IF COL_LENGTH('dbo.PlacesFinancial', 'CompanyStatus') IS NULL
+  ALTER TABLE dbo.PlacesFinancial ADD CompanyStatus nvarchar(80) NULL;
+IF COL_LENGTH('dbo.PlacesFinancial', 'HasLiquidated') IS NULL
+  ALTER TABLE dbo.PlacesFinancial ADD HasLiquidated bit NOT NULL CONSTRAINT DF_PlacesFinancial_HasLiquidated_Alt DEFAULT(0);
+IF COL_LENGTH('dbo.PlacesFinancial', 'HasCharges') IS NULL
+  ALTER TABLE dbo.PlacesFinancial ADD HasCharges bit NOT NULL CONSTRAINT DF_PlacesFinancial_HasCharges_Alt DEFAULT(0);
+IF COL_LENGTH('dbo.PlacesFinancial', 'HasInsolvencyHistory') IS NULL
+  ALTER TABLE dbo.PlacesFinancial ADD HasInsolvencyHistory bit NOT NULL CONSTRAINT DF_PlacesFinancial_HasInsolvencyHistory_Alt DEFAULT(0);
+IF COL_LENGTH('dbo.PlacesFinancial', 'LastUpdatedUtc') IS NULL
+  ALTER TABLE dbo.PlacesFinancial ADD LastUpdatedUtc datetime2(0) NOT NULL CONSTRAINT DF_PlacesFinancial_LastUpdatedUtc_Alt DEFAULT SYSUTCDATETIME();
+IF OBJECT_ID('dbo.PlacesFinancialOfficers','U') IS NULL
+BEGIN
+  CREATE TABLE dbo.PlacesFinancialOfficers(
+    Id bigint IDENTITY(1,1) NOT NULL PRIMARY KEY,
+    PlaceId nvarchar(128) NOT NULL FOREIGN KEY REFERENCES dbo.Place(PlaceId),
+    FirstNames nvarchar(200) NULL,
+    LastName nvarchar(200) NULL,
+    CountryOfResidence nvarchar(100) NULL,
+    DateOfBirth date NULL,
+    Nationality nvarchar(100) NULL,
+    Role nvarchar(80) NULL,
+    Appointed date NULL,
+    Resigned date NULL
+  );
+END;
+IF COL_LENGTH('dbo.PlacesFinancialOfficers', 'FirstNames') IS NULL
+  ALTER TABLE dbo.PlacesFinancialOfficers ADD FirstNames nvarchar(200) NULL;
+IF COL_LENGTH('dbo.PlacesFinancialOfficers', 'LastName') IS NULL
+  ALTER TABLE dbo.PlacesFinancialOfficers ADD LastName nvarchar(200) NULL;
+IF COL_LENGTH('dbo.PlacesFinancialOfficers', 'CountryOfResidence') IS NULL
+  ALTER TABLE dbo.PlacesFinancialOfficers ADD CountryOfResidence nvarchar(100) NULL;
+IF COL_LENGTH('dbo.PlacesFinancialOfficers', 'DateOfBirth') IS NULL
+  ALTER TABLE dbo.PlacesFinancialOfficers ADD DateOfBirth date NULL;
+IF COL_LENGTH('dbo.PlacesFinancialOfficers', 'Nationality') IS NULL
+  ALTER TABLE dbo.PlacesFinancialOfficers ADD Nationality nvarchar(100) NULL;
+IF COL_LENGTH('dbo.PlacesFinancialOfficers', 'Role') IS NULL
+  ALTER TABLE dbo.PlacesFinancialOfficers ADD Role nvarchar(80) NULL;
+IF COL_LENGTH('dbo.PlacesFinancialOfficers', 'Appointed') IS NULL
+  ALTER TABLE dbo.PlacesFinancialOfficers ADD Appointed date NULL;
+IF COL_LENGTH('dbo.PlacesFinancialOfficers', 'Resigned') IS NULL
+  ALTER TABLE dbo.PlacesFinancialOfficers ADD Resigned date NULL;
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_PlacesFinancialOfficers_PlaceId' AND object_id=OBJECT_ID('dbo.PlacesFinancialOfficers'))
+  CREATE INDEX IX_PlacesFinancialOfficers_PlaceId ON dbo.PlacesFinancialOfficers(PlaceId, Resigned, Appointed);
+IF OBJECT_ID('dbo.PlaceFinancialPersonsOfSignificantControl','U') IS NULL
+BEGIN
+  CREATE TABLE dbo.PlaceFinancialPersonsOfSignificantControl(
+    Id bigint IDENTITY(1,1) NOT NULL PRIMARY KEY,
+    PlaceId nvarchar(128) NOT NULL FOREIGN KEY REFERENCES dbo.Place(PlaceId),
+    CompanyNumber nvarchar(32) NOT NULL,
+    PscItemKind nvarchar(120) NULL,
+    PscLinkSelf nvarchar(500) NULL,
+    PscId nvarchar(120) NULL,
+    NameRaw nvarchar(300) NULL,
+    FirstNames nvarchar(150) NULL,
+    LastName nvarchar(150) NULL,
+    CountryOfResidence nvarchar(100) NULL,
+    Nationality nvarchar(100) NULL,
+    BirthMonth tinyint NULL,
+    BirthYear int NULL,
+    NotifiedOn date NULL,
+    CeasedOn date NULL,
+    SourceEtag nvarchar(100) NULL,
+    RetrievedUtc datetime2(0) NOT NULL CONSTRAINT DF_PlaceFinancialPSC_RetrievedUtc DEFAULT SYSUTCDATETIME(),
+    RawJson nvarchar(max) NULL
+  );
+END;
+IF COL_LENGTH('dbo.PlaceFinancialPersonsOfSignificantControl', 'PlaceId') IS NULL
+  ALTER TABLE dbo.PlaceFinancialPersonsOfSignificantControl ADD PlaceId nvarchar(128) NOT NULL CONSTRAINT DF_PlaceFinancialPSC_PlaceId_Alt DEFAULT N'';
+IF COL_LENGTH('dbo.PlaceFinancialPersonsOfSignificantControl', 'CompanyNumber') IS NULL
+  ALTER TABLE dbo.PlaceFinancialPersonsOfSignificantControl ADD CompanyNumber nvarchar(32) NOT NULL CONSTRAINT DF_PlaceFinancialPSC_CompanyNumber_Alt DEFAULT N'';
+IF COL_LENGTH('dbo.PlaceFinancialPersonsOfSignificantControl', 'PscItemKind') IS NULL
+  ALTER TABLE dbo.PlaceFinancialPersonsOfSignificantControl ADD PscItemKind nvarchar(120) NULL;
+IF COL_LENGTH('dbo.PlaceFinancialPersonsOfSignificantControl', 'PscLinkSelf') IS NULL
+  ALTER TABLE dbo.PlaceFinancialPersonsOfSignificantControl ADD PscLinkSelf nvarchar(500) NULL;
+IF COL_LENGTH('dbo.PlaceFinancialPersonsOfSignificantControl', 'PscId') IS NULL
+  ALTER TABLE dbo.PlaceFinancialPersonsOfSignificantControl ADD PscId nvarchar(120) NULL;
+IF COL_LENGTH('dbo.PlaceFinancialPersonsOfSignificantControl', 'NameRaw') IS NULL
+  ALTER TABLE dbo.PlaceFinancialPersonsOfSignificantControl ADD NameRaw nvarchar(300) NULL;
+IF COL_LENGTH('dbo.PlaceFinancialPersonsOfSignificantControl', 'FirstNames') IS NULL
+  ALTER TABLE dbo.PlaceFinancialPersonsOfSignificantControl ADD FirstNames nvarchar(150) NULL;
+IF COL_LENGTH('dbo.PlaceFinancialPersonsOfSignificantControl', 'LastName') IS NULL
+  ALTER TABLE dbo.PlaceFinancialPersonsOfSignificantControl ADD LastName nvarchar(150) NULL;
+IF COL_LENGTH('dbo.PlaceFinancialPersonsOfSignificantControl', 'CountryOfResidence') IS NULL
+  ALTER TABLE dbo.PlaceFinancialPersonsOfSignificantControl ADD CountryOfResidence nvarchar(100) NULL;
+IF COL_LENGTH('dbo.PlaceFinancialPersonsOfSignificantControl', 'Nationality') IS NULL
+  ALTER TABLE dbo.PlaceFinancialPersonsOfSignificantControl ADD Nationality nvarchar(100) NULL;
+IF COL_LENGTH('dbo.PlaceFinancialPersonsOfSignificantControl', 'BirthMonth') IS NULL
+  ALTER TABLE dbo.PlaceFinancialPersonsOfSignificantControl ADD BirthMonth tinyint NULL;
+IF COL_LENGTH('dbo.PlaceFinancialPersonsOfSignificantControl', 'BirthYear') IS NULL
+  ALTER TABLE dbo.PlaceFinancialPersonsOfSignificantControl ADD BirthYear int NULL;
+IF COL_LENGTH('dbo.PlaceFinancialPersonsOfSignificantControl', 'NotifiedOn') IS NULL
+  ALTER TABLE dbo.PlaceFinancialPersonsOfSignificantControl ADD NotifiedOn date NULL;
+IF COL_LENGTH('dbo.PlaceFinancialPersonsOfSignificantControl', 'CeasedOn') IS NULL
+  ALTER TABLE dbo.PlaceFinancialPersonsOfSignificantControl ADD CeasedOn date NULL;
+IF COL_LENGTH('dbo.PlaceFinancialPersonsOfSignificantControl', 'SourceEtag') IS NULL
+  ALTER TABLE dbo.PlaceFinancialPersonsOfSignificantControl ADD SourceEtag nvarchar(100) NULL;
+IF COL_LENGTH('dbo.PlaceFinancialPersonsOfSignificantControl', 'RetrievedUtc') IS NULL
+  ALTER TABLE dbo.PlaceFinancialPersonsOfSignificantControl ADD RetrievedUtc datetime2(0) NOT NULL CONSTRAINT DF_PlaceFinancialPSC_RetrievedUtc_Alt DEFAULT SYSUTCDATETIME();
+IF COL_LENGTH('dbo.PlaceFinancialPersonsOfSignificantControl', 'RawJson') IS NULL
+  ALTER TABLE dbo.PlaceFinancialPersonsOfSignificantControl ADD RawJson nvarchar(max) NULL;
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_PlaceFinancialPSC_PlaceId' AND object_id=OBJECT_ID('dbo.PlaceFinancialPersonsOfSignificantControl'))
+  CREATE INDEX IX_PlaceFinancialPSC_PlaceId ON dbo.PlaceFinancialPersonsOfSignificantControl(PlaceId);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_PlaceFinancialPSC_CompanyNumber' AND object_id=OBJECT_ID('dbo.PlaceFinancialPersonsOfSignificantControl'))
+  CREATE INDEX IX_PlaceFinancialPSC_CompanyNumber ON dbo.PlaceFinancialPersonsOfSignificantControl(CompanyNumber);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='UX_PlaceFinancialPSC_Place_Kind_PscId' AND object_id=OBJECT_ID('dbo.PlaceFinancialPersonsOfSignificantControl'))
+  CREATE UNIQUE INDEX UX_PlaceFinancialPSC_Place_Kind_PscId
+    ON dbo.PlaceFinancialPersonsOfSignificantControl(PlaceId, PscItemKind, PscId)
+    WHERE PscId IS NOT NULL;
+IF OBJECT_ID('dbo.PlaceFinancialPSC_NatureOfControl','U') IS NULL
+BEGIN
+  CREATE TABLE dbo.PlaceFinancialPSC_NatureOfControl(
+    Id bigint IDENTITY(1,1) NOT NULL PRIMARY KEY,
+    PSCId bigint NOT NULL,
+    NatureCode nvarchar(200) NOT NULL
+  );
+END;
+IF COL_LENGTH('dbo.PlaceFinancialPSC_NatureOfControl', 'PSCId') IS NULL
+  ALTER TABLE dbo.PlaceFinancialPSC_NatureOfControl ADD PSCId bigint NOT NULL CONSTRAINT DF_PlaceFinancialPSCNature_PSCId_Alt DEFAULT(0);
+IF COL_LENGTH('dbo.PlaceFinancialPSC_NatureOfControl', 'NatureCode') IS NULL
+  ALTER TABLE dbo.PlaceFinancialPSC_NatureOfControl ADD NatureCode nvarchar(200) NOT NULL CONSTRAINT DF_PlaceFinancialPSCNature_Code_Alt DEFAULT N'';
+IF NOT EXISTS (
+  SELECT 1
+  FROM sys.foreign_key_columns fkc
+  JOIN sys.columns pc ON pc.object_id = fkc.parent_object_id AND pc.column_id = fkc.parent_column_id
+  JOIN sys.columns rc ON rc.object_id = fkc.referenced_object_id AND rc.column_id = fkc.referenced_column_id
+  WHERE fkc.parent_object_id = OBJECT_ID('dbo.PlaceFinancialPSC_NatureOfControl')
+    AND fkc.referenced_object_id = OBJECT_ID('dbo.PlaceFinancialPersonsOfSignificantControl')
+    AND pc.name = 'PSCId'
+    AND rc.name = 'Id'
+)
+  ALTER TABLE dbo.PlaceFinancialPSC_NatureOfControl WITH CHECK
+    ADD CONSTRAINT FK_PlaceFinancialPSCNature_PSC FOREIGN KEY (PSCId)
+    REFERENCES dbo.PlaceFinancialPersonsOfSignificantControl(Id) ON DELETE CASCADE;
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_PlaceFinancialPSCNature_PSCId' AND object_id=OBJECT_ID('dbo.PlaceFinancialPSC_NatureOfControl'))
+  CREATE INDEX IX_PlaceFinancialPSCNature_PSCId ON dbo.PlaceFinancialPSC_NatureOfControl(PSCId);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='UX_PlaceFinancialPSCNature_PSCId_NatureCode' AND object_id=OBJECT_ID('dbo.PlaceFinancialPSC_NatureOfControl'))
+  CREATE UNIQUE INDEX UX_PlaceFinancialPSCNature_PSCId_NatureCode ON dbo.PlaceFinancialPSC_NatureOfControl(PSCId, NatureCode);
+IF OBJECT_ID('dbo.PlaceFinancialAccounts','U') IS NULL
+BEGIN
+  CREATE TABLE dbo.PlaceFinancialAccounts(
+    Id bigint IDENTITY(1,1) NOT NULL PRIMARY KEY,
+    PlaceId nvarchar(128) NOT NULL FOREIGN KEY REFERENCES dbo.Place(PlaceId),
+    CompanyNumber nvarchar(32) NOT NULL,
+    TransactionId nvarchar(64) NULL,
+    FilingDate date NULL,
+    MadeUpDate date NULL,
+    AccountsType nvarchar(100) NULL,
+    DocumentId nvarchar(128) NOT NULL,
+    DocumentMetadataUrl nvarchar(500) NOT NULL,
+    ContentType nvarchar(100) NULL,
+    OriginalFileName nvarchar(260) NULL,
+    LocalRelativePath nvarchar(500) NOT NULL,
+    FileSizeBytes bigint NULL,
+    RetrievedUtc datetime2(0) NOT NULL CONSTRAINT DF_PlaceFinancialAccounts_RetrievedUtc DEFAULT SYSUTCDATETIME(),
+    IsLatest bit NOT NULL CONSTRAINT DF_PlaceFinancialAccounts_IsLatest DEFAULT(0),
+    RawJson nvarchar(max) NULL
+  );
+END;
+IF COL_LENGTH('dbo.PlaceFinancialAccounts', 'PlaceId') IS NULL
+  ALTER TABLE dbo.PlaceFinancialAccounts ADD PlaceId nvarchar(128) NOT NULL CONSTRAINT DF_PlaceFinancialAccounts_PlaceId_Alt DEFAULT N'';
+IF COL_LENGTH('dbo.PlaceFinancialAccounts', 'CompanyNumber') IS NULL
+  ALTER TABLE dbo.PlaceFinancialAccounts ADD CompanyNumber nvarchar(32) NOT NULL CONSTRAINT DF_PlaceFinancialAccounts_CompanyNumber_Alt DEFAULT N'';
+IF COL_LENGTH('dbo.PlaceFinancialAccounts', 'TransactionId') IS NULL
+  ALTER TABLE dbo.PlaceFinancialAccounts ADD TransactionId nvarchar(64) NULL;
+IF COL_LENGTH('dbo.PlaceFinancialAccounts', 'FilingDate') IS NULL
+  ALTER TABLE dbo.PlaceFinancialAccounts ADD FilingDate date NULL;
+IF COL_LENGTH('dbo.PlaceFinancialAccounts', 'MadeUpDate') IS NULL
+  ALTER TABLE dbo.PlaceFinancialAccounts ADD MadeUpDate date NULL;
+IF COL_LENGTH('dbo.PlaceFinancialAccounts', 'AccountsType') IS NULL
+  ALTER TABLE dbo.PlaceFinancialAccounts ADD AccountsType nvarchar(100) NULL;
+IF COL_LENGTH('dbo.PlaceFinancialAccounts', 'DocumentId') IS NULL
+  ALTER TABLE dbo.PlaceFinancialAccounts ADD DocumentId nvarchar(128) NOT NULL CONSTRAINT DF_PlaceFinancialAccounts_DocumentId_Alt DEFAULT N'';
+IF COL_LENGTH('dbo.PlaceFinancialAccounts', 'DocumentMetadataUrl') IS NULL
+  ALTER TABLE dbo.PlaceFinancialAccounts ADD DocumentMetadataUrl nvarchar(500) NOT NULL CONSTRAINT DF_PlaceFinancialAccounts_DocumentMetadataUrl_Alt DEFAULT N'';
+IF COL_LENGTH('dbo.PlaceFinancialAccounts', 'ContentType') IS NULL
+  ALTER TABLE dbo.PlaceFinancialAccounts ADD ContentType nvarchar(100) NULL;
+IF COL_LENGTH('dbo.PlaceFinancialAccounts', 'OriginalFileName') IS NULL
+  ALTER TABLE dbo.PlaceFinancialAccounts ADD OriginalFileName nvarchar(260) NULL;
+IF COL_LENGTH('dbo.PlaceFinancialAccounts', 'LocalRelativePath') IS NULL
+  ALTER TABLE dbo.PlaceFinancialAccounts ADD LocalRelativePath nvarchar(500) NOT NULL CONSTRAINT DF_PlaceFinancialAccounts_LocalRelativePath_Alt DEFAULT N'';
+IF COL_LENGTH('dbo.PlaceFinancialAccounts', 'FileSizeBytes') IS NULL
+  ALTER TABLE dbo.PlaceFinancialAccounts ADD FileSizeBytes bigint NULL;
+IF COL_LENGTH('dbo.PlaceFinancialAccounts', 'RetrievedUtc') IS NULL
+  ALTER TABLE dbo.PlaceFinancialAccounts ADD RetrievedUtc datetime2(0) NOT NULL CONSTRAINT DF_PlaceFinancialAccounts_RetrievedUtc_Alt DEFAULT SYSUTCDATETIME();
+IF COL_LENGTH('dbo.PlaceFinancialAccounts', 'IsLatest') IS NULL
+  ALTER TABLE dbo.PlaceFinancialAccounts ADD IsLatest bit NOT NULL CONSTRAINT DF_PlaceFinancialAccounts_IsLatest_Alt DEFAULT(0);
+IF COL_LENGTH('dbo.PlaceFinancialAccounts', 'RawJson') IS NULL
+  ALTER TABLE dbo.PlaceFinancialAccounts ADD RawJson nvarchar(max) NULL;
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_PlaceFinancialAccounts_PlaceId' AND object_id=OBJECT_ID('dbo.PlaceFinancialAccounts'))
+  CREATE INDEX IX_PlaceFinancialAccounts_PlaceId ON dbo.PlaceFinancialAccounts(PlaceId);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_PlaceFinancialAccounts_CompanyNumber' AND object_id=OBJECT_ID('dbo.PlaceFinancialAccounts'))
+  CREATE INDEX IX_PlaceFinancialAccounts_CompanyNumber ON dbo.PlaceFinancialAccounts(CompanyNumber);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_PlaceFinancialAccounts_DocumentId' AND object_id=OBJECT_ID('dbo.PlaceFinancialAccounts'))
+  CREATE INDEX IX_PlaceFinancialAccounts_DocumentId ON dbo.PlaceFinancialAccounts(DocumentId);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='UX_PlaceFinancialAccounts_Place_DocumentId' AND object_id=OBJECT_ID('dbo.PlaceFinancialAccounts'))
+  CREATE UNIQUE INDEX UX_PlaceFinancialAccounts_Place_DocumentId ON dbo.PlaceFinancialAccounts(PlaceId, DocumentId);
 IF OBJECT_ID('dbo.PlaceSnapshot','U') IS NULL
 BEGIN
   CREATE TABLE dbo.PlaceSnapshot(

@@ -397,6 +397,20 @@ button:disabled,
     font-size: 13px;
 }
 
+@media (max-width: 1000px) {
+    .overview-split {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 640px) {
+    .overview-logo {
+        width: 48px;
+        height: 48px;
+        border-radius: 10px;
+    }
+}
+
 .places-filter-line {
     display: flex;
     align-items: center;
@@ -967,6 +981,10 @@ tbody tr:hover {
     display: none !important;
 }
 
+body.modal-open {
+    overflow: hidden;
+}
+
 .notice {
     padding: 10px 12px;
     border-radius: var(--radius-sm);
@@ -992,6 +1010,60 @@ code {
     align-items: center;
     justify-content: center;
     z-index: 2000;
+}
+
+.financial-modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.45);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2100;
+    padding: 16px;
+}
+
+.financial-modal-card {
+    width: min(1100px, calc(100vw - 32px));
+    max-height: calc(100vh - 32px);
+    overflow: auto;
+    background: #fff;
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-soft);
+    padding: 16px;
+    display: grid;
+    gap: 12px;
+}
+
+.financial-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.financial-modal-header h3 {
+    margin: 0;
+}
+
+.financial-search-form {
+    display: grid;
+    gap: 6px;
+}
+
+.financial-search-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.financial-search-row input {
+    flex: 1 1 auto;
+}
+
+.financial-error-text {
+    color: #9f1c1c;
 }
 
 .loading-modal {
@@ -1052,6 +1124,11 @@ code {
 @media (max-width: 860px) {
     .search-location-row {
         grid-template-columns: 1fr;
+    }
+
+    .financial-search-row {
+        flex-direction: column;
+        align-items: stretch;
     }
 }
 

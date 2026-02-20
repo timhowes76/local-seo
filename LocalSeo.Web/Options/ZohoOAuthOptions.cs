@@ -7,5 +7,5 @@ public sealed class ZohoOAuthOptions
     public string ClientId { get; set; } = string.Empty;
     public string ClientSecret { get; set; } = string.Empty;
     public string RedirectUri { get; set; } = string.Empty;
-    public string Scopes { get; set; } = "ZohoCRM.modules.leads.ALL,ZohoCRM.settings.modules.READ";
+    public string Scopes { get; set; } = "ZohoCRM.modules.leads.ALL,ZohoCRM.settings.modules.READ,ZohoCRM.settings.fields.READ";
 }

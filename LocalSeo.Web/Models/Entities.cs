@@ -188,6 +188,10 @@ public sealed class PlaceDetailsViewModel
     public PlaceReviewVelocityDetailsDto? ReviewVelocity { get; init; }
     public PlaceUpdateVelocityDetailsDto? UpdateVelocity { get; init; }
     public PlaceEstimatedTrafficSummary? EstimatedTraffic { get; init; }
+    public PlaceFinancialInfo? FinancialInfo { get; init; }
+    public IReadOnlyList<PlaceFinancialOfficerInfo> FinancialOfficers { get; init; } = [];
+    public IReadOnlyList<PlaceFinancialPersonOfSignificantControlInfo> FinancialPersonsOfSignificantControl { get; init; } = [];
+    public IReadOnlyList<PlaceFinancialAccountInfo> FinancialAccounts { get; init; } = [];
     public bool ZohoLeadCreated { get; init; }
     public DateTime? ZohoLeadCreatedAtUtc { get; init; }
     public string? ZohoLeadId { get; init; }
@@ -195,6 +199,134 @@ public sealed class PlaceDetailsViewModel
     public string? ZohoLastError { get; init; }
 }
 
+public sealed record PlaceFinancialInfo(
+    string PlaceId,
+    DateTime? DateOfCreation,
+    string CompanyNumber,
+    string? CompanyType,
+    DateTime? LastAccountsFiled,
+    DateTime? NextAccountsDue,
+    string? CompanyStatus,
+    bool HasLiquidated,
+    bool HasCharges,
+    bool HasInsolvencyHistory);
+
+public sealed record PlaceFinancialInfoUpsert(
+    DateTime? DateOfCreation,
+    string CompanyNumber,
+    string? CompanyType,
+    DateTime? LastAccountsFiled,
+    DateTime? NextAccountsDue,
+    string? CompanyStatus,
+    bool HasLiquidated,
+    bool HasCharges,
+    bool HasInsolvencyHistory,
+    IReadOnlyList<PlaceFinancialOfficerUpsert> Officers,
+    IReadOnlyList<PlaceFinancialPersonOfSignificantControlUpsert> PersonsWithSignificantControl);
+
+public sealed record PlaceFinancialOfficerInfo(
+    long Id,
+    string PlaceId,
+    string? FirstNames,
+    string? LastName,
+    string? CountryOfResidence,
+    DateTime? DateOfBirth,
+    string? Nationality,
+    string? Role,
+    DateTime? Appointed,
+    DateTime? Resigned,
+    bool IsPossiblePscMatch = false);
+
+public sealed record PlaceFinancialOfficerUpsert(
+    string? FirstNames,
+    string? LastName,
+    string? CountryOfResidence,
+    DateTime? DateOfBirth,
+    string? Nationality,
+    string? Role,
+    DateTime? Appointed,
+    DateTime? Resigned);
+
+public sealed record PlaceFinancialPersonOfSignificantControlInfo(
+    long Id,
+    string PlaceId,
+    string CompanyNumber,
+    string? PscItemKind,
+    string? PscLinkSelf,
+    string? PscId,
+    string? NameRaw,
+    string? FirstNames,
+    string? LastName,
+    string? CountryOfResidence,
+    string? Nationality,
+    byte? BirthMonth,
+    int? BirthYear,
+    DateTime? NotifiedOn,
+    DateTime? CeasedOn,
+    string? SourceEtag,
+    DateTime RetrievedUtc,
+    string? RawJson,
+    IReadOnlyList<string> NatureCodes,
+    string OwnershipRights,
+    string VotingRights,
+    bool CanAppointDirectors,
+    bool HasSignificantControl,
+    bool HasTrustControl,
+    bool HasFirmControl,
+    string LlpRights,
+    bool IsPossibleOfficerMatch = false);
+
+public sealed record PlaceFinancialPersonOfSignificantControlUpsert(
+    string CompanyNumber,
+    string? PscItemKind,
+    string? PscLinkSelf,
+    string? PscId,
+    string? NameRaw,
+    string? FirstNames,
+    string? LastName,
+    string? CountryOfResidence,
+    string? Nationality,
+    byte? BirthMonth,
+    int? BirthYear,
+    DateTime? NotifiedOn,
+    DateTime? CeasedOn,
+    string? SourceEtag,
+    DateTime RetrievedUtc,
+    string? RawJson,
+    IReadOnlyList<string> NatureCodes);
+
+public sealed record PlaceFinancialAccountInfo(
+    long Id,
+    string PlaceId,
+    string CompanyNumber,
+    string? TransactionId,
+    DateTime? FilingDate,
+    DateTime? MadeUpDate,
+    string? AccountsType,
+    string DocumentId,
+    string DocumentMetadataUrl,
+    string? ContentType,
+    string? OriginalFileName,
+    string LocalRelativePath,
+    long? FileSizeBytes,
+    DateTime RetrievedUtc,
+    bool IsLatest,
+    string? RawJson);
+
+public sealed class PlaceSocialLinksEditModel
+{
+    public string PlaceId { get; set; } = string.Empty;
+    public long? RunId { get; set; }
+    public string? DisplayName { get; set; }
+    public string? FacebookUrl { get; set; }
+    public string? InstagramUrl { get; set; }
+    public string? LinkedInUrl { get; set; }
+    public string? XUrl { get; set; }
+    public string? YouTubeUrl { get; set; }
+    public string? TikTokUrl { get; set; }
+    public string? PinterestUrl { get; set; }
+    public string? BlueskyUrl { get; set; }
+}
 public sealed record PlaceEstimatedTrafficSummary(
     int CurrentMapPosition,
     int EstimatedMonthlyMapVisits,
