@@ -1,0 +1,49 @@
+@model AdminUserDetailsViewModel
+@{
+    ViewData["Title"] = $"User #{Model.User.Id}";
+    var backFilter = Uri.EscapeDataString((Model.Filter ?? "active").Trim().ToLowerInvariant());
+    var user = Model.User;
+    var status = user.IsActive
+        ? (user.LockedoutUntilUtc.HasValue && user.LockedoutUntilUtc.Value > DateTime.UtcNow
+            ? $"Locked until {user.LockedoutUntilUtc.Value:u}"
+            : "Active")
+        : "Inactive";
+}
+
+<div class="page-stack">
+    <section class="card">
+        <div class="toolbar">
+            <a href="/admin/users?status=@backFilter" class="btn btn-secondary">Back to Users</a>
+        </div>
+    </section>
+
+    <section class="card">
+        <h2 class="card-title">User Profile</h2>
+        <div class="form-grid">
+            <div class="form-row">
+                <label>Name</label>
+                <span>@user.FirstName @user.LastName</span>
+            </div>
+            <div class="form-row">
+                <label>Email Address</label>
+                <span>@user.EmailAddress</span>
+            </div>
+            <div class="form-row">
+                <label>Date Created (UTC)</label>
+                <span>@user.DateCreatedAtUtc.ToString("u")</span>
+            </div>
+            <div class="form-row">
+                <label>Date Password Last Set (UTC)</label>
+                <span>@(user.DatePasswordLastSetUtc.HasValue ? user.DatePasswordLastSetUtc.Value.ToString("u") : "Not set")</span>
+            </div>
+            <div class="form-row">
+                <label>Last Login (UTC)</label>
+                <span>@(user.LastLoginAtUtc.HasValue ? user.LastLoginAtUtc.Value.ToString("u") : "Never")</span>
+            </div>
+            <div class="form-row">
+                <label>Status</label>
+                <span>@status</span>
+            </div>
+        </div>
+    </section>
+</div>

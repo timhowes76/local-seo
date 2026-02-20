@@ -1,0 +1,81 @@
+@model AdminUsersListViewModel
+@{
+    ViewData["Title"] = "Users";
+    var filter = (Model.Filter ?? "active").Trim().ToLowerInvariant();
+}
+
+<div class="page-stack">
+    <section class="card">
+        <div class="toolbar">
+            <a href="/admin" class="btn btn-secondary">Back to Admin</a>
+        </div>
+    </section>
+
+    <section class="card">
+        <h2 class="card-title">Filters</h2>
+        <form method="get" action="/admin/users" class="places-filter-line">
+            <label for="status-filter">Status</label>
+            <select id="status-filter" name="status">
+                @if (filter == "active")
+                {
+                    <option value="active" selected>Active</option>
+                }
+                else
+                {
+                    <option value="active">Active</option>
+                }
+                @if (filter == "inactive")
+                {
+                    <option value="inactive" selected>Inactive</option>
+                }
+                else
+                {
+                    <option value="inactive">Inactive</option>
+                }
+                @if (filter == "all")
+                {
+                    <option value="all" selected>All</option>
+                }
+                else
+                {
+                    <option value="all">All</option>
+                }
+            </select>
+            <button type="submit" class="btn btn-secondary">Apply</button>
+        </form>
+    </section>
+
+    <section class="card">
+        <h2 class="card-title">Users</h2>
+        @if (Model.Rows.Count == 0)
+        {
+            <p class="muted">No users found for this filter.</p>
+        }
+        else
+        {
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Id</th>
+                            <th>Name</th>
+                            <th>Email Address</th>
+                            <th>Date Created</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    @foreach (var row in Model.Rows)
+                    {
+                        <tr>
+                            <td><a href="/admin/users/@row.Id?status=@Uri.EscapeDataString(filter)">@row.Id</a></td>
+                            <td>@row.Name</td>
+                            <td>@row.EmailAddress</td>
+                            <td>@row.DateCreatedAtUtc.ToString("u")</td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </section>
+</div>

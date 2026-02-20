@@ -1,4 +1,3 @@
-using System.Security.Claims;
 using System.Net.Http.Headers;
 using LocalSeo.Web.Data;
 using LocalSeo.Web.Options;
@@ -13,6 +12,7 @@ builder.Host.UseSerilog((ctx, lc) => lc
     .WriteTo.Console());
 
 builder.Services.Configure<AuthOptions>(builder.Configuration.GetSection("Auth"));
+builder.Services.Configure<EmailCodesOptions>(builder.Configuration.GetSection("EmailCodes"));
 builder.Services.Configure<GoogleOptions>(builder.Configuration.GetSection("Google"));
 builder.Services.Configure<SendGridOptions>(builder.Configuration.GetSection("SendGrid"));
 builder.Services.Configure<PlacesOptions>(builder.Configuration.GetSection("Places"));
@@ -38,12 +38,20 @@ builder.Services.AddAuthentication("LocalCookie")
 
 builder.Services.AddAuthorization(options =>
 {
-    options.AddPolicy("StaffOnly", p => p.RequireAuthenticatedUser().RequireClaim(ClaimTypes.Email));
+    options.AddPolicy("StaffOnly", p => p.RequireAuthenticatedUser());
+    options.AddPolicy("AdminOnly", p => p.RequireAuthenticatedUser().RequireClaim(AuthClaimTypes.IsAdmin, "true"));
 });
 
 builder.Services.AddScoped<ISqlConnectionFactory, SqlConnectionFactory>();
 builder.Services.AddScoped<DbBootstrapper>();
-builder.Services.AddScoped<ILoginService, LoginService>();
+builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddScoped<IEmailAddressNormalizer, EmailAddressNormalizer>();
+builder.Services.AddScoped<IUserRepository, UserRepository>();
+builder.Services.AddScoped<IEmailCodeRepository, EmailCodeRepository>();
+builder.Services.AddScoped<IPasswordHasherService, PasswordHasherService>();
+builder.Services.AddScoped<IRateLimiterService, RateLimiterService>();
+builder.Services.AddScoped<IEmailCodeService, EmailCodeService>();
+builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IGooglePlacesClient, GooglePlacesClient>();
 builder.Services.AddScoped<ISearchIngestionService, SearchIngestionService>();
 builder.Services.AddScoped<IAdminSettingsService, AdminSettingsService>();
@@ -68,6 +76,8 @@ builder.Services.AddHttpClient<IZohoCrmClient, ZohoCrmClient>((sp, client) =>
 builder.Services.AddScoped<IGoogleBusinessProfileCategoryService, GoogleBusinessProfileCategoryService>();
 builder.Services.AddScoped<IDataForSeoAccountStatusService, DataForSeoAccountStatusService>();
 builder.Services.AddScoped<IEmailSender, SendGridEmailSender>();
+builder.Services.AddScoped<IDataForSeoSocialProfilesService, DataForSeoSocialProfilesService>();
+builder.Services.AddScoped<ISendGridEmailService, SendGridEmailService>();
 builder.Services.AddScoped<ICodeHasher, CodeHasher>();
 builder.Services.AddScoped<IReviewsProviderResolver, ReviewsProviderResolver>();
 builder.Services.AddScoped<NullReviewsProvider>();

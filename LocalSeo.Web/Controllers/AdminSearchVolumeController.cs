@@ -5,7 +5,7 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace LocalSeo.Web.Controllers;
 
-[Authorize(Policy = "StaffOnly")]
+[Authorize(Policy = "AdminOnly")]
 public sealed class AdminSearchVolumeController(ICategoryLocationKeywordService categoryLocationKeywordService) : Controller
 {
     [HttpGet("/admin/location/{locationId:long}/categories")]

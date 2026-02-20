@@ -5,7 +5,7 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace LocalSeo.Web.Controllers;
 
-[Authorize(Policy = "StaffOnly")]
+[Authorize(Policy = "AdminOnly")]
 [ApiController]
 public sealed class ZohoIntegrationsController(
     IZohoOAuthService zohoOAuthService,

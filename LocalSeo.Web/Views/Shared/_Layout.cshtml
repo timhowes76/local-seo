@@ -10,6 +10,7 @@
 <body>
 @{
     var isAuthenticated = User.Identity?.IsAuthenticated == true;
+    var isAdmin = User.HasClaim(LocalSeo.Web.Services.AuthClaimTypes.IsAdmin, "true");
     var pageTitle = (ViewData["Title"] as string) ?? (ViewContext.RouteData.Values["controller"]?.ToString() ?? "Dashboard");
     var currentController = (ViewContext.RouteData.Values["controller"]?.ToString() ?? string.Empty).ToLowerInvariant();
     var breadcrumbMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
@@ -83,10 +84,13 @@
                     <i class="bi bi-geo-alt"></i>
                     <span>Places</span>
                 </a>
-                <a class="sidebar-link @(currentController == "admin" ? "is-active" : null)" href="/admin">
-                    <i class="bi bi-gear"></i>
-                    <span>Admin</span>
-                </a>
+                @if (isAdmin)
+                {
+                    <a class="sidebar-link @(currentController == "admin" ? "is-active" : null)" href="/admin">
+                        <i class="bi bi-gear"></i>
+                        <span>Admin</span>
+                    </a>
+                }
             </nav>
         </aside>
 

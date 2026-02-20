@@ -4,14 +4,36 @@ using Microsoft.Extensions.Options;
 
 namespace LocalSeo.Web.Services;
 
-public interface IEmailSender
+public interface ISendGridEmailService
 {
-    Task SendLoginCodeAsync(string email, string code, CancellationToken ct);
+    Task SendLoginTwoFactorCodeAsync(string email, string code, CancellationToken ct);
+    Task SendForgotPasswordCodeAsync(string email, string code, string resetUrl, CancellationToken ct);
 }
 
-public sealed class SendGridEmailSender(IHttpClientFactory factory, IOptions<SendGridOptions> options, ILogger<SendGridEmailSender> logger) : IEmailSender
+public sealed class SendGridEmailService(
+    IHttpClientFactory factory,
+    IOptions<SendGridOptions> options,
+    ILogger<SendGridEmailService> logger) : ISendGridEmailService
 {
-    public async Task SendLoginCodeAsync(string email, string code, CancellationToken ct)
+    public Task SendLoginTwoFactorCodeAsync(string email, string code, CancellationToken ct)
+    {
+        return SendAsync(
+            email,
+            "Your Local SEO login code",
+            $"Your 2FA login code is {code}. It expires in 10 minutes.",
+            ct);
+    }
+
+    public Task SendForgotPasswordCodeAsync(string email, string code, string resetUrl, CancellationToken ct)
+    {
+        return SendAsync(
+            email,
+            "Your Local SEO password reset code",
+            $"Use code {code} to reset your password. Reset link: {resetUrl}. The code expires in 10 minutes.",
+            ct);
+    }
+
+    private async Task SendAsync(string email, string subject, string plainTextBody, CancellationToken ct)
     {
         var cfg = options.Value;
         if (string.IsNullOrWhiteSpace(cfg.ApiKey))
@@ -27,8 +49,8 @@ public sealed class SendGridEmailSender(IHttpClientFactory factory, IOptions<Sen
         {
             from = new { email = cfg.FromEmail, name = cfg.FromName },
             personalizations = new[] { new { to = new[] { new { email } } } },
-            subject = "Your Local SEO login code",
-            content = new[] { new { type = "text/plain", value = $"Your login code is {code}. It expires in 10 minutes." } }
+            subject,
+            content = new[] { new { type = "text/plain", value = plainTextBody } }
         });
 
         var resp = await client.SendAsync(req, ct);

@@ -343,17 +343,6 @@ public sealed record MonthlyUpdateCountDto(int Year, int Month, int UpdateCount)
 
 public sealed record YearUpdateBreakdownDto(int Year, int UpdateCount);
 
-public sealed class LoginEmailModel
-{
-    public string Email { get; set; } = string.Empty;
-}
-
-public sealed class LoginCodeModel
-{
-    public string Email { get; set; } = string.Empty;
-    public string Code { get; set; } = string.Empty;
-}
-
 public sealed class AdminSettingsModel
 {
     public int EnhancedGoogleDataRefreshHours { get; set; } = 24;

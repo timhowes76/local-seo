@@ -6,7 +6,7 @@ using System.Security.Claims;
 
 namespace LocalSeo.Web.Controllers;
 
-[Authorize(Policy = "StaffOnly")]
+[Authorize(Policy = "AdminOnly")]
 public class AdminController(
     IDataForSeoTaskTracker dataForSeoTaskTracker,
     IAdminSettingsService adminSettingsService,
