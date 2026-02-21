@@ -23,7 +23,13 @@
         </div>
         <div class="form-row">
             <label for="password-input">Password</label>
-            <input id="password-input" name="Password" type="password" autocomplete="current-password" required />
+            @await Html.PartialAsync("_PasswordInput", new PasswordInputModel
+            {
+                Id = "password-input",
+                Name = "Password",
+                Autocomplete = "current-password",
+                Required = true
+            })
         </div>
         <div class="login-actions">
             <button type="submit">Continue</button>
