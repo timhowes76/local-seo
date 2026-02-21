@@ -48,6 +48,7 @@ public class AuthServicesTests
 
         var service = new AuthService(
             userRepository,
+            new NoopUserLoginLogRepository(),
             new NoopEmailCodeService(),
             new AllowAllRateLimiterService(),
             new NoopSendGridEmailService(),
@@ -57,9 +58,9 @@ public class AuthServicesTests
             timeProvider,
             NullLogger<AuthService>.Instance);
 
-        var first = await service.BeginLoginAsync("tim.howes@kontrolit.net", "wrong-one", "127.0.0.1", "unit-test", CancellationToken.None);
-        var second = await service.BeginLoginAsync("tim.howes@kontrolit.net", "wrong-two", "127.0.0.1", "unit-test", CancellationToken.None);
-        var lockedAttempt = await service.BeginLoginAsync("tim.howes@kontrolit.net", knownPassword, "127.0.0.1", "unit-test", CancellationToken.None);
+        var first = await service.BeginLoginAsync("tim.howes@kontrolit.net", "wrong-one", "127.0.0.1", "unit-test", "test-correlation-1", CancellationToken.None);
+        var second = await service.BeginLoginAsync("tim.howes@kontrolit.net", "wrong-two", "127.0.0.1", "unit-test", "test-correlation-2", CancellationToken.None);
+        var lockedAttempt = await service.BeginLoginAsync("tim.howes@kontrolit.net", knownPassword, "127.0.0.1", "unit-test", "test-correlation-3", CancellationToken.None);
 
         Assert.False(first.Success);
         Assert.False(second.Success);
@@ -152,6 +153,7 @@ public class AuthServicesTests
         var sendGrid = new NoopSendGridEmailService();
         var service = new AuthService(
             userRepository,
+            new NoopUserLoginLogRepository(),
             new NoopEmailCodeService(),
             new AllowAllRateLimiterService(),
             sendGrid,
@@ -201,6 +203,14 @@ public class AuthServicesTests
 
         public Task SendInviteOtpAsync(string email, string code, DateTime expiresAtUtc, CancellationToken ct)
             => Task.CompletedTask;
+    }
+
+    private sealed class NoopUserLoginLogRepository : IUserLoginLogRepository
+    {
+        public Task InsertAsync(UserLoginAttempt attempt, CancellationToken ct) => Task.CompletedTask;
+
+        public Task<PagedResult<UserLoginLogRow>> SearchAsync(LoginLogQuery query, CancellationToken ct)
+            => Task.FromResult(new PagedResult<UserLoginLogRow>([], 0));
     }
 
     private sealed class InMemoryUserRepository(UserRecord user) : IUserRepository

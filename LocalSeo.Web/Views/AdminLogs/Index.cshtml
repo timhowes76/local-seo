@@ -1,0 +1,23 @@
+@{
+    ViewData["Title"] = "Logs";
+    var statusMessage = TempData["Status"] as string;
+}
+
+<div class="page-stack">
+    @if (!string.IsNullOrWhiteSpace(statusMessage))
+    {
+        <div class="notice">@statusMessage</div>
+    }
+
+    <section class="card">
+        <div class="toolbar">
+            <a href="/admin" class="btn btn-secondary">Back to Admin</a>
+        </div>
+    </section>
+
+    <section class="card">
+        <h2 class="card-title">Login Log</h2>
+        <p class="muted">Review successful and failed login attempts by email and IP address.</p>
+        <a href="/admin/logs/login-log" class="btn btn-secondary">Open Login Log</a>
+    </section>
+</div>

@@ -1611,6 +1611,64 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_EmailCodes_EmailPurpos
     ON dbo.EmailCodes(EmailNormalized, Purpose, IsUsed, ExpiresAtUtc)
     INCLUDE (CreatedAtUtc, FailedAttempts);
 
+IF OBJECT_ID('dbo.UserLogins','U') IS NULL
+BEGIN
+  CREATE TABLE dbo.UserLogins(
+    UserLoginId bigint IDENTITY(1,1) NOT NULL PRIMARY KEY,
+    AttemptedAtUtc datetime2(3) NOT NULL CONSTRAINT DF_UserLogins_AttemptedAtUtc DEFAULT SYSUTCDATETIME(),
+    EmailEntered nvarchar(320) NULL,
+    EmailNormalized nvarchar(320) NULL,
+    UserId int NULL,
+    IpAddress varchar(45) NOT NULL,
+    Succeeded bit NOT NULL,
+    FailureReason nvarchar(50) NULL,
+    AuthStage nvarchar(20) NULL,
+    UserAgent nvarchar(512) NULL,
+    CorrelationId nvarchar(64) NULL
+  );
+END;
+IF COL_LENGTH('dbo.UserLogins', 'AttemptedAtUtc') IS NULL
+  ALTER TABLE dbo.UserLogins ADD AttemptedAtUtc datetime2(3) NOT NULL CONSTRAINT DF_UserLogins_AttemptedAtUtc_Alt DEFAULT SYSUTCDATETIME();
+IF COL_LENGTH('dbo.UserLogins', 'EmailEntered') IS NULL
+  ALTER TABLE dbo.UserLogins ADD EmailEntered nvarchar(320) NULL;
+IF COL_LENGTH('dbo.UserLogins', 'EmailNormalized') IS NULL
+  ALTER TABLE dbo.UserLogins ADD EmailNormalized nvarchar(320) NULL;
+IF COL_LENGTH('dbo.UserLogins', 'UserId') IS NULL
+  ALTER TABLE dbo.UserLogins ADD UserId int NULL;
+IF COL_LENGTH('dbo.UserLogins', 'IpAddress') IS NULL
+  ALTER TABLE dbo.UserLogins ADD IpAddress varchar(45) NOT NULL CONSTRAINT DF_UserLogins_IpAddress_Alt DEFAULT('unknown');
+IF COL_LENGTH('dbo.UserLogins', 'Succeeded') IS NULL
+  ALTER TABLE dbo.UserLogins ADD Succeeded bit NOT NULL CONSTRAINT DF_UserLogins_Succeeded_Alt DEFAULT(0);
+IF COL_LENGTH('dbo.UserLogins', 'FailureReason') IS NULL
+  ALTER TABLE dbo.UserLogins ADD FailureReason nvarchar(50) NULL;
+IF COL_LENGTH('dbo.UserLogins', 'AuthStage') IS NULL
+  ALTER TABLE dbo.UserLogins ADD AuthStage nvarchar(20) NULL;
+IF COL_LENGTH('dbo.UserLogins', 'UserAgent') IS NULL
+  ALTER TABLE dbo.UserLogins ADD UserAgent nvarchar(512) NULL;
+IF COL_LENGTH('dbo.UserLogins', 'CorrelationId') IS NULL
+  ALTER TABLE dbo.UserLogins ADD CorrelationId nvarchar(64) NULL;
+
+IF NOT EXISTS (
+  SELECT 1
+  FROM sys.foreign_key_columns fkc
+  JOIN sys.columns pc ON pc.object_id = fkc.parent_object_id AND pc.column_id = fkc.parent_column_id
+  JOIN sys.columns rc ON rc.object_id = fkc.referenced_object_id AND rc.column_id = fkc.referenced_column_id
+  WHERE fkc.parent_object_id = OBJECT_ID('dbo.UserLogins')
+    AND fkc.referenced_object_id = OBJECT_ID('dbo.[User]')
+    AND pc.name = 'UserId'
+    AND rc.name = 'Id'
+)
+  ALTER TABLE dbo.UserLogins WITH CHECK ADD CONSTRAINT FK_UserLogins_User FOREIGN KEY (UserId) REFERENCES dbo.[User](Id) ON DELETE SET NULL;
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_UserLogins_AttemptedAtUtc' AND object_id = OBJECT_ID('dbo.UserLogins'))
+  CREATE INDEX IX_UserLogins_AttemptedAtUtc ON dbo.UserLogins(AttemptedAtUtc DESC);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_UserLogins_EmailNormalized_AttemptedAtUtc' AND object_id = OBJECT_ID('dbo.UserLogins'))
+  CREATE INDEX IX_UserLogins_EmailNormalized_AttemptedAtUtc ON dbo.UserLogins(EmailNormalized, AttemptedAtUtc DESC);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_UserLogins_IpAddress_AttemptedAtUtc' AND object_id = OBJECT_ID('dbo.UserLogins'))
+  CREATE INDEX IX_UserLogins_IpAddress_AttemptedAtUtc ON dbo.UserLogins(IpAddress, AttemptedAtUtc DESC);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_UserLogins_Succeeded_AttemptedAtUtc' AND object_id = OBJECT_ID('dbo.UserLogins'))
+  CREATE INDEX IX_UserLogins_Succeeded_AttemptedAtUtc ON dbo.UserLogins(Succeeded, AttemptedAtUtc DESC);
+
 IF OBJECT_ID('dbo.LoginCode','U') IS NOT NULL
 BEGIN
   INSERT INTO dbo.EmailCodes(

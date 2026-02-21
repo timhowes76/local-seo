@@ -1,0 +1,181 @@
+@model LoginLogListViewModel
+@{
+    ViewData["Title"] = "Login Log";
+    var currentSearch = (Model.SearchText ?? string.Empty).Trim();
+    var currentSucceeded = (Model.SucceededFilter ?? "all").Trim().ToLowerInvariant();
+    var currentPageSize = Model.PageSize;
+    var currentPage = Math.Max(1, Model.PageNumber);
+    var totalPages = Math.Max(1, Model.TotalPages);
+    var hasPrev = currentPage > 1;
+    var hasNext = currentPage < totalPages;
+
+    var searchQuery = string.IsNullOrWhiteSpace(currentSearch)
+        ? string.Empty
+        : $"&q={Uri.EscapeDataString(currentSearch)}";
+
+    string BuildListUrl(int page) =>
+        $"/admin/logs/login-log?succeeded={Uri.EscapeDataString(currentSucceeded)}{searchQuery}&page={page}&pageSize={currentPageSize}";
+}
+
+<div class="page-stack">
+    <section class="card">
+        <div class="toolbar">
+            <a href="/admin/logs" class="btn btn-secondary">Back to Logs</a>
+            <a href="/admin" class="btn btn-secondary">Back to Admin</a>
+        </div>
+    </section>
+
+    <section class="card">
+        <h2 class="card-title">Filters</h2>
+        <form method="get" action="/admin/logs/login-log" class="places-filter-line">
+            <label for="login-log-search">Search</label>
+            <input id="login-log-search" name="q" type="text" value="@currentSearch" maxlength="200" placeholder="Email or IP address" />
+
+            <label for="login-log-succeeded">Succeeded</label>
+            <select id="login-log-succeeded" name="succeeded">
+                @if (currentSucceeded == "all")
+                {
+                    <option value="all" selected>All</option>
+                }
+                else
+                {
+                    <option value="all">All</option>
+                }
+                @if (currentSucceeded == "succeeded")
+                {
+                    <option value="succeeded" selected>Succeeded</option>
+                }
+                else
+                {
+                    <option value="succeeded">Succeeded</option>
+                }
+                @if (currentSucceeded == "failed")
+                {
+                    <option value="failed" selected>Failed</option>
+                }
+                else
+                {
+                    <option value="failed">Failed</option>
+                }
+            </select>
+
+            <label for="login-log-page-size">Page Size</label>
+            <select id="login-log-page-size" name="pageSize">
+                @if (currentPageSize == 25)
+                {
+                    <option value="25" selected>25</option>
+                }
+                else
+                {
+                    <option value="25">25</option>
+                }
+                @if (currentPageSize == 50)
+                {
+                    <option value="50" selected>50</option>
+                }
+                else
+                {
+                    <option value="50">50</option>
+                }
+                @if (currentPageSize == 100)
+                {
+                    <option value="100" selected>100</option>
+                }
+                else
+                {
+                    <option value="100">100</option>
+                }
+                @if (currentPageSize == 500)
+                {
+                    <option value="500" selected>500</option>
+                }
+                else
+                {
+                    <option value="500">500</option>
+                }
+                @if (currentPageSize == 1000)
+                {
+                    <option value="1000" selected>1000</option>
+                }
+                else
+                {
+                    <option value="1000">1000</option>
+                }
+            </select>
+
+            <input type="hidden" name="page" value="1" />
+            <button type="submit" class="btn btn-secondary">Apply</button>
+            <a href="/admin/logs/login-log" class="btn btn-secondary">Clear</a>
+        </form>
+    </section>
+
+    <section class="card">
+        <h2 class="card-title">Login Attempts</h2>
+        <p class="muted">Total results: @Model.TotalCount</p>
+
+        @if (Model.Rows.Count == 0)
+        {
+            <p class="muted">No login attempts found for the current filter.</p>
+        }
+        else
+        {
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Email</th>
+                            <th>IP Address</th>
+                            <th>Succeeded</th>
+                            <th>Failure Reason</th>
+                            <th>Date (UTC)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    @foreach (var row in Model.Rows)
+                    {
+                        var email = !string.IsNullOrWhiteSpace(row.EmailEntered)
+                            ? row.EmailEntered
+                            : row.EmailNormalized;
+                        <tr>
+                            <td>@(string.IsNullOrWhiteSpace(email) ? "N/A" : email)</td>
+                            <td>@row.IpAddress</td>
+                            <td>
+                                @if (row.Succeeded)
+                                {
+                                    <span class="status-pill status-active">Succeeded</span>
+                                }
+                                else
+                                {
+                                    <span class="status-pill status-inactive">Failed</span>
+                                }
+                            </td>
+                            <td>@(string.IsNullOrWhiteSpace(row.FailureReason) ? "N/A" : row.FailureReason)</td>
+                            <td>@row.AttemptedAtUtc.ToString("u")</td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+        }
+
+        <div class="toolbar review-pager">
+            @if (hasPrev)
+            {
+                <a class="btn btn-secondary" href="@BuildListUrl(currentPage - 1)">Previous</a>
+            }
+            else
+            {
+                <button type="button" class="btn btn-secondary" disabled>Previous</button>
+            }
+            <span class="muted">Page @currentPage of @totalPages (@Model.TotalCount total)</span>
+            @if (hasNext)
+            {
+                <a class="btn btn-secondary" href="@BuildListUrl(currentPage + 1)">Next</a>
+            }
+            else
+            {
+                <button type="button" class="btn btn-secondary" disabled>Next</button>
+            }
+        </div>
+    </section>
+</div>

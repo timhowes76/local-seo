@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using System.Diagnostics;
 using LocalSeo.Web.Models;
 using LocalSeo.Web.Services;
 using Microsoft.AspNetCore.Authentication;
@@ -35,6 +36,7 @@ public class LoginController(IAuthService authService) : Controller
             model.Password,
             HttpContext.Connection.RemoteIpAddress?.ToString(),
             Request.Headers.UserAgent.ToString(),
+            Activity.Current?.Id ?? HttpContext.TraceIdentifier,
             ct);
 
         if (!result.Success)
@@ -63,7 +65,14 @@ public class LoginController(IAuthService authService) : Controller
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> VerifyTwoFactor(TwoFactorRequestModel model, CancellationToken ct)
     {
-        var result = await authService.CompleteTwoFactorLoginAsync(model.Rid, model.Email, model.Code, ct);
+        var result = await authService.CompleteTwoFactorLoginAsync(
+            model.Rid,
+            model.Email,
+            model.Code,
+            HttpContext.Connection.RemoteIpAddress?.ToString(),
+            Request.Headers.UserAgent.ToString(),
+            Activity.Current?.Id ?? HttpContext.TraceIdentifier,
+            ct);
         if (!result.Success || result.User is null)
         {
             ViewBag.Message = result.Message;

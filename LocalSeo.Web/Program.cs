@@ -85,6 +85,7 @@ builder.Services.AddScoped<DbBootstrapper>();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<IEmailAddressNormalizer, EmailAddressNormalizer>();
 builder.Services.AddScoped<IUserRepository, UserRepository>();
+builder.Services.AddScoped<IUserLoginLogRepository, UserLoginLogRepository>();
 builder.Services.AddScoped<IUserInviteRepository, UserInviteRepository>();
 builder.Services.AddScoped<IEmailCodeRepository, EmailCodeRepository>();
 builder.Services.AddScoped<ICryptoService, CryptoService>();
