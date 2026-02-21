@@ -19,10 +19,11 @@ public interface ISearchIngestionService
     Task<IReadOnlyList<RunTaskProgressRow>> GetRunTaskProgressAsync(SearchRun run, CancellationToken ct);
     Task<RunReviewComparisonViewModel?> GetRunReviewComparisonAsync(long runId, CancellationToken ct);
     Task<PlaceDetailsViewModel?> GetPlaceDetailsAsync(string placeId, long? runId, CancellationToken ct, int reviewPage = 1, int reviewPageSize = 25);
-
+    Task<PlaceSocialLinksEditModel?> GetPlaceSocialLinksForEditAsync(string placeId, long? runId, CancellationToken ct);
     Task<bool> UpdatePlaceSocialLinksAsync(PlaceSocialLinksEditModel model, CancellationToken ct);
     Task<bool> SavePlaceFinancialAsync(string placeId, PlaceFinancialInfoUpsert financialInfo, CancellationToken ct);
     Task<PlaceFinancialInfo?> GetPlaceFinancialAsync(string placeId, CancellationToken ct);
+}
 
 
 public sealed class SearchIngestionService(
@@ -152,9 +153,9 @@ WHERE TownId = @TownId;", new
         }
 
         var runId = await conn.ExecuteScalarAsync<long>(new CommandDefinition(@"
-INSERT INTO dbo.SearchRun(CategoryId,TownId,RadiusMeters,ResultLimit,FetchDetailedData,FetchGoogleReviews,FetchGoogleUpdates,FetchGoogleQuestionsAndAnswers)
+INSERT INTO dbo.SearchRun(CategoryId,TownId,RadiusMeters,ResultLimit,FetchDetailedData,FetchGoogleReviews,FetchGoogleUpdates,FetchGoogleQuestionsAndAnswers,FetchGoogleSocialProfiles)
 OUTPUT INSERTED.SearchRunId
-VALUES(@CategoryId,@TownId,@RadiusMeters,@ResultLimit,@FetchDetailedData,@FetchGoogleReviews,@FetchGoogleUpdates,@FetchGoogleQuestionsAndAnswers)",
+VALUES(@CategoryId,@TownId,@RadiusMeters,@ResultLimit,@FetchDetailedData,@FetchGoogleReviews,@FetchGoogleUpdates,@FetchGoogleQuestionsAndAnswers,@FetchGoogleSocialProfiles)",
             new
             {
                 CategoryId = selection.CategoryId,
@@ -164,14 +165,16 @@ VALUES(@CategoryId,@TownId,@RadiusMeters,@ResultLimit,@FetchDetailedData,@FetchG
                 FetchDetailedData = model.FetchEnhancedGoogleData,
                 FetchGoogleReviews = model.FetchGoogleReviews,
                 FetchGoogleUpdates = model.FetchGoogleUpdates,
-                FetchGoogleQuestionsAndAnswers = model.FetchGoogleQuestionsAndAnswers
+                FetchGoogleQuestionsAndAnswers = model.FetchGoogleQuestionsAndAnswers,
+                FetchGoogleSocialProfiles = model.FetchGoogleSocialProfiles
             }, tx, cancellationToken: ct));
 
         var requestGoogleReviews = model.FetchGoogleReviews;
         var requestMyBusinessInfo = model.FetchEnhancedGoogleData;
         var requestGoogleUpdates = model.FetchGoogleUpdates;
         var requestGoogleQuestionsAndAnswers = model.FetchGoogleQuestionsAndAnswers;
-        var shouldFetchAnyDataForSeo = requestGoogleReviews || requestMyBusinessInfo || requestGoogleUpdates || requestGoogleQuestionsAndAnswers;
+        var requestGoogleSocialProfiles = model.FetchGoogleSocialProfiles;
+        var shouldFetchAnyDataForSeo = requestGoogleReviews || requestMyBusinessInfo || requestGoogleUpdates || requestGoogleQuestionsAndAnswers || requestGoogleSocialProfiles;
 
         IReviewsProvider? provider = null;
         var providerName = string.Empty;
@@ -267,10 +270,11 @@ VALUES(@SearchRunId,@PlaceId,@RankPosition,@Rating,@UserRatingCount)",
         if (reviewRequests is not null && provider is not null)
         {
             var settings = await adminSettingsService.GetAsync(ct);
-            var enhancedHours = Math.Max(1, settings.EnhancedGoogleDataRefreshHours);
-            var reviewsHours = Math.Max(1, settings.GoogleReviewsRefreshHours);
-            var updatesHours = Math.Max(1, settings.GoogleUpdatesRefreshHours);
-            var qasHours = Math.Max(1, settings.GoogleQuestionsAndAnswersRefreshHours);
+            var enhancedHours = Math.Max(0, settings.EnhancedGoogleDataRefreshHours);
+            var reviewsHours = Math.Max(0, settings.GoogleReviewsRefreshHours);
+            var updatesHours = Math.Max(0, settings.GoogleUpdatesRefreshHours);
+            var qasHours = Math.Max(0, settings.GoogleQuestionsAndAnswersRefreshHours);
+            var socialProfilesHours = Math.Max(0, settings.GoogleSocialProfilesRefreshHours);
             var nowUtc = DateTime.UtcNow;
 
             var latestRunsByKey = new Dictionary<string, DateTime>(StringComparer.OrdinalIgnoreCase);
@@ -283,6 +287,7 @@ VALUES(@SearchRunId,@PlaceId,@RankPosition,@Rating,@UserRatingCount)",
                 if (requestMyBusinessInfo) taskTypes.Add("my_business_info");
                 if (requestGoogleUpdates) taskTypes.Add("my_business_updates");
                 if (requestGoogleQuestionsAndAnswers) taskTypes.Add("questions_and_answers");
+                if (requestGoogleSocialProfiles) taskTypes.Add("social_profiles");
 
                 if (taskTypes.Count > 0)
                 {
@@ -305,13 +310,14 @@ GROUP BY PlaceId, COALESCE(TaskType, 'reviews');",
             }
 
             logger.LogInformation(
-                "Detailed data requested. Provider {ProviderName}. Creating DataForSEO tasks for {PlaceCount} places. Reviews={Reviews}, MyBusinessInfo={MyBusinessInfo}, Updates={Updates}, QAs={QAs}.",
+                "Detailed data requested. Provider {ProviderName}. Creating DataForSEO tasks for {PlaceCount} places. Reviews={Reviews}, MyBusinessInfo={MyBusinessInfo}, Updates={Updates}, QAs={QAs}, SocialProfiles={SocialProfiles}.",
                 providerName,
                 reviewRequests.Count,
                 requestGoogleReviews,
                 requestMyBusinessInfo,
                 requestGoogleUpdates,
-                requestGoogleQuestionsAndAnswers);
+                requestGoogleQuestionsAndAnswers,
+                requestGoogleSocialProfiles);
             foreach (var reviewRequest in reviewRequests)
             {
                 ct.ThrowIfCancellationRequested();
@@ -321,6 +327,7 @@ GROUP BY PlaceId, COALESCE(TaskType, 'reviews');",
                     var infoDue = requestMyBusinessInfo && IsTaskDue(reviewRequest.PlaceId, "my_business_info", enhancedHours, nowUtc, latestRunsByKey);
                     var updatesDue = requestGoogleUpdates && IsTaskDue(reviewRequest.PlaceId, "my_business_updates", updatesHours, nowUtc, latestRunsByKey);
                     var qasDue = requestGoogleQuestionsAndAnswers && IsTaskDue(reviewRequest.PlaceId, "questions_and_answers", qasHours, nowUtc, latestRunsByKey);
+                    var socialDue = requestGoogleSocialProfiles && IsTaskDue(reviewRequest.PlaceId, "social_profiles", socialProfilesHours, nowUtc, latestRunsByKey);
 
                     if (!reviewsDue && requestGoogleReviews)
                         logger.LogInformation("Skipping reviews task for place {PlaceId}; last run is within {Hours}h window.", reviewRequest.PlaceId, reviewsHours);
@@ -330,8 +337,10 @@ GROUP BY PlaceId, COALESCE(TaskType, 'reviews');",
                         logger.LogInformation("Skipping my_business_updates task for place {PlaceId}; last run is within {Hours}h window.", reviewRequest.PlaceId, updatesHours);
                     if (!qasDue && requestGoogleQuestionsAndAnswers)
                         logger.LogInformation("Skipping questions_and_answers task for place {PlaceId}; last run is within {Hours}h window.", reviewRequest.PlaceId, qasHours);
+                    if (!socialDue && requestGoogleSocialProfiles)
+                        logger.LogInformation("Skipping social_profiles task for place {PlaceId}; last run is within {Hours}h window.", reviewRequest.PlaceId, socialProfilesHours);
 
-                    if (!reviewsDue && !infoDue && !updatesDue && !qasDue)
+                    if (!reviewsDue && !infoDue && !updatesDue && !qasDue && !socialDue)
                         continue;
 
                     await provider.FetchAndStoreReviewsAsync(
@@ -345,6 +354,7 @@ GROUP BY PlaceId, COALESCE(TaskType, 'reviews');",
                         infoDue,
                         updatesDue,
                         qasDue,
+                        socialDue,
                         ct);
                 }
                 catch (Exception ex) when (!ct.IsCancellationRequested)
@@ -368,7 +378,7 @@ GROUP BY PlaceId, COALESCE(TaskType, 'reviews');",
         if (!latestRunsByKey.TryGetValue(key, out var lastRunUtc))
             return true;
 
-        return (nowUtc - lastRunUtc) >= TimeSpan.FromHours(Math.Max(1, thresholdHours));
+        return (nowUtc - lastRunUtc) >= TimeSpan.FromHours(Math.Max(0, thresholdHours));
     }
 
     public async Task<IReadOnlyList<SearchRun>> GetLatestRunsAsync(int take, CancellationToken ct)
@@ -390,6 +400,7 @@ SELECT TOP (@Take)
   r.FetchGoogleReviews,
   r.FetchGoogleUpdates,
   r.FetchGoogleQuestionsAndAnswers,
+  r.FetchGoogleSocialProfiles,
   r.RanAtUtc
 FROM dbo.SearchRun r
 JOIN dbo.GoogleBusinessProfileCategory c ON c.CategoryId = r.CategoryId
@@ -418,6 +429,7 @@ SELECT
   r.FetchGoogleReviews,
   r.FetchGoogleUpdates,
   r.FetchGoogleQuestionsAndAnswers,
+  r.FetchGoogleSocialProfiles,
   r.RanAtUtc
 FROM dbo.SearchRun r
 JOIN dbo.GoogleBusinessProfileCategory c ON c.CategoryId = r.CategoryId
@@ -543,6 +555,8 @@ ORDER BY s.RankPosition", new { RunId = runId }, cancellationToken: ct))).ToList
             selectedTaskTypes.Add(("my_business_updates", "Google Updates"));
         if (run.FetchGoogleQuestionsAndAnswers)
             selectedTaskTypes.Add(("questions_and_answers", "Google Question & Answers"));
+        if (run.FetchGoogleSocialProfiles)
+            selectedTaskTypes.Add(("social_profiles", "Google Social Profiles"));
 
         if (selectedTaskTypes.Count == 0)
             return [];
@@ -739,8 +753,6 @@ ORDER BY PlaceId, [Year], [Month];",
         return new RunReviewComparisonViewModel(run, rows, series);
     }
 
-<<<<<<< HEAD
-=======
     public async Task<bool> UpdatePlaceSocialLinksAsync(PlaceSocialLinksEditModel model, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(model);
@@ -785,6 +797,46 @@ WHERE PlaceId = @PlaceId;", new
         }, cancellationToken: ct));
 
         return touched > 0;
+    }
+
+    public async Task<PlaceSocialLinksEditModel?> GetPlaceSocialLinksForEditAsync(string placeId, long? runId, CancellationToken ct)
+    {
+        var normalizedPlaceId = (placeId ?? string.Empty).Trim();
+        if (normalizedPlaceId.Length == 0)
+            throw new InvalidOperationException("Place ID is required.");
+
+        await using var conn = (Microsoft.Data.SqlClient.SqlConnection)await connectionFactory.OpenConnectionAsync(ct);
+        var row = await conn.QuerySingleOrDefaultAsync<PlaceSocialLinksEditRow>(new CommandDefinition(@"
+SELECT TOP 1
+  PlaceId,
+  DisplayName,
+  FacebookUrl,
+  InstagramUrl,
+  LinkedInUrl,
+  XUrl,
+  YouTubeUrl,
+  TikTokUrl,
+  PinterestUrl,
+  BlueskyUrl
+FROM dbo.Place
+WHERE PlaceId = @PlaceId;", new { PlaceId = normalizedPlaceId }, cancellationToken: ct));
+        if (row is null)
+            return null;
+
+        return new PlaceSocialLinksEditModel
+        {
+            PlaceId = row.PlaceId,
+            RunId = runId,
+            DisplayName = row.DisplayName,
+            FacebookUrl = row.FacebookUrl,
+            InstagramUrl = row.InstagramUrl,
+            LinkedInUrl = row.LinkedInUrl,
+            XUrl = row.XUrl,
+            YouTubeUrl = row.YouTubeUrl,
+            TikTokUrl = row.TikTokUrl,
+            PinterestUrl = row.PinterestUrl,
+            BlueskyUrl = row.BlueskyUrl
+        };
     }
 
     public async Task<bool> SavePlaceFinancialAsync(string placeId, PlaceFinancialInfoUpsert financialInfo, CancellationToken ct)
@@ -1159,7 +1211,6 @@ WHERE PlaceId = @PlaceId;", new { PlaceId = normalizedPlaceId }, cancellationTok
             row.HasInsolvencyHistory);
     }
 
->>>>>>> 7911747 (Integration with companies house)
     public async Task<PlaceDetailsViewModel?> GetPlaceDetailsAsync(string placeId, long? runId, CancellationToken ct, int reviewPage = 1, int reviewPageSize = 25)
     {
         await using var conn = (Microsoft.Data.SqlClient.SqlConnection)await connectionFactory.OpenConnectionAsync(ct);
@@ -1168,35 +1219,6 @@ WHERE PlaceId = @PlaceId;", new { PlaceId = normalizedPlaceId }, cancellationTok
 
         var place = await conn.QuerySingleOrDefaultAsync<PlaceDetailsRow>(new CommandDefinition(@"
 SELECT
-<<<<<<< HEAD
-  PlaceId,
-  DisplayName,
-  FormattedAddress,
-  PrimaryType,
-  PrimaryCategory,
-  TypesCsv,
-  NationalPhoneNumber,
-  WebsiteUri,
-  OpeningDate,
-  SearchLocationName,
-  QuestionAnswerCount,
-  Lat,
-  Lng,
-  Description,
-  PhotoCount,
-  OtherCategoriesJson,
-  PlaceTopicsJson,
-  IsServiceAreaBusiness,
-  BusinessStatus,
-  RegularOpeningHoursJson,
-  ZohoLeadCreated,
-  ZohoLeadCreatedAtUtc,
-  ZohoLeadId,
-  ZohoLastSyncAtUtc,
-  ZohoLastError
-FROM dbo.Place
-WHERE PlaceId=@PlaceId", new { PlaceId = placeId }, cancellationToken: ct));
-=======
   p.PlaceId,
   p.DisplayName,
   p.LogoUrl,
@@ -1215,6 +1237,7 @@ WHERE PlaceId=@PlaceId", new { PlaceId = placeId }, cancellationToken: ct));
   p.TikTokUrl,
   p.PinterestUrl,
   p.BlueskyUrl,
+  p.OpeningDate,
   p.SearchLocationName,
   p.QuestionAnswerCount,
   p.Lat,
@@ -1243,7 +1266,6 @@ WHERE PlaceId=@PlaceId", new { PlaceId = placeId }, cancellationToken: ct));
 FROM dbo.Place p
 LEFT JOIN dbo.PlacesFinancial pf ON pf.PlaceId = p.PlaceId
 WHERE p.PlaceId=@PlaceId", new { PlaceId = placeId }, cancellationToken: ct));
->>>>>>> 7911747 (Integration with companies house)
 
         if (place is null)
             return null;
@@ -1601,6 +1623,8 @@ ORDER BY
         {
             PlaceId = place.PlaceId,
             DisplayName = PreferNonEmpty(place.DisplayName, liveDetails?.DisplayName),
+            LogoUrl = place.LogoUrl,
+            MainPhotoUrl = place.MainPhotoUrl,
             ContextSeedKeyword = runContext?.SeedKeyword,
             ContextLocationName = runContext?.LocationName,
             FormattedAddress = PreferNonEmpty(place.FormattedAddress, liveDetails?.FormattedAddress),
@@ -1608,6 +1632,14 @@ ORDER BY
             PrimaryCategory = primaryCategory,
             NationalPhoneNumber = PreferNonEmpty(place.NationalPhoneNumber, liveDetails?.NationalPhoneNumber),
             WebsiteUri = PreferNonEmpty(place.WebsiteUri, liveDetails?.WebsiteUri),
+            FacebookUrl = place.FacebookUrl,
+            InstagramUrl = place.InstagramUrl,
+            LinkedInUrl = place.LinkedInUrl,
+            XUrl = place.XUrl,
+            YouTubeUrl = place.YouTubeUrl,
+            TikTokUrl = place.TikTokUrl,
+            PinterestUrl = place.PinterestUrl,
+            BlueskyUrl = place.BlueskyUrl,
             OpeningDate = place.OpeningDate,
             SearchLocationName = place.SearchLocationName,
             QuestionAnswerCount = place.QuestionAnswerCount,
@@ -1874,7 +1906,7 @@ ORDER BY m.[Year] DESC, m.[Month] DESC;", new
 
             var lastRunAtUtc = row.CreatedAtUtc;
             var ageLabel = FormatElapsedLabel(nowUtc - lastRunAtUtc);
-            var canRefresh = (nowUtc - lastRunAtUtc) >= TimeSpan.FromHours(Math.Max(1, refreshThresholdHours));
+            var canRefresh = (nowUtc - lastRunAtUtc) >= TimeSpan.FromHours(Math.Max(0, refreshThresholdHours));
             var status = string.IsNullOrWhiteSpace(row.Status) ? "Unknown" : row.Status;
 
             return new PlaceDataTaskStatusRow(
@@ -1894,7 +1926,8 @@ ORDER BY m.[Year] DESC, m.[Month] DESC;", new
             Build("my_business_info", "Google Enhanced Data collection", settings.EnhancedGoogleDataRefreshHours),
             Build("reviews", "Google Review collection", settings.GoogleReviewsRefreshHours),
             Build("my_business_updates", "Google Updates collection", settings.GoogleUpdatesRefreshHours),
-            Build("questions_and_answers", "Google Question & Answers collection", settings.GoogleQuestionsAndAnswersRefreshHours)
+            Build("questions_and_answers", "Google Question & Answers collection", settings.GoogleQuestionsAndAnswersRefreshHours),
+            Build("social_profiles", "Google Social Profile collection", settings.GoogleSocialProfilesRefreshHours)
         };
     }
 
@@ -1912,8 +1945,6 @@ ORDER BY m.[Year] DESC, m.[Month] DESC;", new
         return $"{days}d {hours}h ago";
     }
 
-<<<<<<< HEAD
-=======
     private static string BuildOwnershipRightsDisplay(IReadOnlyList<string> natureCodes)
         => BuildBracketedRightsDisplay(natureCodes, code => code.StartsWith("ownership-of-shares-", StringComparison.OrdinalIgnoreCase));
 
@@ -2221,7 +2252,6 @@ ORDER BY m.[Year] DESC, m.[Month] DESC;", new
             : normalized[..maxLength];
     }
 
->>>>>>> 7911747 (Integration with companies house)
     private static IReadOnlyList<string> SplitTypes(string? csv)
     {
         if (string.IsNullOrWhiteSpace(csv))
@@ -2395,12 +2425,22 @@ ORDER BY m.[Year] DESC, m.[Month] DESC;", new
     private sealed record PlaceDetailsRow(
         string PlaceId,
         string? DisplayName,
+        string? LogoUrl,
+        string? MainPhotoUrl,
         string? FormattedAddress,
         string? PrimaryType,
         string? PrimaryCategory,
         string? TypesCsv,
         string? NationalPhoneNumber,
         string? WebsiteUri,
+        string? FacebookUrl,
+        string? InstagramUrl,
+        string? LinkedInUrl,
+        string? XUrl,
+        string? YouTubeUrl,
+        string? TikTokUrl,
+        string? PinterestUrl,
+        string? BlueskyUrl,
         DateTime? OpeningDate,
         string? SearchLocationName,
         int? QuestionAnswerCount,
@@ -2427,6 +2467,18 @@ ORDER BY m.[Year] DESC, m.[Month] DESC;", new
         bool? FinancialHasLiquidated,
         bool? FinancialHasCharges,
         bool? FinancialHasInsolvencyHistory);
+
+    private sealed record PlaceSocialLinksEditRow(
+        string PlaceId,
+        string? DisplayName,
+        string? FacebookUrl,
+        string? InstagramUrl,
+        string? LinkedInUrl,
+        string? XUrl,
+        string? YouTubeUrl,
+        string? TikTokUrl,
+        string? PinterestUrl,
+        string? BlueskyUrl);
 
     private sealed record PlaceFinancialRow(
         string PlaceId,

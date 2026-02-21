@@ -2,6 +2,7 @@
 @{
     ViewData["Title"] = "DataForSEO Tasks";
     var selectedTaskType = (ViewBag.TaskType as string ?? "all").ToLowerInvariant();
+    var selectedStatus = (ViewBag.TaskStatus as string ?? "all").ToLowerInvariant();
     var statusMessage = TempData["Status"] as string;
 }
 
@@ -57,18 +58,109 @@
                     {
                         <option value="questions_and_answers">questions_and_answers</option>
                     }
+                    @if (selectedTaskType == "social_profiles")
+                    {
+                        <option value="social_profiles" selected>social_profiles</option>
+                    }
+                    else
+                    {
+                        <option value="social_profiles">social_profiles</option>
+                    }
+                </select>
+                <label for="statusFilter">Status</label>
+                <select id="statusFilter" name="status">
+                    @if (selectedStatus == "all")
+                    {
+                        <option value="all" selected>All</option>
+                    }
+                    else
+                    {
+                        <option value="all">All</option>
+                    }
+                    @if (selectedStatus == "created")
+                    {
+                        <option value="Created" selected>Created</option>
+                    }
+                    else
+                    {
+                        <option value="Created">Created</option>
+                    }
+                    @if (selectedStatus == "pending")
+                    {
+                        <option value="Pending" selected>Pending</option>
+                    }
+                    else
+                    {
+                        <option value="Pending">Pending</option>
+                    }
+                    @if (selectedStatus == "ready")
+                    {
+                        <option value="Ready" selected>Ready</option>
+                    }
+                    else
+                    {
+                        <option value="Ready">Ready</option>
+                    }
+                    @if (selectedStatus == "populated")
+                    {
+                        <option value="Populated" selected>Populated</option>
+                    }
+                    else
+                    {
+                        <option value="Populated">Populated</option>
+                    }
+                    @if (selectedStatus == "nodata")
+                    {
+                        <option value="NoData" selected>NoData</option>
+                    }
+                    else
+                    {
+                        <option value="NoData">NoData</option>
+                    }
+                    @if (selectedStatus == "completednodata")
+                    {
+                        <option value="CompletedNoData" selected>CompletedNoData</option>
+                    }
+                    else
+                    {
+                        <option value="CompletedNoData">CompletedNoData</option>
+                    }
+                    @if (selectedStatus == "completednoreviews")
+                    {
+                        <option value="CompletedNoReviews" selected>CompletedNoReviews</option>
+                    }
+                    else
+                    {
+                        <option value="CompletedNoReviews">CompletedNoReviews</option>
+                    }
+                    @if (selectedStatus == "completednoupdates")
+                    {
+                        <option value="CompletedNoUpdates" selected>CompletedNoUpdates</option>
+                    }
+                    else
+                    {
+                        <option value="CompletedNoUpdates">CompletedNoUpdates</option>
+                    }
+                    @if (selectedStatus == "error")
+                    {
+                        <option value="Error" selected>Error</option>
+                    }
+                    else
+                    {
+                        <option value="Error">Error</option>
+                    }
                 </select>
                 <button type="submit" class="btn btn-secondary">Apply Filter</button>
             </form>
-            <form method="post" action="/admin/dataforseo-tasks/refresh?taskType=@selectedTaskType">
+            <form method="post" action="/admin/dataforseo-tasks/refresh?taskType=@selectedTaskType&status=@selectedStatus">
                 @Html.AntiForgeryToken()
                 <button type="submit" class="btn btn-secondary">Refresh Statuses</button>
             </form>
-            <form method="post" action="/admin/dataforseo-tasks/populate-ready?taskType=@selectedTaskType" onsubmit="return confirm('Populate results for all Ready tasks in the current filter?');">
+            <form method="post" action="/admin/dataforseo-tasks/populate-ready?taskType=@selectedTaskType&status=@selectedStatus" onsubmit="return confirm('Populate results for all Ready tasks in the current filter?');">
                 @Html.AntiForgeryToken()
                 <button type="submit">Populate All Ready</button>
             </form>
-            <form method="post" action="/admin/dataforseo-tasks/delete-errors?taskType=@selectedTaskType" onsubmit="return confirm('Delete all Error rows for the current filter?');">
+            <form method="post" action="/admin/dataforseo-tasks/delete-errors?taskType=@selectedTaskType&status=@selectedStatus" onsubmit="return confirm('Delete all Error rows for the current filter?');">
                 @Html.AntiForgeryToken()
                 <button type="submit">Delete Error Rows</button>
             </form>
@@ -144,7 +236,7 @@
                             <td>
                                 @if (string.Equals(row.Status, "Ready", StringComparison.OrdinalIgnoreCase))
                                 {
-                                    <form method="post" action="/admin/dataforseo-tasks/@row.DataForSeoReviewTaskId/populate?taskType=@selectedTaskType">
+                                    <form method="post" action="/admin/dataforseo-tasks/@row.DataForSeoReviewTaskId/populate?taskType=@selectedTaskType&status=@selectedStatus">
                                         @Html.AntiForgeryToken()
                                         <button type="submit" class="btn btn-secondary">Populate Results</button>
                                     </form>

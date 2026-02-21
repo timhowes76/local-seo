@@ -34,16 +34,16 @@ public class AdminController(
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> SaveSettings(AdminSettingsModel model, CancellationToken ct)
     {
-        if (model.EnhancedGoogleDataRefreshHours < 1)
-            ModelState.AddModelError(nameof(model.EnhancedGoogleDataRefreshHours), "Value must be at least 1 hour.");
-        if (model.GoogleReviewsRefreshHours < 1)
-            ModelState.AddModelError(nameof(model.GoogleReviewsRefreshHours), "Value must be at least 1 hour.");
-        if (model.GoogleUpdatesRefreshHours < 1)
-            ModelState.AddModelError(nameof(model.GoogleUpdatesRefreshHours), "Value must be at least 1 hour.");
-        if (model.GoogleQuestionsAndAnswersRefreshHours < 1)
-            ModelState.AddModelError(nameof(model.GoogleQuestionsAndAnswersRefreshHours), "Value must be at least 1 hour.");
-        if (model.SearchVolumeRefreshCooldownDays < 1)
-            ModelState.AddModelError(nameof(model.SearchVolumeRefreshCooldownDays), "Value must be at least 1 day.");
+        if (model.EnhancedGoogleDataRefreshHours < 0)
+            ModelState.AddModelError(nameof(model.EnhancedGoogleDataRefreshHours), "Value must be at least 0 hours.");
+        if (model.GoogleReviewsRefreshHours < 0)
+            ModelState.AddModelError(nameof(model.GoogleReviewsRefreshHours), "Value must be at least 0 hours.");
+        if (model.GoogleUpdatesRefreshHours < 0)
+            ModelState.AddModelError(nameof(model.GoogleUpdatesRefreshHours), "Value must be at least 0 hours.");
+        if (model.GoogleQuestionsAndAnswersRefreshHours < 0)
+            ModelState.AddModelError(nameof(model.GoogleQuestionsAndAnswersRefreshHours), "Value must be at least 0 hours.");
+        if (model.SearchVolumeRefreshCooldownDays < 0)
+            ModelState.AddModelError(nameof(model.SearchVolumeRefreshCooldownDays), "Value must be at least 0 days.");
         ValidatePercent(nameof(model.MapPackClickSharePercent), model.MapPackClickSharePercent);
         ValidatePercent(nameof(model.MapPackCtrPosition1Percent), model.MapPackCtrPosition1Percent);
         ValidatePercent(nameof(model.MapPackCtrPosition2Percent), model.MapPackCtrPosition2Percent);
@@ -57,6 +57,15 @@ public class AdminController(
         ValidatePercent(nameof(model.MapPackCtrPosition10Percent), model.MapPackCtrPosition10Percent);
         if (string.IsNullOrWhiteSpace(model.ZohoLeadNextAction))
             ModelState.AddModelError(nameof(model.ZohoLeadNextAction), "Next Action is required.");
+        if (string.IsNullOrWhiteSpace(model.SiteUrl))
+        {
+            ModelState.AddModelError(nameof(model.SiteUrl), "Site URL is required.");
+        }
+        else if (!Uri.TryCreate(model.SiteUrl.Trim(), UriKind.Absolute, out var siteUri)
+            || (siteUri.Scheme != Uri.UriSchemeHttp && siteUri.Scheme != Uri.UriSchemeHttps))
+        {
+            ModelState.AddModelError(nameof(model.SiteUrl), "Site URL must be a valid http/https URL.");
+        }
 
         if (!ModelState.IsValid)
             return View("Settings", model);
@@ -73,53 +82,71 @@ public class AdminController(
     }
 
     [HttpGet("/admin/dataforseo-tasks")]
-    public async Task<IActionResult> DataForSeoTasks([FromQuery] string? taskType, CancellationToken ct)
+    public async Task<IActionResult> DataForSeoTasks([FromQuery] string? taskType, [FromQuery] string? status, CancellationToken ct)
     {
         var normalizedTaskType = NormalizeTaskTypeFilter(taskType);
-        var rows = await dataForSeoTaskTracker.GetLatestTasksAsync(2000, normalizedTaskType, ct);
+        var normalizedStatus = NormalizeTaskStatusFilter(status);
+        var rows = await dataForSeoTaskTracker.GetLatestTasksAsync(2000, normalizedTaskType, normalizedStatus, ct);
         ViewBag.TaskType = normalizedTaskType ?? "all";
+        ViewBag.TaskStatus = normalizedStatus ?? "all";
         return View(rows);
     }
 
     [HttpPost("/admin/dataforseo-tasks/refresh")]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> RefreshDataForSeoTasks([FromQuery] string? taskType, CancellationToken ct)
+    public async Task<IActionResult> RefreshDataForSeoTasks([FromQuery] string? taskType, [FromQuery] string? status, CancellationToken ct)
     {
         var touched = await dataForSeoTaskTracker.RefreshTaskStatusesAsync(ct);
         TempData["Status"] = $"Refreshed DataForSEO task statuses. Updated {touched} row(s).";
-        return RedirectToAction(nameof(DataForSeoTasks), new { taskType = NormalizeTaskTypeFilter(taskType) ?? "all" });
+        return RedirectToAction(nameof(DataForSeoTasks), new
+        {
+            taskType = NormalizeTaskTypeFilter(taskType) ?? "all",
+            status = NormalizeTaskStatusFilter(status) ?? "all"
+        });
     }
 
     [HttpPost("/admin/dataforseo-tasks/delete-errors")]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> DeleteDataForSeoErrorTasks([FromQuery] string? taskType, CancellationToken ct)
+    public async Task<IActionResult> DeleteDataForSeoErrorTasks([FromQuery] string? taskType, [FromQuery] string? status, CancellationToken ct)
     {
         var normalizedTaskType = NormalizeTaskTypeFilter(taskType);
         var deleted = await dataForSeoTaskTracker.DeleteErrorTasksAsync(normalizedTaskType, ct);
         TempData["Status"] = $"Deleted {deleted} DataForSEO task row(s) with status Error.";
-        return RedirectToAction(nameof(DataForSeoTasks), new { taskType = normalizedTaskType ?? "all" });
+        return RedirectToAction(nameof(DataForSeoTasks), new
+        {
+            taskType = normalizedTaskType ?? "all",
+            status = NormalizeTaskStatusFilter(status) ?? "all"
+        });
     }
 
     [HttpPost("/admin/dataforseo-tasks/{id:long}/populate")]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> PopulateDataForSeoTask(long id, [FromQuery] string? taskType, CancellationToken ct)
+    public async Task<IActionResult> PopulateDataForSeoTask(long id, [FromQuery] string? taskType, [FromQuery] string? status, CancellationToken ct)
     {
         var result = await dataForSeoTaskTracker.PopulateTaskAsync(id, ct);
         TempData["Status"] = result.Success
             ? $"Populate succeeded: {result.Message}"
             : $"Populate failed: {result.Message}";
-        return RedirectToAction(nameof(DataForSeoTasks), new { taskType = NormalizeTaskTypeFilter(taskType) ?? "all" });
+        return RedirectToAction(nameof(DataForSeoTasks), new
+        {
+            taskType = NormalizeTaskTypeFilter(taskType) ?? "all",
+            status = NormalizeTaskStatusFilter(status) ?? "all"
+        });
     }
 
     [HttpPost("/admin/dataforseo-tasks/populate-ready")]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> PopulateReadyDataForSeoTasks([FromQuery] string? taskType, CancellationToken ct)
+    public async Task<IActionResult> PopulateReadyDataForSeoTasks([FromQuery] string? taskType, [FromQuery] string? status, CancellationToken ct)
     {
         var normalizedTaskType = NormalizeTaskTypeFilter(taskType);
         var result = await dataForSeoTaskTracker.PopulateReadyTasksAsync(normalizedTaskType, ct);
         TempData["Status"] =
             $"Populate ready tasks complete. Attempted {result.Attempted}, succeeded {result.Succeeded}, failed {result.Failed}, upserted {result.ReviewsUpserted} review row(s).";
-        return RedirectToAction(nameof(DataForSeoTasks), new { taskType = normalizedTaskType ?? "all" });
+        return RedirectToAction(nameof(DataForSeoTasks), new
+        {
+            taskType = normalizedTaskType ?? "all",
+            status = NormalizeTaskStatusFilter(status) ?? "all"
+        });
     }
 
     // OAuth checklist:
@@ -787,9 +814,20 @@ public class AdminController(
             return "my_business_updates";
         if (string.Equals(taskType, "questions_and_answers", StringComparison.OrdinalIgnoreCase))
             return "questions_and_answers";
+        if (string.Equals(taskType, "social_profiles", StringComparison.OrdinalIgnoreCase))
+            return "social_profiles";
         if (string.Equals(taskType, "reviews", StringComparison.OrdinalIgnoreCase))
             return "reviews";
         return null;
+    }
+
+    private static string? NormalizeTaskStatusFilter(string? status)
+    {
+        if (string.IsNullOrWhiteSpace(status) || string.Equals(status, "all", StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        var normalized = status.Trim();
+        return normalized.Length > 40 ? normalized[..40] : normalized;
     }
 
     private static string NormalizeCategoryStatusFilter(string? status)

@@ -3,7 +3,7 @@
 LocalSeo.Web/appsettings.json
 LocalSeo.Web/appsettings.*.json
 LocalSeo.Web/App_Data/
-LocalSeo.Web/wwwroot/site-assets/**
+**/wwwroot/site-assets/
 _build_tmp/
 _build_tmp_tests/
 _tmp/

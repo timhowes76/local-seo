@@ -8,7 +8,7 @@ public sealed record DataForSeoPostbackResult(bool Success, string Message);
 
 public interface IDataForSeoTaskTracker
 {
-    Task<IReadOnlyList<DataForSeoTaskRow>> GetLatestTasksAsync(int take, string? taskType, CancellationToken ct);
+    Task<IReadOnlyList<DataForSeoTaskRow>> GetLatestTasksAsync(int take, string? taskType, string? status, CancellationToken ct);
     Task<int> RefreshTaskStatusesAsync(CancellationToken ct);
     Task<int> DeleteErrorTasksAsync(string? taskType, CancellationToken ct);
     Task<DataForSeoPopulateResult> PopulateTaskAsync(long dataForSeoReviewTaskId, CancellationToken ct);

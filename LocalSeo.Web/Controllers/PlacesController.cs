@@ -43,23 +43,69 @@ public class PlacesController(
         return View(model);
     }
 
+    [HttpGet("/places/{id}/edit")]
+    public async Task<IActionResult> Edit(string id, [FromQuery] long? runId, CancellationToken ct = default)
+    {
+        var model = await ingestionService.GetPlaceSocialLinksForEditAsync(id, runId, ct);
+        if (model is null)
+            return NotFound();
+
+        return View(model);
+    }
+
+    [HttpPost("/places/{id}/edit")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> Edit(string id, [FromQuery] long? runId, PlaceSocialLinksEditModel model, CancellationToken ct = default)
+    {
+        model.PlaceId = id;
+        model.RunId = runId;
+
+        try
+        {
+            var updated = await ingestionService.UpdatePlaceSocialLinksAsync(model, ct);
+            if (!updated)
+                return NotFound();
+
+            TempData["Status"] = "Social media links updated.";
+            return RedirectToAction(nameof(Details), new { id, runId });
+        }
+        catch (InvalidOperationException ex)
+        {
+            ModelState.AddModelError(string.Empty, ex.Message);
+            var existing = await ingestionService.GetPlaceSocialLinksForEditAsync(id, runId, ct);
+            if (existing is not null && string.IsNullOrWhiteSpace(model.DisplayName))
+                model.DisplayName = existing.DisplayName;
+            return View(model);
+        }
+    }
+
     [HttpPost("/places/{id}/zoho/create-lead")]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> CreateZohoLead(string id, [FromQuery] long? runId, CancellationToken ct)
     {
-        var place = await ingestionService.GetPlaceDetailsAsync(id, runId, ct);
-        if (place is null)
-            return NotFound();
-
-        if (place.ZohoLeadCreated && !string.IsNullOrWhiteSpace(place.ZohoLeadId))
+        try
         {
-            TempData["Status"] = $"Zoho lead already exists for this place (Lead ID {place.ZohoLeadId}).";
-            return RedirectToAction(nameof(Details), new { id, runId });
+            var place = await ingestionService.GetPlaceDetailsAsync(id, runId, ct);
+            if (place is null)
+                return NotFound();
+
+            var localSeoLink = $"{Request.Scheme}://{Request.Host}/places/{Uri.EscapeDataString(id)}";
+            var result = await zohoLeadSyncService.CreateLeadForPlaceAsync(id, localSeoLink, ct);
+            if (!result.Success && result.RequiresZohoTokenRefresh)
+            {
+                TempData["Status"] = "Something went wrong. Click here to refresh the Zoho token and try again.";
+                TempData["ZohoTokenRefreshUrl"] = "/integrations/zoho/connect";
+            }
+            else
+            {
+                TempData["Status"] = result.Message;
+            }
+        }
+        catch (Exception ex) when (!ct.IsCancellationRequested)
+        {
+            TempData["Status"] = $"Zoho sync failed: {ex.Message}";
         }
 
-        var localSeoLink = $"{Request.Scheme}://{Request.Host}/places/{Uri.EscapeDataString(id)}";
-        var result = await zohoLeadSyncService.CreateLeadForPlaceAsync(id, localSeoLink, ct);
-        TempData["Status"] = result.Message;
         return RedirectToAction(nameof(Details), new { id, runId });
     }
 
@@ -95,6 +141,7 @@ public class PlacesController(
         var fetchMyBusinessInfo = string.Equals(normalizedTaskType, "my_business_info", StringComparison.OrdinalIgnoreCase);
         var fetchGoogleUpdates = string.Equals(normalizedTaskType, "my_business_updates", StringComparison.OrdinalIgnoreCase);
         var fetchGoogleQuestionsAndAnswers = string.Equals(normalizedTaskType, "questions_and_answers", StringComparison.OrdinalIgnoreCase);
+        var fetchGoogleSocialProfiles = string.Equals(normalizedTaskType, "social_profiles", StringComparison.OrdinalIgnoreCase);
 
         await provider.FetchAndStoreReviewsAsync(
             id,
@@ -107,6 +154,7 @@ public class PlacesController(
             fetchMyBusinessInfo,
             fetchGoogleUpdates,
             fetchGoogleQuestionsAndAnswers,
+            fetchGoogleSocialProfiles,
             ct);
 
         var typeLabel = normalizedTaskType switch
@@ -114,6 +162,7 @@ public class PlacesController(
             "my_business_info" => "Google Enhanced Data",
             "my_business_updates" => "Google Updates",
             "questions_and_answers" => "Google Question & Answers",
+            "social_profiles" => "Google Social Profiles",
             _ => "Google Reviews"
         };
         TempData["Status"] = $"Refresh requested for {typeLabel}.";
@@ -130,6 +179,8 @@ public class PlacesController(
             return "my_business_updates";
         if (string.Equals(taskType, "questions_and_answers", StringComparison.OrdinalIgnoreCase))
             return "questions_and_answers";
+        if (string.Equals(taskType, "social_profiles", StringComparison.OrdinalIgnoreCase))
+            return "social_profiles";
         if (string.Equals(taskType, "reviews", StringComparison.OrdinalIgnoreCase))
             return "reviews";
         return null;

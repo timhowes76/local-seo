@@ -22,6 +22,7 @@ BEGIN
     FetchGoogleReviews bit NOT NULL CONSTRAINT DF_SearchRun_FetchGoogleReviews DEFAULT(0),
     FetchGoogleUpdates bit NOT NULL CONSTRAINT DF_SearchRun_FetchGoogleUpdates DEFAULT(0),
     FetchGoogleQuestionsAndAnswers bit NOT NULL CONSTRAINT DF_SearchRun_FetchGoogleQuestionsAndAnswers DEFAULT(0),
+    FetchGoogleSocialProfiles bit NOT NULL CONSTRAINT DF_SearchRun_FetchGoogleSocialProfiles DEFAULT(0),
     RanAtUtc datetime2(0) NOT NULL CONSTRAINT DF_SearchRun_RanAtUtc DEFAULT SYSUTCDATETIME()
   );
 END;
@@ -33,11 +34,15 @@ IF COL_LENGTH('dbo.SearchRun', 'FetchGoogleUpdates') IS NULL
   ALTER TABLE dbo.SearchRun ADD FetchGoogleUpdates bit NOT NULL CONSTRAINT DF_SearchRun_FetchGoogleUpdates_Alt DEFAULT(0);
 IF COL_LENGTH('dbo.SearchRun', 'FetchGoogleQuestionsAndAnswers') IS NULL
   ALTER TABLE dbo.SearchRun ADD FetchGoogleQuestionsAndAnswers bit NOT NULL CONSTRAINT DF_SearchRun_FetchGoogleQuestionsAndAnswers_Alt DEFAULT(0);
+IF COL_LENGTH('dbo.SearchRun', 'FetchGoogleSocialProfiles') IS NULL
+  ALTER TABLE dbo.SearchRun ADD FetchGoogleSocialProfiles bit NOT NULL CONSTRAINT DF_SearchRun_FetchGoogleSocialProfiles_Alt DEFAULT(0);
 IF OBJECT_ID('dbo.Place','U') IS NULL
 BEGIN
   CREATE TABLE dbo.Place(
     PlaceId nvarchar(128) NOT NULL PRIMARY KEY,
     DisplayName nvarchar(300) NULL,
+    LogoUrl nvarchar(1500) NULL,
+    MainPhotoUrl nvarchar(1500) NULL,
     PrimaryType nvarchar(80) NULL,
     PrimaryCategory nvarchar(200) NULL,
     TypesCsv nvarchar(1500) NULL,
@@ -46,6 +51,14 @@ BEGIN
     Lng decimal(9,6) NULL,
     NationalPhoneNumber nvarchar(50) NULL,
     WebsiteUri nvarchar(500) NULL,
+    FacebookUrl nvarchar(1500) NULL,
+    InstagramUrl nvarchar(1500) NULL,
+    LinkedInUrl nvarchar(1500) NULL,
+    XUrl nvarchar(1500) NULL,
+    YouTubeUrl nvarchar(1500) NULL,
+    TikTokUrl nvarchar(1500) NULL,
+    PinterestUrl nvarchar(1500) NULL,
+    BlueskyUrl nvarchar(1500) NULL,
     Description nvarchar(750) NULL,
     PhotoCount int NULL,
     QuestionAnswerCount int NULL,
@@ -66,12 +79,32 @@ BEGIN
     LastSeenUtc datetime2(0) NOT NULL CONSTRAINT DF_Place_LastSeenUtc DEFAULT SYSUTCDATETIME()
   );
 END;
+IF COL_LENGTH('dbo.Place', 'LogoUrl') IS NULL
+  ALTER TABLE dbo.Place ADD LogoUrl nvarchar(1500) NULL;
+IF COL_LENGTH('dbo.Place', 'MainPhotoUrl') IS NULL
+  ALTER TABLE dbo.Place ADD MainPhotoUrl nvarchar(1500) NULL;
 IF COL_LENGTH('dbo.Place', 'PrimaryCategory') IS NULL
   ALTER TABLE dbo.Place ADD PrimaryCategory nvarchar(200) NULL;
 IF COL_LENGTH('dbo.Place', 'NationalPhoneNumber') IS NULL
   ALTER TABLE dbo.Place ADD NationalPhoneNumber nvarchar(50) NULL;
 IF COL_LENGTH('dbo.Place', 'WebsiteUri') IS NULL
   ALTER TABLE dbo.Place ADD WebsiteUri nvarchar(500) NULL;
+IF COL_LENGTH('dbo.Place', 'FacebookUrl') IS NULL
+  ALTER TABLE dbo.Place ADD FacebookUrl nvarchar(1500) NULL;
+IF COL_LENGTH('dbo.Place', 'InstagramUrl') IS NULL
+  ALTER TABLE dbo.Place ADD InstagramUrl nvarchar(1500) NULL;
+IF COL_LENGTH('dbo.Place', 'LinkedInUrl') IS NULL
+  ALTER TABLE dbo.Place ADD LinkedInUrl nvarchar(1500) NULL;
+IF COL_LENGTH('dbo.Place', 'XUrl') IS NULL
+  ALTER TABLE dbo.Place ADD XUrl nvarchar(1500) NULL;
+IF COL_LENGTH('dbo.Place', 'YouTubeUrl') IS NULL
+  ALTER TABLE dbo.Place ADD YouTubeUrl nvarchar(1500) NULL;
+IF COL_LENGTH('dbo.Place', 'TikTokUrl') IS NULL
+  ALTER TABLE dbo.Place ADD TikTokUrl nvarchar(1500) NULL;
+IF COL_LENGTH('dbo.Place', 'PinterestUrl') IS NULL
+  ALTER TABLE dbo.Place ADD PinterestUrl nvarchar(1500) NULL;
+IF COL_LENGTH('dbo.Place', 'BlueskyUrl') IS NULL
+  ALTER TABLE dbo.Place ADD BlueskyUrl nvarchar(1500) NULL;
 IF COL_LENGTH('dbo.Place', 'Description') IS NULL
   ALTER TABLE dbo.Place ADD Description nvarchar(750) NULL;
 IF EXISTS (SELECT 1 FROM sys.columns WHERE object_id=OBJECT_ID('dbo.Place') AND name='Description' AND max_length <> 1500)
@@ -763,6 +796,7 @@ BEGIN
     GoogleReviewsRefreshHours int NOT NULL CONSTRAINT DF_AppSettings_GoogleReviewsRefreshHours DEFAULT(24),
     GoogleUpdatesRefreshHours int NOT NULL CONSTRAINT DF_AppSettings_GoogleUpdatesRefreshHours DEFAULT(24),
     GoogleQuestionsAndAnswersRefreshHours int NOT NULL CONSTRAINT DF_AppSettings_GoogleQuestionsAndAnswersRefreshHours DEFAULT(24),
+    GoogleSocialProfilesRefreshHours int NOT NULL CONSTRAINT DF_AppSettings_GoogleSocialProfilesRefreshHours DEFAULT(24),
     SearchVolumeRefreshCooldownDays int NOT NULL CONSTRAINT DF_AppSettings_SearchVolumeRefreshCooldownDays DEFAULT(30),
     MapPackClickSharePercent int NOT NULL CONSTRAINT DF_AppSettings_MapPackClickSharePercent DEFAULT(50),
     MapPackCtrPosition1Percent int NOT NULL CONSTRAINT DF_AppSettings_MapPackCtrPosition1Percent DEFAULT(38),
@@ -778,6 +812,7 @@ BEGIN
     ZohoLeadOwnerName nvarchar(200) NOT NULL CONSTRAINT DF_AppSettings_ZohoLeadOwnerName DEFAULT(N'Richard Howes'),
     ZohoLeadOwnerId nvarchar(50) NOT NULL CONSTRAINT DF_AppSettings_ZohoLeadOwnerId DEFAULT(N'1108404000000068001'),
     ZohoLeadNextAction nvarchar(300) NOT NULL CONSTRAINT DF_AppSettings_ZohoLeadNextAction DEFAULT(N'Make first contact'),
+    SiteUrl nvarchar(500) NOT NULL CONSTRAINT DF_AppSettings_SiteUrl DEFAULT(N'https://briskly-viceless-kayleen.ngrok-free.dev/'),
     UpdatedAtUtc datetime2(0) NOT NULL CONSTRAINT DF_AppSettings_UpdatedAtUtc DEFAULT SYSUTCDATETIME()
   );
 END;
@@ -789,6 +824,8 @@ IF COL_LENGTH('dbo.AppSettings', 'GoogleUpdatesRefreshHours') IS NULL
   ALTER TABLE dbo.AppSettings ADD GoogleUpdatesRefreshHours int NOT NULL CONSTRAINT DF_AppSettings_GoogleUpdatesRefreshHours_Alt DEFAULT(24);
 IF COL_LENGTH('dbo.AppSettings', 'GoogleQuestionsAndAnswersRefreshHours') IS NULL
   ALTER TABLE dbo.AppSettings ADD GoogleQuestionsAndAnswersRefreshHours int NOT NULL CONSTRAINT DF_AppSettings_GoogleQuestionsAndAnswersRefreshHours_Alt DEFAULT(24);
+IF COL_LENGTH('dbo.AppSettings', 'GoogleSocialProfilesRefreshHours') IS NULL
+  ALTER TABLE dbo.AppSettings ADD GoogleSocialProfilesRefreshHours int NOT NULL CONSTRAINT DF_AppSettings_GoogleSocialProfilesRefreshHours_Alt DEFAULT(24);
 IF COL_LENGTH('dbo.AppSettings', 'SearchVolumeRefreshCooldownDays') IS NULL
   ALTER TABLE dbo.AppSettings ADD SearchVolumeRefreshCooldownDays int NOT NULL CONSTRAINT DF_AppSettings_SearchVolumeRefreshCooldownDays_Alt DEFAULT(30);
 IF COL_LENGTH('dbo.AppSettings', 'MapPackClickSharePercent') IS NULL
@@ -819,6 +856,8 @@ IF COL_LENGTH('dbo.AppSettings', 'ZohoLeadOwnerId') IS NULL
   ALTER TABLE dbo.AppSettings ADD ZohoLeadOwnerId nvarchar(50) NOT NULL CONSTRAINT DF_AppSettings_ZohoLeadOwnerId_Alt DEFAULT(N'1108404000000068001');
 IF COL_LENGTH('dbo.AppSettings', 'ZohoLeadNextAction') IS NULL
   ALTER TABLE dbo.AppSettings ADD ZohoLeadNextAction nvarchar(300) NOT NULL CONSTRAINT DF_AppSettings_ZohoLeadNextAction_Alt DEFAULT(N'Make first contact');
+IF COL_LENGTH('dbo.AppSettings', 'SiteUrl') IS NULL
+  ALTER TABLE dbo.AppSettings ADD SiteUrl nvarchar(500) NOT NULL CONSTRAINT DF_AppSettings_SiteUrl_Alt DEFAULT(N'https://briskly-viceless-kayleen.ngrok-free.dev/');
 IF COL_LENGTH('dbo.AppSettings', 'UpdatedAtUtc') IS NULL
   ALTER TABLE dbo.AppSettings ADD UpdatedAtUtc datetime2(0) NOT NULL CONSTRAINT DF_AppSettings_UpdatedAtUtc_Alt DEFAULT SYSUTCDATETIME();
 EXEC(N'
@@ -826,11 +865,12 @@ MERGE dbo.AppSettings AS target
 USING (SELECT CAST(1 AS int) AS AppSettingsId) AS source
 ON target.AppSettingsId = source.AppSettingsId
 WHEN MATCHED THEN UPDATE SET
-  EnhancedGoogleDataRefreshHours = CASE WHEN target.EnhancedGoogleDataRefreshHours IS NULL OR target.EnhancedGoogleDataRefreshHours < 1 THEN 24 ELSE target.EnhancedGoogleDataRefreshHours END,
-  GoogleReviewsRefreshHours = CASE WHEN target.GoogleReviewsRefreshHours IS NULL OR target.GoogleReviewsRefreshHours < 1 THEN 24 ELSE target.GoogleReviewsRefreshHours END,
-  GoogleUpdatesRefreshHours = CASE WHEN target.GoogleUpdatesRefreshHours IS NULL OR target.GoogleUpdatesRefreshHours < 1 THEN 24 ELSE target.GoogleUpdatesRefreshHours END,
-  GoogleQuestionsAndAnswersRefreshHours = CASE WHEN target.GoogleQuestionsAndAnswersRefreshHours IS NULL OR target.GoogleQuestionsAndAnswersRefreshHours < 1 THEN 24 ELSE target.GoogleQuestionsAndAnswersRefreshHours END,
-  SearchVolumeRefreshCooldownDays = CASE WHEN target.SearchVolumeRefreshCooldownDays IS NULL OR target.SearchVolumeRefreshCooldownDays < 1 THEN 30 ELSE target.SearchVolumeRefreshCooldownDays END,
+  EnhancedGoogleDataRefreshHours = CASE WHEN target.EnhancedGoogleDataRefreshHours IS NULL OR target.EnhancedGoogleDataRefreshHours < 0 THEN 24 ELSE target.EnhancedGoogleDataRefreshHours END,
+  GoogleReviewsRefreshHours = CASE WHEN target.GoogleReviewsRefreshHours IS NULL OR target.GoogleReviewsRefreshHours < 0 THEN 24 ELSE target.GoogleReviewsRefreshHours END,
+  GoogleUpdatesRefreshHours = CASE WHEN target.GoogleUpdatesRefreshHours IS NULL OR target.GoogleUpdatesRefreshHours < 0 THEN 24 ELSE target.GoogleUpdatesRefreshHours END,
+  GoogleQuestionsAndAnswersRefreshHours = CASE WHEN target.GoogleQuestionsAndAnswersRefreshHours IS NULL OR target.GoogleQuestionsAndAnswersRefreshHours < 0 THEN 24 ELSE target.GoogleQuestionsAndAnswersRefreshHours END,
+  GoogleSocialProfilesRefreshHours = CASE WHEN target.GoogleSocialProfilesRefreshHours IS NULL OR target.GoogleSocialProfilesRefreshHours < 0 THEN 24 ELSE target.GoogleSocialProfilesRefreshHours END,
+  SearchVolumeRefreshCooldownDays = CASE WHEN target.SearchVolumeRefreshCooldownDays IS NULL OR target.SearchVolumeRefreshCooldownDays < 0 THEN 30 ELSE target.SearchVolumeRefreshCooldownDays END,
   MapPackClickSharePercent = CASE WHEN target.MapPackClickSharePercent IS NULL OR target.MapPackClickSharePercent < 0 OR target.MapPackClickSharePercent > 100 THEN 50 ELSE target.MapPackClickSharePercent END,
   MapPackCtrPosition1Percent = CASE WHEN target.MapPackCtrPosition1Percent IS NULL OR target.MapPackCtrPosition1Percent < 0 OR target.MapPackCtrPosition1Percent > 100 THEN 38 ELSE target.MapPackCtrPosition1Percent END,
   MapPackCtrPosition2Percent = CASE WHEN target.MapPackCtrPosition2Percent IS NULL OR target.MapPackCtrPosition2Percent < 0 OR target.MapPackCtrPosition2Percent > 100 THEN 23 ELSE target.MapPackCtrPosition2Percent END,
@@ -844,10 +884,11 @@ WHEN MATCHED THEN UPDATE SET
   MapPackCtrPosition10Percent = CASE WHEN target.MapPackCtrPosition10Percent IS NULL OR target.MapPackCtrPosition10Percent < 0 OR target.MapPackCtrPosition10Percent > 100 THEN 1 ELSE target.MapPackCtrPosition10Percent END,
   ZohoLeadOwnerName = CASE WHEN target.ZohoLeadOwnerName IS NULL OR LEN(LTRIM(RTRIM(target.ZohoLeadOwnerName))) = 0 THEN N''Richard Howes'' ELSE LEFT(target.ZohoLeadOwnerName, 200) END,
   ZohoLeadOwnerId = CASE WHEN target.ZohoLeadOwnerId IS NULL OR LEN(LTRIM(RTRIM(target.ZohoLeadOwnerId))) = 0 THEN N''1108404000000068001'' ELSE LEFT(target.ZohoLeadOwnerId, 50) END,
-  ZohoLeadNextAction = CASE WHEN target.ZohoLeadNextAction IS NULL OR LEN(LTRIM(RTRIM(target.ZohoLeadNextAction))) = 0 THEN N''Make first contact'' ELSE LEFT(target.ZohoLeadNextAction, 300) END
+  ZohoLeadNextAction = CASE WHEN target.ZohoLeadNextAction IS NULL OR LEN(LTRIM(RTRIM(target.ZohoLeadNextAction))) = 0 THEN N''Make first contact'' ELSE LEFT(target.ZohoLeadNextAction, 300) END,
+  SiteUrl = CASE WHEN target.SiteUrl IS NULL OR LEN(LTRIM(RTRIM(target.SiteUrl))) = 0 THEN N''https://briskly-viceless-kayleen.ngrok-free.dev/'' ELSE LEFT(target.SiteUrl, 500) END
 WHEN NOT MATCHED THEN
-  INSERT(AppSettingsId, EnhancedGoogleDataRefreshHours, GoogleReviewsRefreshHours, GoogleUpdatesRefreshHours, GoogleQuestionsAndAnswersRefreshHours, SearchVolumeRefreshCooldownDays, MapPackClickSharePercent, MapPackCtrPosition1Percent, MapPackCtrPosition2Percent, MapPackCtrPosition3Percent, MapPackCtrPosition4Percent, MapPackCtrPosition5Percent, MapPackCtrPosition6Percent, MapPackCtrPosition7Percent, MapPackCtrPosition8Percent, MapPackCtrPosition9Percent, MapPackCtrPosition10Percent, ZohoLeadOwnerName, ZohoLeadOwnerId, ZohoLeadNextAction, UpdatedAtUtc)
-  VALUES(1, 24, 24, 24, 24, 30, 50, 38, 23, 16, 7, 5, 4, 3, 2, 1, 1, N''Richard Howes'', N''1108404000000068001'', N''Make first contact'', SYSUTCDATETIME());
+  INSERT(AppSettingsId, EnhancedGoogleDataRefreshHours, GoogleReviewsRefreshHours, GoogleUpdatesRefreshHours, GoogleQuestionsAndAnswersRefreshHours, GoogleSocialProfilesRefreshHours, SearchVolumeRefreshCooldownDays, MapPackClickSharePercent, MapPackCtrPosition1Percent, MapPackCtrPosition2Percent, MapPackCtrPosition3Percent, MapPackCtrPosition4Percent, MapPackCtrPosition5Percent, MapPackCtrPosition6Percent, MapPackCtrPosition7Percent, MapPackCtrPosition8Percent, MapPackCtrPosition9Percent, MapPackCtrPosition10Percent, ZohoLeadOwnerName, ZohoLeadOwnerId, ZohoLeadNextAction, SiteUrl, UpdatedAtUtc)
+  VALUES(1, 24, 24, 24, 24, 24, 30, 50, 38, 23, 16, 7, 5, 4, 3, 2, 1, 1, N''Richard Howes'', N''1108404000000068001'', N''Make first contact'', N''https://briskly-viceless-kayleen.ngrok-free.dev/'', SYSUTCDATETIME());
 ');
 IF OBJECT_ID('dbo.GoogleBusinessProfileCategory','U') IS NULL
 BEGIN

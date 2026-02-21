@@ -27,6 +27,12 @@ public sealed class ZohoOAuthService(
     ILogger<ZohoOAuthService> logger) : IZohoOAuthService
 {
     private static readonly TimeSpan StateTtl = TimeSpan.FromMinutes(15);
+    private static readonly string[] RequiredZohoScopes =
+    [
+        "ZohoCRM.modules.ALL",
+        "ZohoCRM.settings.modules.READ",
+        "ZohoCRM.settings.fields.READ"
+    ];
 
     public string BuildConnectUrl(string userIdentity)
     {
@@ -34,7 +40,7 @@ public sealed class ZohoOAuthService(
         var accountsBaseUrl = RequireConfigured(cfg.AccountsBaseUrl, "ZohoOAuth:AccountsBaseUrl");
         var clientId = RequireConfigured(cfg.ClientId, "ZohoOAuth:ClientId");
         var redirectUri = RequireConfigured(cfg.RedirectUri, "ZohoOAuth:RedirectUri");
-        var scopes = RequireConfigured(cfg.Scopes, "ZohoOAuth:Scopes");
+        var scopes = NormalizeAndMergeScopes(cfg.Scopes);
 
         var state = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
         cache.Set(BuildStateCacheKey(state), new OAuthStateRecord(NormalizeUserIdentity(userIdentity)), StateTtl);
@@ -194,6 +200,26 @@ public sealed class ZohoOAuthService(
     {
         var normalized = (value ?? string.Empty).Trim();
         return normalized.Length == 0 ? null : normalized;
+    }
+
+    private static string NormalizeAndMergeScopes(string? configuredScopes)
+    {
+        var scopes = (configuredScopes ?? string.Empty)
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        foreach (var required in RequiredZohoScopes)
+        {
+            if (!scopes.Contains(required, StringComparer.OrdinalIgnoreCase))
+                scopes.Add(required);
+        }
+
+        if (scopes.Count == 0)
+            throw new InvalidOperationException("ZohoOAuth:Scopes is missing.");
+
+        return string.Join(",", scopes);
     }
 
     private static string MaskToken(string token)

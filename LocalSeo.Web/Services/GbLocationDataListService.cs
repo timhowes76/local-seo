@@ -558,6 +558,7 @@ SELECT
   r.FetchGoogleReviews,
   r.FetchGoogleUpdates,
   r.FetchGoogleQuestionsAndAnswers,
+  r.FetchGoogleSocialProfiles,
   r.RanAtUtc
 FROM dbo.SearchRun r
 JOIN dbo.GoogleBusinessProfileCategory c ON c.CategoryId = r.CategoryId
@@ -590,6 +591,7 @@ SELECT
   r.FetchGoogleReviews,
   r.FetchGoogleUpdates,
   r.FetchGoogleQuestionsAndAnswers,
+  r.FetchGoogleSocialProfiles,
   r.RanAtUtc
 FROM dbo.SearchRun r
 JOIN dbo.GoogleBusinessProfileCategory c ON c.CategoryId = r.CategoryId

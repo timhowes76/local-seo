@@ -16,6 +16,7 @@ public interface IReviewsProvider
         bool fetchMyBusinessInfo,
         bool fetchGoogleUpdates,
         bool fetchGoogleQuestionsAndAnswers,
+        bool fetchGoogleSocialProfiles,
         CancellationToken ct);
 }
 
@@ -59,6 +60,7 @@ public sealed class NullReviewsProvider : IReviewsProvider
         bool fetchMyBusinessInfo,
         bool fetchGoogleUpdates,
         bool fetchGoogleQuestionsAndAnswers,
+        bool fetchGoogleSocialProfiles,
         CancellationToken ct) => Task.CompletedTask;
 }
 
@@ -75,6 +77,7 @@ public sealed class NotImplementedReviewsProvider(ILogger<NotImplementedReviewsP
         bool fetchMyBusinessInfo,
         bool fetchGoogleUpdates,
         bool fetchGoogleQuestionsAndAnswers,
+        bool fetchGoogleSocialProfiles,
         CancellationToken ct)
     {
         logger.LogWarning("SerpApi provider requested for place {PlaceId}, but not implemented.", placeId);

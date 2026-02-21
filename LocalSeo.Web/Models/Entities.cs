@@ -15,6 +15,7 @@ public sealed record SearchRun(
     bool FetchGoogleReviews,
     bool FetchGoogleUpdates,
     bool FetchGoogleQuestionsAndAnswers,
+    bool FetchGoogleSocialProfiles,
     DateTime RanAtUtc);
 public sealed record PlaceSnapshotRow(
     long PlaceSnapshotId,
@@ -149,6 +150,8 @@ public sealed class PlaceDetailsViewModel
 {
     public string PlaceId { get; init; } = string.Empty;
     public string? DisplayName { get; init; }
+    public string? LogoUrl { get; init; }
+    public string? MainPhotoUrl { get; init; }
     public string? SearchLocationName { get; init; }
     public string? ContextSeedKeyword { get; init; }
     public string? ContextLocationName { get; init; }
@@ -157,6 +160,14 @@ public sealed class PlaceDetailsViewModel
     public string? PrimaryCategory { get; init; }
     public string? NationalPhoneNumber { get; init; }
     public string? WebsiteUri { get; init; }
+    public string? FacebookUrl { get; init; }
+    public string? InstagramUrl { get; init; }
+    public string? LinkedInUrl { get; init; }
+    public string? XUrl { get; init; }
+    public string? YouTubeUrl { get; init; }
+    public string? TikTokUrl { get; init; }
+    public string? PinterestUrl { get; init; }
+    public string? BlueskyUrl { get; init; }
     public DateTime? OpeningDate { get; init; }
     public decimal? Lat { get; init; }
     public decimal? Lng { get; init; }
@@ -416,6 +427,7 @@ public sealed class SearchFormModel
     public bool FetchGoogleReviews { get; set; }
     public bool FetchGoogleUpdates { get; set; }
     public bool FetchGoogleQuestionsAndAnswers { get; set; }
+    public bool FetchGoogleSocialProfiles { get; set; }
     public IReadOnlyList<GoogleBusinessProfileCategoryLookupItem> CategoryOptions { get; set; } = [];
     public IReadOnlyList<GbCountyLookupItem> CountyOptions { get; set; } = [];
     public IReadOnlyList<GbTownLookupItem> TownOptions { get; set; } = [];
@@ -481,6 +493,7 @@ public sealed class AdminSettingsModel
     public int GoogleReviewsRefreshHours { get; set; } = 24;
     public int GoogleUpdatesRefreshHours { get; set; } = 24;
     public int GoogleQuestionsAndAnswersRefreshHours { get; set; } = 24;
+    public int GoogleSocialProfilesRefreshHours { get; set; } = 24;
     public int SearchVolumeRefreshCooldownDays { get; set; } = 30;
     public int MapPackClickSharePercent { get; set; } = 50;
     public int MapPackCtrPosition1Percent { get; set; } = 38;
@@ -496,6 +509,7 @@ public sealed class AdminSettingsModel
     public string ZohoLeadOwnerName { get; set; } = "Richard Howes";
     public string ZohoLeadOwnerId { get; set; } = "1108404000000068001";
     public string ZohoLeadNextAction { get; set; } = "Make first contact";
+    public string SiteUrl { get; set; } = "https://briskly-viceless-kayleen.ngrok-free.dev/";
 }
 
 public sealed record GooglePlace(

@@ -10,6 +10,7 @@
         : displayNameForTitle;
     ViewData["Title"] = pageHeading;
     var statusMessage = TempData["Status"] as string;
+    var zohoTokenRefreshUrl = TempData["ZohoTokenRefreshUrl"] as string;
     var requestedRunId = ViewBag.RequestedRunId as long?;
     PlaceDataTaskStatusRow? GetTask(string taskType) =>
         Model.DataTaskStatuses.FirstOrDefault(x => string.Equals(x.TaskType, taskType, StringComparison.OrdinalIgnoreCase));
@@ -119,6 +120,20 @@
         var months = CompleteMonthsBetween(dateValue.Value, referenceDate);
         return $"{dateValue.Value:dd MMM yyyy} ({FormatYearsAndMonths(months)})";
     }
+    string FormatDateWithYearsOnly(DateTime? dateValue, DateTime referenceDate)
+    {
+        if (!dateValue.HasValue)
+            return "N/A";
+
+        var years = referenceDate.Year - dateValue.Value.Year;
+        if (referenceDate.Month < dateValue.Value.Month ||
+            (referenceDate.Month == dateValue.Value.Month && referenceDate.Day < dateValue.Value.Day))
+        {
+            years--;
+        }
+
+        return $"{dateValue.Value:d MMM yyyy} ({Math.Max(0, years)}Y)";
+    }
     string FormatDateOfBirthWithAge(DateTime? dateOfBirth, DateTime referenceDate)
     {
         if (!dateOfBirth.HasValue)
@@ -221,6 +236,7 @@
     var zohoLeadUrl = string.IsNullOrWhiteSpace(Model.ZohoLeadId)
         ? null
         : $"https://crm.zoho.com/crm/org35245834/tab/Leads/{Uri.EscapeDataString(Model.ZohoLeadId)}";
+    var zohoCreatedDateLabel = Model.ZohoLeadCreatedAtUtc?.ToString("dd MMM yyyy", CultureInfo.InvariantCulture);
     var overviewStarRating = Model.ActiveRating.HasValue
         ? Math.Floor(Model.ActiveRating.Value * 2m) / 2m
         : (decimal?)null;
@@ -242,12 +258,28 @@
         .ToList();
     var logoUrl = string.IsNullOrWhiteSpace(Model.LogoUrl) ? null : Model.LogoUrl;
     var mainPhotoUrl = string.IsNullOrWhiteSpace(Model.MainPhotoUrl) ? null : Model.MainPhotoUrl;
+    var financialInfo = Model.FinancialInfo;
+    var hasFinancialInfo = financialInfo is not null;
+    var todayDate = DateTime.UtcNow.Date;
+    var nextAccountsDueIsOverdue = IsPastDue(financialInfo?.NextAccountsDue, todayDate);
+    var companyIsActive = IsCompanyActive(financialInfo?.CompanyStatus);
+    var companyStatusDisplay = FormatCompanyStatus(financialInfo?.CompanyStatus);
+    var hasFinancialPscs = Model.FinancialPersonsOfSignificantControl.Count > 0;
+    var hasFinancialAccounts = Model.FinancialAccounts.Count > 0;
+    var financialSearchDefault = (Model.DisplayName ?? string.Empty).Trim();
+    var financialLocationDefault = (Model.FormattedAddress ?? Model.SearchLocationName ?? string.Empty).Trim();
 }
 
 <div class="page-stack">
     @if (!string.IsNullOrWhiteSpace(statusMessage))
     {
-        <div class="notice">@statusMessage</div>
+        <div class="notice">
+            @statusMessage
+            @if (!string.IsNullOrWhiteSpace(zohoTokenRefreshUrl))
+            {
+                <a href="@zohoTokenRefreshUrl"> Refresh Zoho token</a>
+            }
+        </div>
     }
     @if (ViewBag.RequestedRunId != null)
     {
@@ -263,7 +295,9 @@
                         {
                             <img class="overview-logo" src="@logoUrl" alt="@(Model.DisplayName ?? "Business") logo" loading="lazy" />
                         }
-                        <div class="overview-name">@(Model.DisplayName ?? "N/A")</div>
+                        <div class="overview-name-block">
+                            <div class="overview-name">@(Model.DisplayName ?? "N/A")</div>
+                        </div>
                     </div>
                     <div class="overview-rating-line">
                         <span class="overview-rating-value">@(Model.ActiveRating?.ToString("0.0") ?? "N/A")</span>
@@ -315,45 +349,87 @@
                     </div>
                     <div class="overview-field">
                         <i class="bi bi-tag-fill" aria-hidden="true"></i>
-                        <span>@(Model.PrimaryCategory ?? Model.PrimaryType ?? "N/A")</span>
+                        <div class="overview-primary-block">
+                            <div class="overview-primary-label">Primary Category</div>
+                            <div class="overview-primary-value">@(Model.PrimaryCategory ?? Model.PrimaryType ?? "N/A")</div>
+                        </div>
                     </div>
-                    <div class="zoho-lead-row">
-                        <strong>Zoho Lead:</strong>
-                        @if (Model.ZohoLeadCreated)
-                        {
-                            <span class="data-indicator data-indicator-yes" title="Zoho lead created">&#10003;</span>
-                            <span class="status-pill status-healthy">Created</span>
-                            <div class="zoho-lead-meta">
-                                @if (Model.ZohoLeadCreatedAtUtc.HasValue)
+                    <div class="overview-field overview-financial-field">
+                        <i class="bi bi-bank2" aria-hidden="true"></i>
+                        <div class="overview-primary-block">
+                            <div class="overview-primary-label">Financial Information</div>
+                            @if (hasFinancialInfo)
+                            {
+                                <div class="overview-company-house">
+                                    <div class="overview-company-house-row">
+                                        <span class="overview-company-house-label">Company Number</span>
+                                        <code>@financialInfo!.CompanyNumber</code>
+                                    </div>
+                                    <div class="overview-company-house-row">
+                                        <span class="overview-company-house-label">Date Incorporated</span>
+                                        <span>@FormatDateWithYearsOnly(financialInfo.DateOfCreation, todayDate)</span>
+                                    </div>
+                                </div>
+                            }
+                            else
+                            {
+                                <button type="button"
+                                        id="open-financial-modal-button"
+                                        class="btn btn-secondary overview-financial-trigger">
+                                    Get Financial Information
+                                </button>
+                            }
+                        </div>
+                    </div>
+                    <div class="overview-field">
+                        <i class="bi bi-person-vcard-fill" aria-hidden="true"></i>
+                        <div class="overview-primary-block">
+                            <div class="overview-primary-label">Zoho Lead</div>
+                            <div class="zoho-lead-row">
+                                @if (Model.ZohoLeadCreated)
                                 {
-                                    <span>Created at @Model.ZohoLeadCreatedAtUtc.Value.ToString("u") UTC</span>
+                                    @if (!string.IsNullOrWhiteSpace(Model.ZohoLeadId) && !string.IsNullOrWhiteSpace(zohoLeadUrl))
+                                    {
+                                        <div class="zoho-lead-linkline">
+                                            <a href="@zohoLeadUrl" target="_blank" rel="noopener noreferrer"><code>@Model.ZohoLeadId</code></a>
+                                            @if (!string.IsNullOrWhiteSpace(zohoCreatedDateLabel))
+                                            {
+                                                <span class="muted">(@zohoCreatedDateLabel)</span>
+                                            }
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <span class="muted">
+                                            Lead created
+                                            @if (!string.IsNullOrWhiteSpace(zohoCreatedDateLabel))
+                                            {
+                                                <text> (@zohoCreatedDateLabel)</text>
+                                            }
+                                        </span>
+                                    }
                                 }
-                                @if (!string.IsNullOrWhiteSpace(Model.ZohoLeadId))
+                                else
                                 {
-                                    <span>
-                                        Lead ID:
-                                        <a href="@zohoLeadUrl" target="_blank" rel="noopener noreferrer"><code>@Model.ZohoLeadId</code></a>
-                                    </span>
+                                    <span class="status-pill status-nodata">Not Created</span>
+                                    <form method="post" action="@createZohoLeadUrl" class="zoho-create-form">
+                                        @Html.AntiForgeryToken()
+                                        <button type="submit">Create Lead In Zoho</button>
+                                    </form>
+                                }
+
+                                @if (!string.IsNullOrWhiteSpace(Model.ZohoLastError))
+                                {
+                                    <div class="zoho-sync-error">
+                                        <strong>Last Zoho error:</strong> @Model.ZohoLastError
+                                        @if (Model.ZohoLastSyncAtUtc.HasValue)
+                                        {
+                                            <span>(@Model.ZohoLastSyncAtUtc.Value.ToString("u") UTC)</span>
+                                        }
+                                    </div>
                                 }
                             </div>
-                        }
-                        else
-                        {
-                            <form method="post" action="@createZohoLeadUrl" class="zoho-create-form">
-                                @Html.AntiForgeryToken()
-                                <button type="submit">Create Lead In Zoho</button>
-                            </form>
-                        }
-                        @if (!string.IsNullOrWhiteSpace(Model.ZohoLastError))
-                        {
-                            <div class="zoho-sync-error">
-                                <strong>Last Zoho error:</strong> @Model.ZohoLastError
-                                @if (Model.ZohoLastSyncAtUtc.HasValue)
-                                {
-                                    <span>(@Model.ZohoLastSyncAtUtc.Value.ToString("u") UTC)</span>
-                                }
-                            </div>
-                        }
+                        </div>
                     </div>
                 </div>
 
@@ -674,6 +750,7 @@ else
 
 <div class="details-tab-buttons">
     <button type="button" data-tab-button="details" class="details-tab-button">Detail</button>
+    <button type="button" data-tab-button="main-photo" class="details-tab-button">Main Photo</button>
     <button type="button" data-tab-button="reviews" class="details-tab-button">Reviews</button>
     <button type="button" data-tab-button="updates" class="details-tab-button">Updates</button>
     <button type="button" data-tab-button="questions-answers" class="details-tab-button">Questions &amp; Answers</button>
@@ -753,6 +830,23 @@ else
             <li>@topic</li>
         }
         </ul>
+    }
+</div>
+
+<div id="tab-main-photo" class="details-tab-panel card is-hidden">
+    <h3>Main Photo</h3>
+    @if (string.IsNullOrWhiteSpace(mainPhotoUrl))
+    {
+        <p class="muted">No main photo has been downloaded yet.</p>
+    }
+    else
+    {
+        <div class="place-main-photo-frame">
+            <img class="place-main-photo-image"
+                 src="@mainPhotoUrl"
+                 alt="@(Model.DisplayName ?? "Place") main photo"
+                 loading="lazy" />
+        </div>
     }
 </div>
 
@@ -1225,39 +1319,41 @@ else
                 <div class="financial-overview-label"><i class="bi bi-calendar-event" aria-hidden="true"></i> Date Incorporated</div>
                 <div class="financial-overview-value">@FormatDateWithYearsAndMonths(financialInfo.DateOfCreation, todayDate)</div>
             </div>
-            <div class="financial-overview-item">
-                <div class="financial-overview-label"><i class="bi bi-journal-check" aria-hidden="true"></i> Last Accounts Filed</div>
-                <div class="financial-overview-value">@(financialInfo!.LastAccountsFiled?.ToString("dd MMM yyyy") ?? "N/A")</div>
-            </div>
-            <div class="financial-overview-item @(nextAccountsDueIsOverdue ? "financial-overdue-card" : null)">
-                <div class="financial-overview-label"><i class="bi bi-calendar2-week" aria-hidden="true"></i> Next Accounts Due</div>
-                <div class="financial-overview-value @(nextAccountsDueIsOverdue ? "financial-overdue-text" : null)">
-                    @FormatNextAccountsDue(financialInfo!.NextAccountsDue, todayDate)
-                </div>
-            </div>
-            <div class="financial-overview-item">
-                <div class="financial-overview-label"><i class="bi bi-shield-check" aria-hidden="true"></i> Company Status</div>
-                <div class="financial-overview-value financial-status-line">
-                    <span class="data-indicator @(companyIsActive ? "data-indicator-yes" : "data-indicator-no")" title="Company Status">@(companyIsActive ? "\u2713" : "\u2717")</span>
-                    <span>@companyStatusDisplay</span>
-                </div>
-            </div>
-            <div class="financial-overview-item">
-                <div class="financial-overview-label"><i class="bi bi-exclamation-triangle" aria-hidden="true"></i> Risk Flags</div>
+            <div class="financial-overview-item financial-overview-item-wide @(nextAccountsDueIsOverdue ? "financial-overdue-card" : null)">
+                <div class="financial-overview-label"><i class="bi bi-calendar2-range" aria-hidden="true"></i> Accounts Timeline</div>
                 <div class="financial-overview-value">
-                    <div class="financial-flags-inline">
-                        <span class="financial-flag-item">
-                            <span class="data-indicator @(financialInfo!.HasLiquidated ? "data-indicator-no" : "data-indicator-yes")" title="Has Liquidated">@(financialInfo.HasLiquidated ? "!" : "\u2713")</span>
-                            @(financialInfo.HasLiquidated ? "Liquidated: Yes" : "Liquidated: No")
+                    <div class="financial-inline-pair">
+                        <span><strong>Last Accounts Filed:</strong> @(financialInfo!.LastAccountsFiled?.ToString("dd MMM yyyy") ?? "N/A")</span>
+                        <span class="financial-inline-separator">|</span>
+                        <span class="@(nextAccountsDueIsOverdue ? "financial-overdue-text" : null)">
+                            <strong>Next Accounts Due:</strong> @FormatNextAccountsDue(financialInfo.NextAccountsDue, todayDate)
                         </span>
-                        <span class="financial-flag-item">
-                            <span class="data-indicator @(financialInfo!.HasCharges ? "data-indicator-no" : "data-indicator-yes")" title="Has Charges">@(financialInfo.HasCharges ? "!" : "\u2713")</span>
-                            @(financialInfo.HasCharges ? "Charges: Yes" : "Charges: No")
+                    </div>
+                </div>
+            </div>
+            <div class="financial-overview-item financial-overview-item-wide">
+                <div class="financial-overview-label"><i class="bi bi-shield-check" aria-hidden="true"></i> Company Status &amp; Flags</div>
+                <div class="financial-overview-value">
+                    <div class="financial-status-flags-line">
+                        <span class="financial-status-line">
+                            <span class="data-indicator @(companyIsActive ? "data-indicator-yes" : "data-indicator-no")" title="Company Status">@(companyIsActive ? "\u2713" : "\u2717")</span>
+                            <span><strong>Status:</strong> @companyStatusDisplay</span>
                         </span>
-                        <span class="financial-flag-item">
-                            <span class="data-indicator @(financialInfo!.HasInsolvencyHistory ? "data-indicator-no" : "data-indicator-yes")" title="Has Insolvency History">@(financialInfo.HasInsolvencyHistory ? "!" : "\u2713")</span>
-                            @(financialInfo.HasInsolvencyHistory ? "Insolvency History: Yes" : "Insolvency History: No")
-                        </span>
+                        <span class="financial-inline-separator">|</span>
+                        <div class="financial-flags-inline">
+                            <span class="financial-flag-item">
+                                <span class="data-indicator @(financialInfo!.HasLiquidated ? "data-indicator-no" : "data-indicator-yes")" title="Has Liquidated">@(financialInfo.HasLiquidated ? "!" : "\u2713")</span>
+                                @(financialInfo.HasLiquidated ? "Liquidated: Yes" : "Liquidated: No")
+                            </span>
+                            <span class="financial-flag-item">
+                                <span class="data-indicator @(financialInfo!.HasCharges ? "data-indicator-no" : "data-indicator-yes")" title="Has Charges">@(financialInfo.HasCharges ? "!" : "\u2713")</span>
+                                @(financialInfo.HasCharges ? "Charges: Yes" : "Charges: No")
+                            </span>
+                            <span class="financial-flag-item">
+                                <span class="data-indicator @(financialInfo!.HasInsolvencyHistory ? "data-indicator-no" : "data-indicator-yes")" title="Has Insolvency History">@(financialInfo.HasInsolvencyHistory ? "!" : "\u2713")</span>
+                                @(financialInfo.HasInsolvencyHistory ? "Insolvency History: Yes" : "Insolvency History: No")
+                            </span>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1271,7 +1367,7 @@ else
         else
         {
             <div class="table-wrap">
-                <table>
+                <table class="financial-table">
                     <thead>
                         <tr>
                             <th>First Names</th>
@@ -1323,7 +1419,7 @@ else
         else
         {
             <div class="table-wrap">
-                <table class="financial-psc-table">
+                <table class="financial-table financial-psc-table">
                     <thead>
                         <tr>
                             <th>First Names</th>
@@ -1393,7 +1489,7 @@ else
         else
         {
             <div class="table-wrap">
-                <table>
+                <table class="financial-table">
                     <thead>
                         <tr>
                             <th>Made Up / Filed</th>
@@ -1448,11 +1544,11 @@ else
                 <button type="button" class="btn btn-secondary" id="close-financial-modal-button">Close</button>
             </div>
             <form id="financial-search-form" class="financial-search-form">
-                <label for="financial-search-query">Company name</label>
+                <label for="financial-search-query">Company name or company number</label>
                 <div class="financial-search-row">
                     <input id="financial-search-query" type="text" value="@financialSearchDefault" maxlength="200" />
                 </div>
-                <label for="financial-search-location">Location or full address (optional)</label>
+                <label for="financial-search-location">Address or location (optional)</label>
                 <div class="financial-search-row">
                     <input id="financial-search-location" type="text" value="@financialLocationDefault" maxlength="250" />
                     <button type="submit">Search</button>
@@ -1607,7 +1703,7 @@ else
 
                 resultsBody.appendChild(fragment);
                 lastResults = rows;
-                setStatus(`Found ${rows.length} result(s). Select one to save.`, false);
+                setStatus(`Found ${rows.length} result(s). Select one to import full financial data.`, false);
             };
 
             const runSearch = async () => {
@@ -1615,7 +1711,7 @@ else
                 const location = locationInput.value.trim();
                 if (!query && !location) {
                     clearResults();
-                    setStatus("Enter a company name or a location/address first.", true);
+                    setStatus("Enter a company name, company number, or address first.", true);
                     return;
                 }
 
@@ -1651,28 +1747,22 @@ else
                 }
 
                 isSaving = true;
-                setStatus("Saving financial info...", false);
-
-                const dateValue = selected.dateOfCreation
-                    ? selected.dateOfCreation.toString().substring(0, 10)
-                    : null;
+                setStatus("Importing full financial profile from Companies House...", false);
 
                 try {
-                    const response = await fetch(`/api/places/${encodeURIComponent(placeId)}/financial`, {
+                    const response = await fetch(`/api/places/${encodeURIComponent(placeId)}/financial/refresh`, {
                         method: "POST",
                         credentials: "same-origin",
                         headers: {
                             "Content-Type": "application/json"
                         },
                         body: JSON.stringify({
-                            dateOfCreation: dateValue,
-                            companyNumber: selected.companyNumber,
-                            companyType: selected.companyType || null
+                            companyNumber: selected.companyNumber
                         })
                     });
 
                     if (!response.ok) {
-                        setStatus("Save failed. Please try again.", true);
+                        setStatus("Import failed. Please try again.", true);
                         isSaving = false;
                         return;
                     }
@@ -1680,7 +1770,7 @@ else
                     closeModal();
                     window.location.reload();
                 } catch {
-                    setStatus("Save failed. Please try again.", true);
+                    setStatus("Import failed. Please try again.", true);
                     isSaving = false;
                 }
             };

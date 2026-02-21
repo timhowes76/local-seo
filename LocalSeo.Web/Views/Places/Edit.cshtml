@@ -1,0 +1,82 @@
+@model PlaceSocialLinksEditModel
+@{
+    var titleName = string.IsNullOrWhiteSpace(Model.DisplayName) ? Model.PlaceId : Model.DisplayName!;
+    ViewData["Title"] = $"Edit Social Media - {titleName}";
+    var backUrl = Model.RunId.HasValue
+        ? $"/places/{Model.PlaceId}?runId={Model.RunId.Value}"
+        : $"/places/{Model.PlaceId}";
+    var formAction = Model.RunId.HasValue
+        ? $"/places/{Model.PlaceId}/edit?runId={Model.RunId.Value}"
+        : $"/places/{Model.PlaceId}/edit";
+}
+
+<div class="page-stack">
+    <section class="card social-edit-card">
+        <div class="card-header">
+            <h2 class="card-title">Edit Social Media</h2>
+            <a class="btn btn-secondary" href="@backUrl">Back to Place</a>
+        </div>
+
+        @if (!ViewData.ModelState.IsValid)
+        {
+            <div class="notice social-edit-error">
+                @Html.ValidationSummary(excludePropertyErrors: true)
+            </div>
+        }
+
+        <form method="post" action="@formAction" class="social-edit-form">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="PlaceId" value="@Model.PlaceId" />
+            <input type="hidden" name="RunId" value="@(Model.RunId?.ToString() ?? string.Empty)" />
+
+            <div class="social-edit-grid">
+                <label class="social-edit-row" for="FacebookUrl">
+                    <span class="social-edit-label"><i class="bi bi-facebook" aria-hidden="true"></i> Facebook</span>
+                    <input class="social-edit-input" id="FacebookUrl" name="FacebookUrl" type="url" maxlength="1500" placeholder="https://facebook.com/your-page" value="@Model.FacebookUrl" />
+                </label>
+
+                <label class="social-edit-row" for="InstagramUrl">
+                    <span class="social-edit-label"><i class="bi bi-instagram" aria-hidden="true"></i> Instagram</span>
+                    <input class="social-edit-input" id="InstagramUrl" name="InstagramUrl" type="url" maxlength="1500" placeholder="https://instagram.com/your-profile" value="@Model.InstagramUrl" />
+                </label>
+
+                <label class="social-edit-row" for="LinkedInUrl">
+                    <span class="social-edit-label"><i class="bi bi-linkedin" aria-hidden="true"></i> LinkedIn</span>
+                    <input class="social-edit-input" id="LinkedInUrl" name="LinkedInUrl" type="url" maxlength="1500" placeholder="https://linkedin.com/company/your-company" value="@Model.LinkedInUrl" />
+                </label>
+
+                <label class="social-edit-row" for="XUrl">
+                    <span class="social-edit-label"><i class="bi bi-twitter-x" aria-hidden="true"></i> X</span>
+                    <input class="social-edit-input" id="XUrl" name="XUrl" type="url" maxlength="1500" placeholder="https://x.com/your-handle" value="@Model.XUrl" />
+                </label>
+
+                <label class="social-edit-row" for="YouTubeUrl">
+                    <span class="social-edit-label"><i class="bi bi-youtube" aria-hidden="true"></i> YouTube</span>
+                    <input class="social-edit-input" id="YouTubeUrl" name="YouTubeUrl" type="url" maxlength="1500" placeholder="https://youtube.com/@@your-channel" value="@Model.YouTubeUrl" />
+                </label>
+
+                <label class="social-edit-row" for="TikTokUrl">
+                    <span class="social-edit-label"><i class="bi bi-tiktok" aria-hidden="true"></i> TikTok</span>
+                    <input class="social-edit-input" id="TikTokUrl" name="TikTokUrl" type="url" maxlength="1500" placeholder="https://tiktok.com/@@your-account" value="@Model.TikTokUrl" />
+                </label>
+
+                <label class="social-edit-row" for="PinterestUrl">
+                    <span class="social-edit-label"><i class="bi bi-pinterest" aria-hidden="true"></i> Pinterest</span>
+                    <input class="social-edit-input" id="PinterestUrl" name="PinterestUrl" type="url" maxlength="1500" placeholder="https://pinterest.com/your-profile" value="@Model.PinterestUrl" />
+                </label>
+
+                <label class="social-edit-row" for="BlueskyUrl">
+                    <span class="social-edit-label"><i class="bi bi-cloud" aria-hidden="true"></i> Bluesky</span>
+                    <input class="social-edit-input" id="BlueskyUrl" name="BlueskyUrl" type="url" maxlength="1500" placeholder="https://bsky.app/profile/@@your-handle" value="@Model.BlueskyUrl" />
+                </label>
+            </div>
+
+            <p class="form-help">Use full http:// or https:// URLs. Leave blank to remove a profile link.</p>
+
+            <div class="toolbar">
+                <button type="submit">Save Social Links</button>
+                <a class="btn btn-secondary" href="@backUrl">Cancel</a>
+            </div>
+        </form>
+    </section>
+</div>

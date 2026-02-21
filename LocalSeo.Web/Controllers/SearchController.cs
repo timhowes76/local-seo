@@ -38,6 +38,7 @@ public class SearchController(
                 model.FetchGoogleReviews = run.FetchGoogleReviews;
                 model.FetchGoogleUpdates = run.FetchGoogleUpdates;
                 model.FetchGoogleQuestionsAndAnswers = run.FetchGoogleQuestionsAndAnswers;
+                model.FetchGoogleSocialProfiles = run.FetchGoogleSocialProfiles;
                 model.RerunSourceRunId = run.SearchRunId;
             }
             else

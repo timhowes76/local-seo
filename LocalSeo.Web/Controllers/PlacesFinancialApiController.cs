@@ -89,11 +89,8 @@ public sealed class PlacesFinancialApiController(
     public async Task<IActionResult> RefreshFinancialInfo(string placeId, [FromBody] RefreshPlaceFinancialRequest? request, CancellationToken ct)
     {
         var existing = await ingestionService.GetPlaceFinancialAsync(placeId, ct);
-        if (existing is null)
-            return NotFound(new { message = "No financial record exists for this place." });
-
         var requestedCompanyNumber = Normalize(request?.CompanyNumber);
-        var companyNumber = requestedCompanyNumber ?? existing.CompanyNumber;
+        var companyNumber = requestedCompanyNumber ?? existing?.CompanyNumber;
         if (companyNumber is null)
             return BadRequest(new { message = "Company number is required." });
 
@@ -104,9 +101,9 @@ public sealed class PlacesFinancialApiController(
         var pscs = await companiesHouseService.GetCompanyPersonsWithSignificantControlAsync(companyNumber, placeId, ct);
 
         var upsert = new PlaceFinancialInfoUpsert(
-            profile.DateOfCreation ?? existing.DateOfCreation,
+            profile.DateOfCreation ?? existing?.DateOfCreation,
             companyNumber,
-            profile.CompanyType ?? existing.CompanyType,
+            profile.CompanyType ?? existing?.CompanyType,
             profile.LastAccountsFiled,
             profile.NextAccountsDue,
             profile.CompanyStatus,

@@ -1070,7 +1070,7 @@ WHERE t.TownId = @LocationId
     private async Task<int> GetCooldownDaysAsync(CancellationToken ct)
     {
         var settings = await adminSettingsService.GetAsync(ct);
-        return Math.Clamp(settings.SearchVolumeRefreshCooldownDays, 1, 3650);
+        return Math.Clamp(settings.SearchVolumeRefreshCooldownDays, 0, 3650);
     }
 
     private static string NormalizeCategoryId(string? categoryId) => (categoryId ?? string.Empty).Trim();

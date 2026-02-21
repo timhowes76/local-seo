@@ -15,12 +15,15 @@ public sealed record ZohoLeadSyncResult(
     bool Success,
     string Message,
     string? ZohoLeadId,
-    bool UsedExistingLead);
+    bool UsedExistingLead,
+    bool RequiresZohoTokenRefresh);
 
 public sealed class ZohoLeadSyncService(
     ISqlConnectionFactory connectionFactory,
     IZohoCrmClient zohoCrmClient,
     IAdminSettingsService adminSettingsService,
+    IHttpClientFactory httpClientFactory,
+    IWebHostEnvironment webHostEnvironment,
     ILogger<ZohoLeadSyncService> logger) : IZohoLeadSyncService
 {
     private static readonly Regex UkPostcodeRegex = new(
@@ -34,64 +37,99 @@ public sealed class ZohoLeadSyncService(
     {
         var normalizedPlaceId = (placeId ?? string.Empty).Trim();
         if (normalizedPlaceId.Length == 0)
-            return new ZohoLeadSyncResult(false, "Place ID is required.", null, false);
+            return new ZohoLeadSyncResult(false, "Place ID is required.", null, false, false);
 
-        var normalizedLocalSeoLink = NormalizeLocalSeoLink(localSeoLink, normalizedPlaceId);
         var nowUtc = DateTime.UtcNow;
         var place = await LoadPlaceAsync(normalizedPlaceId, ct);
         if (place is null)
-            return new ZohoLeadSyncResult(false, "Place not found.", null, false);
-
-        if (place.ZohoLeadCreated && !string.IsNullOrWhiteSpace(place.ZohoLeadId))
-        {
-            await MarkSyncSuccessAsync(normalizedPlaceId, place.ZohoLeadId, nowUtc, ct);
-            return new ZohoLeadSyncResult(
-                true,
-                $"Zoho lead already exists for this place (Lead ID {place.ZohoLeadId}).",
-                place.ZohoLeadId,
-                true);
-        }
+            return new ZohoLeadSyncResult(false, "Place not found.", null, false, false);
 
         var settings = await adminSettingsService.GetAsync(ct);
-        var leadFieldMap = await ResolveLeadFieldMapAsync(ct);
+        var normalizedLocalSeoLink = BuildLocalSeoLink(settings.SiteUrl, normalizedPlaceId, localSeoLink);
+        var fieldResolution = await ResolveLeadFieldMapAsync(place.ZohoLeadId, ct);
+        var leadFieldMap = fieldResolution.Map;
         logger.LogInformation(
-            "Zoho lead field map resolved. NextAction={NextActionField}, Facebook={FacebookField}, CustomerOrPartner={CustomerOrPartnerField}, LinkedIn={LinkedInField}, Instagram={InstagramField}, YouTube={YouTubeField}, TikTok={TikTokField}, Pinterest={PinterestField}, XTwitter={XTwitterField}, Bluesky={BlueskyField}",
+            "Zoho lead field map resolved. CompanyNumber={CompanyNumberField}, Established={EstablishedField}, NextAction={NextActionField}, LocalSeoLink={LocalSeoLinkField}, LinkedIn={LinkedInField}, Facebook={FacebookField}, Instagram={InstagramField}, YouTube={YouTubeField}, TikTok={TikTokField}, Pinterest={PinterestField}, XTwitter={XTwitterField}, Bluesky={BlueskyField}, CustomerOrPartner={CustomerOrPartnerField}",
+            leadFieldMap.CompanyNumberApiName,
+            leadFieldMap.EstablishedApiName,
             leadFieldMap.NextActionApiName,
-            leadFieldMap.FacebookApiName,
-            leadFieldMap.CustomerOrPartnerApiName,
+            leadFieldMap.LocalSeoLinkApiName,
             leadFieldMap.LinkedInApiName,
+            leadFieldMap.FacebookApiName,
             leadFieldMap.InstagramApiName,
             leadFieldMap.YouTubeApiName,
             leadFieldMap.TikTokApiName,
             leadFieldMap.PinterestApiName,
             leadFieldMap.XTwitterApiName,
-            leadFieldMap.BlueskyApiName);
+            leadFieldMap.BlueskyApiName,
+            leadFieldMap.CustomerOrPartnerApiName);
+        if (!HasAnyRequestedFieldMapping(leadFieldMap))
+        {
+            var mappingDiagnostic = $"Zoho field metadata lookup did not resolve any requested lead fields for mapping. {fieldResolution.Diagnostic}";
+            var needsReconnect = mappingDiagnostic.Contains("OAUTH_SCOPE_MISMATCH", StringComparison.OrdinalIgnoreCase)
+                || mappingDiagnostic.Contains("oauth scope", StringComparison.OrdinalIgnoreCase)
+                || mappingDiagnostic.Contains("invalid oauth scope", StringComparison.OrdinalIgnoreCase);
+            return new ZohoLeadSyncResult(
+                false,
+                needsReconnect
+                    ? "Zoho scope permissions are missing. Reconnect Zoho to grant required CRM scopes, then try again."
+                    : mappingDiagnostic,
+                null,
+                false,
+                needsReconnect);
+        }
         var websiteHost = NormalizeWebsiteHost(place.WebsiteUri);
         var descriptionEntry = BuildDescriptionEntry(nowUtc);
         var address = ParseAddress(place.FormattedAddress);
 
         try
         {
-            var existingLead = await FindExistingActiveLeadAsync(place, websiteHost, normalizedLocalSeoLink, ct);
+            if (!string.IsNullOrWhiteSpace(place.ZohoLeadId))
+            {
+                try
+                {
+                    var currentDescription = await GetLeadDescriptionAsync(place.ZohoLeadId, ct);
+                    var description = AppendDescription(currentDescription, descriptionEntry);
+                    var directUpdatePayload = BuildExistingLeadUpdatePayload(place, settings, leadFieldMap, normalizedLocalSeoLink, description);
+                    using var directUpdateResponse = await zohoCrmClient.UpdateLeadAsync(place.ZohoLeadId, directUpdatePayload, ct);
+                    EnsureMutationSuccess(directUpdateResponse.RootElement, "Zoho lead direct update failed.");
+                    await UploadLeadPhotoFromLogoAsync(place, place.ZohoLeadId, ct);
+                    await MarkSyncSuccessAsync(normalizedPlaceId, place.ZohoLeadId, nowUtc, ct);
+                    return new ZohoLeadSyncResult(
+                        true,
+                        $"Updated existing Zoho lead {place.ZohoLeadId}.",
+                        place.ZohoLeadId,
+                        true,
+                        false);
+                }
+                catch (Exception ex) when (!ct.IsCancellationRequested)
+                {
+                    logger.LogWarning(ex, "Direct update for Zoho lead {LeadId} failed; falling back to duplicate search/upsert.", place.ZohoLeadId);
+                }
+            }
+
+            var existingLead = await FindExistingActiveLeadAsync(place, websiteHost, normalizedLocalSeoLink, leadFieldMap, ct);
             if (existingLead is not null)
             {
                 var currentDescription = await GetLeadDescriptionAsync(existingLead.LeadId, ct);
                 var description = AppendDescription(currentDescription, descriptionEntry);
-                var updatePayload = BuildExistingLeadUpdatePayload(normalizedLocalSeoLink, description);
+                var updatePayload = BuildExistingLeadUpdatePayload(place, settings, leadFieldMap, normalizedLocalSeoLink, description);
 
                 using var updateResponse = await zohoCrmClient.UpdateLeadAsync(existingLead.LeadId, updatePayload, ct);
                 EnsureMutationSuccess(updateResponse.RootElement, "Zoho lead update failed.");
+                await UploadLeadPhotoFromLogoAsync(place, existingLead.LeadId, ct);
 
                 await MarkSyncSuccessAsync(normalizedPlaceId, existingLead.LeadId, nowUtc, ct);
                 return new ZohoLeadSyncResult(
                     true,
                     $"Linked to existing active Zoho lead {existingLead.LeadId} (matched by {existingLead.MatchReason}).",
                     existingLead.LeadId,
-                    true);
+                    true,
+                    false);
             }
 
-            var createPayload = BuildCreateLeadPayload(place, settings, websiteHost, normalizedLocalSeoLink, descriptionEntry, address);
-            var duplicateCheckFields = BuildDuplicateCheckFields(place.NationalPhoneNumber, websiteHost);
+            var createPayload = BuildCreateLeadPayload(place, settings, leadFieldMap, websiteHost, normalizedLocalSeoLink, descriptionEntry, address);
+            var duplicateCheckFields = BuildDuplicateCheckFields(place.NationalPhoneNumber, websiteHost, leadFieldMap.LocalSeoLinkApiName);
 
             using var upsertResponse = await zohoCrmClient.UpsertLeadAsync(createPayload, duplicateCheckFields, ct);
             var mutation = ParseMutationResult(upsertResponse.RootElement, "Zoho lead upsert failed.");
@@ -102,31 +140,69 @@ public sealed class ZohoLeadSyncService(
             {
                 var currentDescription = await GetLeadDescriptionAsync(mutation.LeadId, ct);
                 var description = AppendDescription(currentDescription, descriptionEntry);
-                var updatePayload = BuildExistingLeadUpdatePayload(normalizedLocalSeoLink, description);
+                var updatePayload = BuildExistingLeadUpdatePayload(place, settings, leadFieldMap, normalizedLocalSeoLink, description);
                 using var updateResponse = await zohoCrmClient.UpdateLeadAsync(mutation.LeadId, updatePayload, ct);
                 EnsureMutationSuccess(updateResponse.RootElement, "Zoho lead post-upsert update failed.");
+                await UploadLeadPhotoFromLogoAsync(place, mutation.LeadId, ct);
 
                 await MarkSyncSuccessAsync(normalizedPlaceId, mutation.LeadId, nowUtc, ct);
                 return new ZohoLeadSyncResult(
                     true,
                     $"Linked to existing Zoho lead {mutation.LeadId}.",
                     mutation.LeadId,
-                    true);
+                    true,
+                    false);
             }
 
+            await UploadLeadPhotoFromLogoAsync(place, mutation.LeadId, ct);
             await MarkSyncSuccessAsync(normalizedPlaceId, mutation.LeadId, nowUtc, ct);
             return new ZohoLeadSyncResult(
                 true,
                 $"Created Zoho lead {mutation.LeadId}.",
                 mutation.LeadId,
+                false,
                 false);
         }
         catch (Exception ex) when (!ct.IsCancellationRequested)
         {
             await MarkSyncFailureAsync(normalizedPlaceId, nowUtc, ex.Message, ct);
             logger.LogWarning(ex, "Zoho lead sync failed for place {PlaceId}.", normalizedPlaceId);
-            return new ZohoLeadSyncResult(false, $"Zoho sync failed: {ex.Message}", null, false);
+            var requiresTokenRefresh = IsLikelyZohoTokenError(ex);
+            return new ZohoLeadSyncResult(
+                false,
+                requiresTokenRefresh ? "Zoho authentication failed and needs to be refreshed." : $"Zoho sync failed: {ex.Message}",
+                null,
+                false,
+                requiresTokenRefresh);
         }
+    }
+
+    private static bool IsLikelyZohoTokenError(Exception ex)
+    {
+        var message = new System.Text.StringBuilder();
+        var cursor = ex;
+        while (cursor is not null)
+        {
+            if (!string.IsNullOrWhiteSpace(cursor.Message))
+            {
+                message.Append(' ');
+                message.Append(cursor.Message);
+            }
+            cursor = cursor.InnerException;
+        }
+
+        var text = message.ToString().ToLowerInvariant();
+        if (text.Length == 0)
+            return false;
+
+        return text.Contains("invalid token", StringComparison.Ordinal)
+            || text.Contains("refresh token", StringComparison.Ordinal)
+            || text.Contains("oauth", StringComparison.Ordinal)
+            || text.Contains("unauthorized", StringComparison.Ordinal)
+            || text.Contains("http 401", StringComparison.Ordinal)
+            || text.Contains("token refresh", StringComparison.Ordinal)
+            || text.Contains("/integrations/zoho/connect", StringComparison.Ordinal)
+            || text.Contains("tokens are missing", StringComparison.Ordinal);
     }
 
     private async Task<PlaceLeadSourceRow?> LoadPlaceAsync(string placeId, CancellationToken ct)
@@ -134,30 +210,36 @@ public sealed class ZohoLeadSyncService(
         await using var conn = (Microsoft.Data.SqlClient.SqlConnection)await connectionFactory.OpenConnectionAsync(ct);
         return await conn.QuerySingleOrDefaultAsync<PlaceLeadSourceRow>(new CommandDefinition(@"
 SELECT TOP 1
-  PlaceId,
-  DisplayName,
-  NationalPhoneNumber,
-  WebsiteUri,
-  FormattedAddress,
-  LogoUrl,
-  FacebookUrl,
-  InstagramUrl,
-  LinkedInUrl,
-  XUrl,
-  YouTubeUrl,
-  TikTokUrl,
-  PinterestUrl,
-  BlueskyUrl,
-  ZohoLeadCreated,
-  ZohoLeadId
-FROM dbo.Place
-WHERE PlaceId = @PlaceId;", new { PlaceId = placeId }, cancellationToken: ct));
+  p.PlaceId,
+  p.DisplayName,
+  p.NationalPhoneNumber,
+  p.WebsiteUri,
+  p.FormattedAddress,
+  p.OpeningDate,
+  p.LogoUrl,
+  p.MainPhotoUrl,
+  p.FacebookUrl,
+  p.InstagramUrl,
+  p.LinkedInUrl,
+  p.XUrl,
+  p.YouTubeUrl,
+  p.TikTokUrl,
+  p.PinterestUrl,
+  p.BlueskyUrl,
+  p.ZohoLeadCreated,
+  p.ZohoLeadId,
+  pf.CompanyNumber,
+  pf.DateOfCreation AS FinancialDateOfCreation
+FROM dbo.Place p
+LEFT JOIN dbo.PlacesFinancial pf ON pf.PlaceId = p.PlaceId
+WHERE p.PlaceId = @PlaceId;", new { PlaceId = placeId }, cancellationToken: ct));
     }
 
     private async Task<ExistingLeadMatch?> FindExistingActiveLeadAsync(
         PlaceLeadSourceRow place,
         string? websiteHost,
         string localSeoLink,
+        ZohoLeadFieldMap fieldMap,
         CancellationToken ct)
     {
         var normalizedCompanyName = NormalizeCompanyName(place.DisplayName);
@@ -168,9 +250,10 @@ WHERE PlaceId = @PlaceId;", new { PlaceId = placeId }, cancellationToken: ct));
         {
             new("Phone", place.NationalPhoneNumber, "phone number"),
             new("Company", place.DisplayName, "company name"),
-            new("Website", websiteHost, "website host"),
-            new("LocalSeoLink", localSeoLink, "LocalSeoLink")
+            new("Website", websiteHost, "website host")
         };
+        if (!string.IsNullOrWhiteSpace(fieldMap.LocalSeoLinkApiName))
+            checks.Add(new(fieldMap.LocalSeoLinkApiName!, localSeoLink, "LocalSeoLink"));
 
         foreach (var check in checks)
         {
@@ -207,9 +290,12 @@ WHERE PlaceId = @PlaceId;", new { PlaceId = placeId }, cancellationToken: ct));
         return GetString(lead, "Description");
     }
 
-    private static IReadOnlyList<string> BuildDuplicateCheckFields(string? phone, string? websiteHost)
+    private static IReadOnlyList<string> BuildDuplicateCheckFields(string? phone, string? websiteHost, string? localSeoLinkApiName)
     {
-        var fields = new List<string> { "Company", "LocalSeoLink" };
+        var fields = new List<string> { "Company" };
+        var normalizedLocalSeoField = NormalizeNullable(localSeoLinkApiName);
+        if (normalizedLocalSeoField is not null)
+            fields.Add(normalizedLocalSeoField);
         if (!string.IsNullOrWhiteSpace(phone))
             fields.Insert(0, "Phone");
         if (!string.IsNullOrWhiteSpace(websiteHost))
@@ -225,11 +311,13 @@ WHERE PlaceId = @PlaceId;", new { PlaceId = placeId }, cancellationToken: ct));
     private static Dictionary<string, object> BuildCreateLeadPayload(
         PlaceLeadSourceRow place,
         AdminSettingsModel settings,
+        ZohoLeadFieldMap fieldMap,
         string? websiteHost,
         string localSeoLink,
         string description,
         ParsedAddress address)
     {
+        var established = ToZohoDateString(place.FinancialDateOfCreation ?? place.OpeningDate);
         var payload = new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["Company"] = CoalesceOrDefault(place.DisplayName, place.PlaceId),
@@ -249,20 +337,23 @@ WHERE PlaceId = @PlaceId;", new { PlaceId = placeId }, cancellationToken: ct));
             ["Zip_Code"] = address.PostalCode,
             ["Postalcode"] = address.PostalCode,
             ["Country"] = address.Country,
-            ["Established"] = place.OpeningDate?.ToString("yyyy-MM-dd"),
-            ["NextAction"] = NormalizeNullable(settings.ZohoLeadNextAction),
-            ["LocalSeoLink"] = localSeoLink,
             ["Description"] = description,
-            [fieldMap.LinkedInApiName] = NormalizeNullable(place.LinkedInUrl),
-            [fieldMap.FacebookApiName] = NormalizeNullable(place.FacebookUrl),
-            [fieldMap.InstagramApiName] = NormalizeNullable(place.InstagramUrl),
-            [fieldMap.YouTubeApiName] = NormalizeNullable(place.YouTubeUrl),
-            [fieldMap.TikTokApiName] = NormalizeNullable(place.TikTokUrl),
-            [fieldMap.PinterestApiName] = NormalizeNullable(place.PinterestUrl),
-            [fieldMap.XTwitterApiName] = NormalizeNullable(place.XUrl),
-            [fieldMap.BlueskyApiName] = NormalizeNullable(place.BlueskyUrl),
-            [fieldMap.CustomerOrPartnerApiName] = "Customer"
         };
+        AddMappedValue(payload, fieldMap.CompanyNumberApiName, NormalizeNullable(place.CompanyNumber));
+        AddMappedValue(payload, fieldMap.EstablishedApiName, established);
+        AddMappedValue(payload, fieldMap.NextActionApiName, NormalizeNullable(settings.ZohoLeadNextAction));
+        AddMappedValue(payload, fieldMap.LocalSeoLinkApiName, localSeoLink);
+        AddMappedValue(payload, fieldMap.LinkedInApiName, NormalizeNullable(place.LinkedInUrl));
+        AddMappedValue(payload, fieldMap.FacebookApiName, NormalizeNullable(place.FacebookUrl));
+        AddMappedValue(payload, fieldMap.InstagramApiName, NormalizeNullable(place.InstagramUrl));
+        AddMappedValue(payload, fieldMap.YouTubeApiName, NormalizeNullable(place.YouTubeUrl));
+        AddMappedValue(payload, fieldMap.TikTokApiName, NormalizeNullable(place.TikTokUrl));
+        AddMappedValue(payload, fieldMap.PinterestApiName, NormalizeNullable(place.PinterestUrl));
+        AddMappedValue(payload, fieldMap.XTwitterApiName, NormalizeNullable(place.XUrl));
+        AddMappedValue(payload, fieldMap.BlueskyApiName, NormalizeNullable(place.BlueskyUrl));
+        AddMappedValue(payload, fieldMap.LogoApiName, NormalizeNullable(place.LogoUrl));
+        AddMappedValue(payload, fieldMap.MainPhotoApiName, NormalizeNullable(place.MainPhotoUrl));
+        AddMappedValue(payload, fieldMap.CustomerOrPartnerApiName, "Customer");
 
         var ownerId = NormalizeNullable(settings.ZohoLeadOwnerId);
         if (!string.IsNullOrWhiteSpace(ownerId))
@@ -271,81 +362,289 @@ WHERE PlaceId = @PlaceId;", new { PlaceId = placeId }, cancellationToken: ct));
         return CompactPayload(payload);
     }
 
-    private static Dictionary<string, object> BuildExistingLeadUpdatePayload(string localSeoLink, string description)
+    private static Dictionary<string, object> BuildExistingLeadUpdatePayload(
+        PlaceLeadSourceRow place,
+        AdminSettingsModel settings,
+        ZohoLeadFieldMap fieldMap,
+        string localSeoLink,
+        string description)
     {
+        var address = ParseAddress(place.FormattedAddress);
+        var websiteHost = NormalizeWebsiteHost(place.WebsiteUri);
+        var established = ToZohoDateString(place.FinancialDateOfCreation ?? place.OpeningDate);
         var payload = new Dictionary<string, object?>(StringComparer.Ordinal)
         {
-            ["LocalSeoLink"] = localSeoLink,
             ["Description"] = description,
             ["Opportunity"] = "Local SEO",
-            [fieldMap.NextActionApiName] = NormalizeNullable(settings.ZohoLeadNextAction),
-            [fieldMap.LinkedInApiName] = NormalizeNullable(place.LinkedInUrl),
-            [fieldMap.FacebookApiName] = NormalizeNullable(place.FacebookUrl),
-            [fieldMap.InstagramApiName] = NormalizeNullable(place.InstagramUrl),
-            [fieldMap.YouTubeApiName] = NormalizeNullable(place.YouTubeUrl),
-            [fieldMap.TikTokApiName] = NormalizeNullable(place.TikTokUrl),
-            [fieldMap.PinterestApiName] = NormalizeNullable(place.PinterestUrl),
-            [fieldMap.XTwitterApiName] = NormalizeNullable(place.XUrl),
-            [fieldMap.BlueskyApiName] = NormalizeNullable(place.BlueskyUrl),
-            [fieldMap.CustomerOrPartnerApiName] = "Customer"
+            ["Phone"] = NormalizeNullable(place.NationalPhoneNumber),
+            ["Website"] = websiteHost,
+            ["Street"] = address.Street1,
+            ["Street2"] = address.Street2,
+            ["Street3"] = address.Street3,
+            ["City"] = address.City,
+            ["State"] = address.Province,
+            ["Province"] = address.Province,
+            ["Zip_Code"] = address.PostalCode,
+            ["Postalcode"] = address.PostalCode,
+            ["Country"] = address.Country
         };
+        AddMappedValue(payload, fieldMap.CompanyNumberApiName, NormalizeNullable(place.CompanyNumber));
+        AddMappedValue(payload, fieldMap.EstablishedApiName, established);
+        AddMappedValue(payload, fieldMap.LocalSeoLinkApiName, localSeoLink);
+        AddMappedValue(payload, fieldMap.NextActionApiName, NormalizeNullable(settings.ZohoLeadNextAction));
+        AddMappedValue(payload, fieldMap.LinkedInApiName, NormalizeNullable(place.LinkedInUrl));
+        AddMappedValue(payload, fieldMap.FacebookApiName, NormalizeNullable(place.FacebookUrl));
+        AddMappedValue(payload, fieldMap.InstagramApiName, NormalizeNullable(place.InstagramUrl));
+        AddMappedValue(payload, fieldMap.YouTubeApiName, NormalizeNullable(place.YouTubeUrl));
+        AddMappedValue(payload, fieldMap.TikTokApiName, NormalizeNullable(place.TikTokUrl));
+        AddMappedValue(payload, fieldMap.PinterestApiName, NormalizeNullable(place.PinterestUrl));
+        AddMappedValue(payload, fieldMap.XTwitterApiName, NormalizeNullable(place.XUrl));
+        AddMappedValue(payload, fieldMap.BlueskyApiName, NormalizeNullable(place.BlueskyUrl));
+        AddMappedValue(payload, fieldMap.LogoApiName, NormalizeNullable(place.LogoUrl));
+        AddMappedValue(payload, fieldMap.MainPhotoApiName, NormalizeNullable(place.MainPhotoUrl));
+        AddMappedValue(payload, fieldMap.CustomerOrPartnerApiName, "Customer");
         return CompactPayload(payload);
     }
 
-    private async Task<ZohoLeadFieldMap> ResolveLeadFieldMapAsync(CancellationToken ct)
+    private async Task<ZohoLeadFieldResolution> ResolveLeadFieldMapAsync(string? knownLeadId, CancellationToken ct)
     {
+        Exception? metadataException = null;
         try
         {
-            using var response = await zohoCrmClient.GetLeadFieldsAsync(ct);
-            return ParseLeadFieldMap(response.RootElement);
+            var metadata = new List<ZohoLeadFieldMetadata>();
+            const int perPage = 200;
+            const int maxPages = 25;
+
+            for (var page = 1; page <= maxPages; page++)
+            {
+                using var response = await zohoCrmClient.GetLeadFieldsAsync(page, perPage, ct);
+                var apiError = TryGetZohoApiError(response.RootElement);
+                if (!string.IsNullOrWhiteSpace(apiError))
+                    throw new InvalidOperationException($"Zoho fields endpoint returned an API error: {apiError}");
+                var pageFields = ExtractLeadFieldMetadata(response.RootElement);
+                metadata.AddRange(pageFields);
+
+                if (!HasMoreRecords(response.RootElement) || pageFields.Count == 0)
+                    break;
+            }
+
+            var map = ParseLeadFieldMap(metadata);
+            var sampleApiNames = metadata
+                .Select(x => x.ApiName)
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Take(20)
+                .ToArray();
+            var diagnostic = sampleApiNames.Length > 0
+                ? $"Zoho returned {metadata.Count} lead fields. Sample API names: {string.Join(", ", sampleApiNames)}."
+                : $"Zoho returned {metadata.Count} lead fields with no API names.";
+            if (HasAnyRequestedFieldMapping(map))
+                return new ZohoLeadFieldResolution(map, diagnostic);
         }
         catch (Exception ex) when (!ct.IsCancellationRequested)
         {
-            logger.LogWarning(ex, "Could not resolve Zoho Leads field metadata. Falling back to default API names.");
-            return ZohoLeadFieldMap.Default;
+            metadataException = ex;
+            logger.LogWarning(ex, "Could not resolve Zoho Leads field metadata. Falling back to lead-schema inference.");
         }
+
+        try
+        {
+            var inferredMetadata = await InferLeadFieldMetadataFromLeadSchemaAsync(knownLeadId, ct);
+            var inferredMap = ParseLeadFieldMap(inferredMetadata);
+            var sampleApiNames = inferredMetadata
+                .Select(x => x.ApiName)
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Take(20)
+                .ToArray();
+            var diagnostic = sampleApiNames.Length > 0
+                ? $"Inferred from lead schema with {inferredMetadata.Count} fields. Sample API names: {string.Join(", ", sampleApiNames)}."
+                : "Lead schema inference returned no fields.";
+            if (HasAnyRequestedFieldMapping(inferredMap))
+                return new ZohoLeadFieldResolution(inferredMap, diagnostic);
+        }
+        catch (Exception ex) when (!ct.IsCancellationRequested)
+        {
+            logger.LogWarning(ex, "Could not infer Zoho lead fields from lead schema fallback.");
+            if (metadataException is null)
+                metadataException = ex;
+        }
+
+        var metadataMessage = metadataException?.Message ?? "No additional Zoho error details were returned.";
+        return new ZohoLeadFieldResolution(
+            ZohoLeadFieldMap.Default,
+            $"Metadata lookup and schema inference did not resolve any target fields. Last error: {metadataMessage}");
     }
 
-    private static ZohoLeadFieldMap ParseLeadFieldMap(JsonElement root)
+    private async Task<IReadOnlyList<ZohoLeadFieldMetadata>> InferLeadFieldMetadataFromLeadSchemaAsync(string? knownLeadId, CancellationToken ct)
+    {
+        if (!string.IsNullOrWhiteSpace(knownLeadId))
+        {
+            using var byId = await zohoCrmClient.GetLeadByIdAsync(knownLeadId.Trim(), ct);
+            var fromKnownLead = ExtractLeadSchemaMetadata(byId.RootElement);
+            if (fromKnownLead.Count > 0)
+                return fromKnownLead;
+        }
+
+        using var ping = await zohoCrmClient.PingAsync(ct);
+        return ExtractLeadSchemaMetadata(ping.RootElement);
+    }
+
+    private static IReadOnlyList<ZohoLeadFieldMetadata> ExtractLeadSchemaMetadata(JsonElement root)
+    {
+        if (!TryGetFirstDataItem(root, out var item) || item.ValueKind != JsonValueKind.Object)
+            return [];
+
+        var metadata = new List<ZohoLeadFieldMetadata>();
+        foreach (var prop in item.EnumerateObject())
+        {
+            if (string.IsNullOrWhiteSpace(prop.Name))
+                continue;
+
+            metadata.Add(new ZohoLeadFieldMetadata(prop.Name, prop.Name, prop.Name));
+        }
+
+        return metadata;
+    }
+
+    private static IReadOnlyList<ZohoLeadFieldMetadata> ExtractLeadFieldMetadata(JsonElement root)
     {
         if (!root.TryGetProperty("fields", out var fieldsNode) || fieldsNode.ValueKind != JsonValueKind.Array)
-            return ZohoLeadFieldMap.Default;
+            return [];
 
-        var byLabel = new Dictionary<string, string>(StringComparer.Ordinal);
-        var byApiName = new Dictionary<string, string>(StringComparer.Ordinal);
+        var metadata = new List<ZohoLeadFieldMetadata>();
         foreach (var field in fieldsNode.EnumerateArray())
         {
             var label = GetString(field, "field_label");
+            var displayLabel = GetString(field, "display_label");
             var apiName = GetString(field, "api_name");
             if (string.IsNullOrWhiteSpace(apiName))
                 continue;
 
-            var normalizedApi = NormalizeFieldToken(apiName);
-            if (normalizedApi.Length > 0 && !byApiName.ContainsKey(normalizedApi))
-                byApiName[normalizedApi] = apiName.Trim();
-
-            var normalizedLabel = NormalizeFieldToken(label);
-            if (normalizedLabel.Length > 0 && !byLabel.ContainsKey(normalizedLabel))
-                byLabel[normalizedLabel] = apiName.Trim();
+            metadata.Add(new ZohoLeadFieldMetadata(label, displayLabel, apiName.Trim()));
         }
 
-        return new ZohoLeadFieldMap(
-            ResolveApiName(byLabel, byApiName, "Next_Action", "Next Action", "Next_Action", "NextAction"),
-            ResolveApiName(byLabel, byApiName, "Company_LinkedIn", "LinkedIn", "Company_LinkedIn", "LinkedIn_URL", "LinkedIn_Link"),
-            ResolveApiName(byLabel, byApiName, "Company_Facebook", "Facebook", "Company_Facebook", "Facebook_Page", "Facebook_URL", "Facebook_Link"),
-            ResolveApiName(byLabel, byApiName, "Instagram", "Instagram"),
-            ResolveApiName(byLabel, byApiName, "YouTube", "YouTube"),
-            ResolveApiName(byLabel, byApiName, "TikTok", "TikTok"),
-            ResolveApiName(byLabel, byApiName, "Pinterest", "Pinterest"),
-            ResolveApiName(byLabel, byApiName, "X_Twitter", "X (Twitter)", "X Twitter", "X_Twitter", "Twitter"),
-            ResolveApiName(byLabel, byApiName, "Bluesky", "Bluesky"),
-            ResolveApiName(byLabel, byApiName, "Customer_or_Partner", "Customer or Partner?", "Customer or Partner", "Customer_or_Partner", "Customer_or_Partner_"));
+        return metadata;
     }
 
-    private static string ResolveApiName(
+    private static bool HasMoreRecords(JsonElement root)
+    {
+        if (!root.TryGetProperty("info", out var info) || info.ValueKind != JsonValueKind.Object)
+            return false;
+        if (!info.TryGetProperty("more_records", out var moreRecords))
+            return false;
+        return moreRecords.ValueKind switch
+        {
+            JsonValueKind.True => true,
+            JsonValueKind.False => false,
+            JsonValueKind.String => bool.TryParse(moreRecords.GetString(), out var parsed) && parsed,
+            _ => false
+        };
+    }
+
+    private static string? TryGetZohoApiError(JsonElement root)
+    {
+        var code = GetString(root, "code");
+        var message = GetString(root, "message");
+        if (!string.IsNullOrWhiteSpace(code) || !string.IsNullOrWhiteSpace(message))
+            return $"{code ?? "unknown_code"}: {message ?? "unknown_message"}";
+
+        if (root.TryGetProperty("details", out var details) && details.ValueKind == JsonValueKind.Object)
+        {
+            var detailsMessage = details.ToString();
+            if (!string.IsNullOrWhiteSpace(detailsMessage))
+                return detailsMessage;
+        }
+
+        return null;
+    }
+
+    private static ZohoLeadFieldMap ParseLeadFieldMap(IReadOnlyList<ZohoLeadFieldMetadata> fields)
+    {
+        if (fields.Count == 0)
+            return ZohoLeadFieldMap.Default;
+
+        var byLabel = new Dictionary<string, string>(StringComparer.Ordinal);
+        var byApiName = new Dictionary<string, string>(StringComparer.Ordinal);
+        var searchable = new List<KeyValuePair<string, string>>();
+        foreach (var field in fields)
+        {
+            var normalizedApi = NormalizeFieldToken(field.ApiName);
+            if (normalizedApi.Length > 0 && !byApiName.ContainsKey(normalizedApi))
+            {
+                byApiName[normalizedApi] = field.ApiName;
+                searchable.Add(new KeyValuePair<string, string>(normalizedApi, field.ApiName));
+            }
+
+            var normalizedLabel = NormalizeFieldToken(field.FieldLabel);
+            if (normalizedLabel.Length > 0 && !byLabel.ContainsKey(normalizedLabel))
+            {
+                byLabel[normalizedLabel] = field.ApiName;
+                searchable.Add(new KeyValuePair<string, string>(normalizedLabel, field.ApiName));
+            }
+
+            var normalizedDisplayLabel = NormalizeFieldToken(field.DisplayLabel);
+            if (normalizedDisplayLabel.Length > 0 && !byLabel.ContainsKey(normalizedDisplayLabel))
+            {
+                byLabel[normalizedDisplayLabel] = field.ApiName;
+                searchable.Add(new KeyValuePair<string, string>(normalizedDisplayLabel, field.ApiName));
+            }
+        }
+
+        var companyNumber = ResolveApiNameOptional(byLabel, byApiName, "Company Number", "CompanyNumber", "Company_Number")
+            ?? ResolveApiNameByRequiredTokens(searchable, "company", "number");
+        var established = ResolveApiNameOptional(byLabel, byApiName, "Established", "Date Established", "Date_Established")
+            ?? ResolveApiNameByRequiredTokens(searchable, "established")
+            ?? ResolveApiNameByRequiredTokens(searchable, "date", "incorporated");
+        var nextAction = ResolveApiNameOptional(byLabel, byApiName, "Next Action", "Next_Action", "NextAction")
+            ?? ResolveApiNameByRequiredTokens(searchable, "next", "action");
+        var linkedIn = ResolveApiNameOptional(byLabel, byApiName, "LinkedIn", "Company_LinkedIn", "LinkedIn_URL", "LinkedIn_Link")
+            ?? ResolveApiNameByRequiredTokens(searchable, "linkedin");
+        var facebook = ResolveApiNameOptional(byLabel, byApiName, "Facebook", "Company_Facebook", "Facebook_Page", "Facebook_URL", "Facebook_Link")
+            ?? ResolveApiNameByRequiredTokens(searchable, "facebook");
+        var instagram = ResolveApiNameOptional(byLabel, byApiName, "Instagram")
+            ?? ResolveApiNameByRequiredTokens(searchable, "instagram");
+        var youTube = ResolveApiNameOptional(byLabel, byApiName, "YouTube")
+            ?? ResolveApiNameByRequiredTokens(searchable, "youtube");
+        var tikTok = ResolveApiNameOptional(byLabel, byApiName, "TikTok")
+            ?? ResolveApiNameByRequiredTokens(searchable, "tiktok");
+        var pinterest = ResolveApiNameOptional(byLabel, byApiName, "Pinterest")
+            ?? ResolveApiNameByRequiredTokens(searchable, "pinterest");
+        var xTwitter = ResolveApiNameOptional(byLabel, byApiName, "X (Twitter)", "X Twitter", "X_Twitter", "Twitter")
+            ?? ResolveApiNameByRequiredTokens(searchable, "twitter")
+            ?? ResolveApiNameByRequiredTokens(searchable, "xtwitter");
+        var bluesky = ResolveApiNameOptional(byLabel, byApiName, "Bluesky")
+            ?? ResolveApiNameByRequiredTokens(searchable, "bluesky");
+        var customerOrPartner = ResolveApiNameOptional(byLabel, byApiName, "Customer or Partner?", "Customer or Partner", "Customer_or_Partner", "Customer_or_Partner_")
+            ?? ResolveApiNameByRequiredTokens(searchable, "customer", "partner");
+        var localSeoLink = ResolveApiNameOptional(byLabel, byApiName, "LocalSeoLink", "Local Seo Link", "LocalSEO Link")
+            ?? ResolveApiNameByRequiredTokens(searchable, "local", "seo", "link");
+        var logo = ResolveApiNameOptional(byLabel, byApiName, "Logo", "Logo Url", "Company Logo", "Logo_URL")
+            ?? ResolveApiNameByRequiredTokens(searchable, "logo");
+        var mainPhoto = ResolveApiNameOptional(byLabel, byApiName, "Main Photo", "Main Photo Url", "Main_Image", "MainImage")
+            ?? ResolveApiNameByRequiredTokens(searchable, "main", "photo");
+
+        return new ZohoLeadFieldMap(
+            companyNumber,
+            established,
+            nextAction,
+            linkedIn,
+            facebook,
+            instagram,
+            youTube,
+            tikTok,
+            pinterest,
+            xTwitter,
+            bluesky,
+            customerOrPartner,
+            localSeoLink,
+            logo,
+            mainPhoto);
+    }
+
+    private static string? ResolveApiNameOptional(
         IReadOnlyDictionary<string, string> byLabel,
         IReadOnlyDictionary<string, string> byApiName,
-        string fallbackApiName,
         params string[] candidates)
     {
         foreach (var candidate in candidates)
@@ -359,7 +658,28 @@ WHERE PlaceId = @PlaceId;", new { PlaceId = placeId }, cancellationToken: ct));
                 return apiFromLabel;
         }
 
-        return fallbackApiName;
+        return null;
+    }
+
+    private static string? ResolveApiNameByRequiredTokens(
+        IEnumerable<KeyValuePair<string, string>> searchable,
+        params string[] requiredTokens)
+    {
+        var normalizedTokens = requiredTokens
+            .Select(NormalizeFieldToken)
+            .Where(x => x.Length > 0)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        if (normalizedTokens.Length == 0)
+            return null;
+
+        foreach (var pair in searchable)
+        {
+            if (normalizedTokens.All(token => pair.Key.Contains(token, StringComparison.Ordinal)))
+                return pair.Value;
+        }
+
+        return null;
     }
 
     private static string NormalizeFieldToken(string? value)
@@ -373,6 +693,23 @@ WHERE PlaceId = @PlaceId;", new { PlaceId = placeId }, cancellationToken: ct));
             .Where(char.IsLetterOrDigit)
             .ToArray();
         return new string(chars);
+    }
+
+    private static bool HasAnyRequestedFieldMapping(ZohoLeadFieldMap fieldMap)
+    {
+        return !string.IsNullOrWhiteSpace(fieldMap.CompanyNumberApiName)
+            || !string.IsNullOrWhiteSpace(fieldMap.EstablishedApiName)
+            || !string.IsNullOrWhiteSpace(fieldMap.NextActionApiName)
+            || !string.IsNullOrWhiteSpace(fieldMap.CustomerOrPartnerApiName)
+            || !string.IsNullOrWhiteSpace(fieldMap.LocalSeoLinkApiName)
+            || !string.IsNullOrWhiteSpace(fieldMap.LinkedInApiName)
+            || !string.IsNullOrWhiteSpace(fieldMap.FacebookApiName)
+            || !string.IsNullOrWhiteSpace(fieldMap.InstagramApiName)
+            || !string.IsNullOrWhiteSpace(fieldMap.YouTubeApiName)
+            || !string.IsNullOrWhiteSpace(fieldMap.TikTokApiName)
+            || !string.IsNullOrWhiteSpace(fieldMap.PinterestApiName)
+            || !string.IsNullOrWhiteSpace(fieldMap.XTwitterApiName)
+            || !string.IsNullOrWhiteSpace(fieldMap.BlueskyApiName);
     }
 
     private static Dictionary<string, object> CompactPayload(IReadOnlyDictionary<string, object?> payload)
@@ -389,6 +726,19 @@ WHERE PlaceId = @PlaceId;", new { PlaceId = placeId }, cancellationToken: ct));
         }
 
         return compact;
+    }
+
+    private static void AddMappedValue(IDictionary<string, object?> payload, string? apiName, object? value)
+    {
+        var normalizedApiName = NormalizeNullable(apiName);
+        if (normalizedApiName is null)
+            return;
+        if (value is null)
+            return;
+        if (value is string text && string.IsNullOrWhiteSpace(text))
+            return;
+
+        payload[normalizedApiName] = value;
     }
 
     private async Task MarkSyncSuccessAsync(string placeId, string zohoLeadId, DateTime nowUtc, CancellationToken ct)
@@ -598,6 +948,173 @@ WHERE PlaceId = @PlaceId;", new
             : property.ToString();
     }
 
+    private async Task UploadLeadPhotoFromLogoAsync(PlaceLeadSourceRow place, string leadId, CancellationToken ct)
+    {
+        var photo = await TryBuildLeadPhotoPayloadAsync(place.LogoUrl, ct);
+        if (photo is null)
+            return;
+
+        try
+        {
+            await zohoCrmClient.UploadLeadPhotoAsync(leadId, photo.Content, photo.FileName, photo.ContentType, ct);
+        }
+        catch (Exception ex) when (!ct.IsCancellationRequested)
+        {
+            logger.LogWarning(ex, "Zoho lead photo upload failed for PlaceId={PlaceId} LeadId={LeadId}.", place.PlaceId, leadId);
+        }
+    }
+
+    private async Task<LeadPhotoPayload?> TryBuildLeadPhotoPayloadAsync(string? logoUrl, CancellationToken ct)
+    {
+        var normalizedLogoUrl = NormalizeNullable(logoUrl);
+        if (normalizedLogoUrl is null)
+            return null;
+
+        var localAssetPayload = await TryBuildLeadPhotoPayloadFromLocalAssetAsync(normalizedLogoUrl, ct);
+        if (localAssetPayload is not null)
+            return localAssetPayload;
+
+        if (!Uri.TryCreate(normalizedLogoUrl, UriKind.Absolute, out var logoUri))
+            return null;
+        if (logoUri.Scheme != Uri.UriSchemeHttp && logoUri.Scheme != Uri.UriSchemeHttps)
+            return null;
+
+        var client = httpClientFactory.CreateClient();
+        using var response = await client.GetAsync(logoUri, ct);
+        if (!response.IsSuccessStatusCode)
+        {
+            logger.LogWarning(
+                "Logo download failed for lead photo upload. Place logo URL={LogoUrl} StatusCode={StatusCode}",
+                normalizedLogoUrl,
+                (int)response.StatusCode);
+            return null;
+        }
+
+        var contentType = response.Content.Headers.ContentType?.MediaType;
+        if (string.IsNullOrWhiteSpace(contentType) || !contentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+            contentType = "image/jpeg";
+
+        var content = await response.Content.ReadAsByteArrayAsync(ct);
+        if (content.Length == 0)
+            return null;
+
+        const int maxBytes = 8 * 1024 * 1024;
+        if (content.Length > maxBytes)
+        {
+            logger.LogWarning("Skipping lead photo upload because logo exceeds max size. Bytes={ByteCount}", content.Length);
+            return null;
+        }
+
+        var extension = GetImageExtension(contentType, logoUri.AbsolutePath);
+        return new LeadPhotoPayload(content, $"company-logo{extension}", contentType);
+    }
+
+    private async Task<LeadPhotoPayload?> TryBuildLeadPhotoPayloadFromLocalAssetAsync(string logoUrl, CancellationToken ct)
+    {
+        var normalizedLocalPath = NormalizeLocalAssetPath(logoUrl);
+        if (normalizedLocalPath is null)
+            return null;
+
+        var webRootPath = webHostEnvironment.WebRootPath;
+        if (string.IsNullOrWhiteSpace(webRootPath) && !string.IsNullOrWhiteSpace(webHostEnvironment.ContentRootPath))
+            webRootPath = Path.Combine(webHostEnvironment.ContentRootPath, "wwwroot");
+        if (string.IsNullOrWhiteSpace(webRootPath))
+            return null;
+
+        var fullPath = Path.GetFullPath(Path.Combine(webRootPath, normalizedLocalPath.Replace('/', Path.DirectorySeparatorChar)));
+        var fullWebRootPath = Path.GetFullPath(webRootPath);
+        if (!fullPath.StartsWith(fullWebRootPath, StringComparison.OrdinalIgnoreCase))
+            return null;
+        if (!File.Exists(fullPath))
+            return null;
+
+        var content = await File.ReadAllBytesAsync(fullPath, ct);
+        if (content.Length == 0)
+            return null;
+
+        const int maxBytes = 8 * 1024 * 1024;
+        if (content.Length > maxBytes)
+        {
+            logger.LogWarning("Skipping lead photo upload because local logo exceeds max size. Path={Path} Bytes={ByteCount}", fullPath, content.Length);
+            return null;
+        }
+
+        var extension = Path.GetExtension(fullPath);
+        var contentType = GetContentTypeFromExtension(extension);
+        return new LeadPhotoPayload(content, $"company-logo{NormalizeExtension(extension)}", contentType);
+    }
+
+    private static string? NormalizeLocalAssetPath(string value)
+    {
+        var normalized = (value ?? string.Empty).Trim().Replace('\\', '/');
+        if (normalized.Length == 0)
+            return null;
+        if (normalized.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
+            || normalized.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        if (normalized.StartsWith("~/", StringComparison.Ordinal))
+            normalized = normalized[2..];
+        if (normalized.StartsWith("/", StringComparison.Ordinal))
+            normalized = normalized[1..];
+        if (normalized.StartsWith("wwwroot/", StringComparison.OrdinalIgnoreCase))
+            normalized = normalized["wwwroot/".Length..];
+
+        if (normalized.StartsWith("site-assets/", StringComparison.OrdinalIgnoreCase))
+            return normalized;
+
+        return null;
+    }
+
+    private static string GetContentTypeFromExtension(string? extension)
+    {
+        var normalized = NormalizeExtension(extension);
+        return normalized switch
+        {
+            ".png" => "image/png",
+            ".gif" => "image/gif",
+            ".webp" => "image/webp",
+            ".svg" => "image/svg+xml",
+            ".bmp" => "image/bmp",
+            ".tif" => "image/tiff",
+            ".tiff" => "image/tiff",
+            ".jpg" => "image/jpeg",
+            ".jpeg" => "image/jpeg",
+            _ => "image/jpeg"
+        };
+    }
+
+    private static string NormalizeExtension(string? extension)
+    {
+        var normalized = (extension ?? string.Empty).Trim().ToLowerInvariant();
+        if (string.IsNullOrWhiteSpace(normalized))
+            return ".jpg";
+        if (!normalized.StartsWith(".", StringComparison.Ordinal))
+            normalized = "." + normalized;
+        if (normalized.Length > 10)
+            return ".jpg";
+        return normalized;
+    }
+
+    private static string BuildLocalSeoLink(string? siteUrl, string placeId, string? fallbackLocalSeoLink)
+    {
+        var normalizedSiteUrl = NormalizeNullable(siteUrl);
+        if (normalizedSiteUrl is not null
+            && Uri.TryCreate(normalizedSiteUrl, UriKind.Absolute, out var siteUri)
+            && (siteUri.Scheme == Uri.UriSchemeHttp || siteUri.Scheme == Uri.UriSchemeHttps))
+        {
+            var baseUri = siteUri.AbsoluteUri.EndsWith("/", StringComparison.Ordinal)
+                ? new Uri(siteUri.AbsoluteUri, UriKind.Absolute)
+                : new Uri($"{siteUri.AbsoluteUri}/", UriKind.Absolute);
+            var relative = $"places/{Uri.EscapeDataString(placeId)}";
+            return new Uri(baseUri, relative).ToString();
+        }
+
+        return NormalizeLocalSeoLink(fallbackLocalSeoLink ?? string.Empty, placeId);
+    }
+
     private static string NormalizeLocalSeoLink(string localSeoLink, string placeId)
     {
         var normalized = (localSeoLink ?? string.Empty).Trim();
@@ -605,6 +1122,35 @@ WHERE PlaceId = @PlaceId;", new
             return normalized;
 
         return $"/places/{Uri.EscapeDataString(placeId)}";
+    }
+
+    private static string GetImageExtension(string contentType, string? absolutePath)
+    {
+        var normalized = (contentType ?? string.Empty).Trim().ToLowerInvariant();
+        if (normalized == "image/png")
+            return ".png";
+        if (normalized == "image/gif")
+            return ".gif";
+        if (normalized == "image/webp")
+            return ".webp";
+        if (normalized == "image/svg+xml")
+            return ".svg";
+        if (normalized == "image/bmp")
+            return ".bmp";
+        if (normalized == "image/tiff")
+            return ".tif";
+        if (normalized is "image/jpg" or "image/jpeg")
+            return ".jpg";
+
+        var extension = Path.GetExtension(absolutePath ?? string.Empty);
+        if (!string.IsNullOrWhiteSpace(extension)
+            && extension.Length <= 10
+            && extension.StartsWith(".", StringComparison.Ordinal))
+        {
+            return extension.ToLowerInvariant();
+        }
+
+        return ".jpg";
     }
 
     private static string? NormalizeWebsiteHost(string? websiteUri)
@@ -665,17 +1211,29 @@ WHERE PlaceId = @PlaceId;", new
         return normalized[..maxLength];
     }
 
-    private sealed record PlaceLeadSourceRow(
-        string PlaceId,
-        string? DisplayName,
-        string? NationalPhoneNumber,
-        string? WebsiteUri,
-        string? FormattedAddress,
-        DateTime? OpeningDate,
-        bool ZohoLeadCreated,
-        string? ZohoLeadId,
-        string? CompanyNumber,
-        DateTime? DateOfCreation);
+    private sealed class PlaceLeadSourceRow
+    {
+        public string PlaceId { get; set; } = string.Empty;
+        public string? DisplayName { get; set; }
+        public string? NationalPhoneNumber { get; set; }
+        public string? WebsiteUri { get; set; }
+        public string? FormattedAddress { get; set; }
+        public DateTime? OpeningDate { get; set; }
+        public string? LogoUrl { get; set; }
+        public string? MainPhotoUrl { get; set; }
+        public string? FacebookUrl { get; set; }
+        public string? InstagramUrl { get; set; }
+        public string? LinkedInUrl { get; set; }
+        public string? XUrl { get; set; }
+        public string? YouTubeUrl { get; set; }
+        public string? TikTokUrl { get; set; }
+        public string? PinterestUrl { get; set; }
+        public string? BlueskyUrl { get; set; }
+        public bool ZohoLeadCreated { get; set; }
+        public string? ZohoLeadId { get; set; }
+        public string? CompanyNumber { get; set; }
+        public DateTime? FinancialDateOfCreation { get; set; }
+    }
 
     private sealed record ExistingLeadMatch(string LeadId, string MatchReason);
     private sealed record LeadDuplicateCheck(string FieldName, string? Value, string MatchReason);
@@ -688,32 +1246,49 @@ WHERE PlaceId = @PlaceId;", new
         string? PostalCode,
         string? Country);
     private sealed record LeadPhotoPayload(
-        MemoryStream ContentStream,
+        byte[] Content,
         string FileName,
         string ContentType);
+    private sealed record ZohoLeadFieldMetadata(
+        string? FieldLabel,
+        string? DisplayLabel,
+        string ApiName);
+    private sealed record ZohoLeadFieldResolution(
+        ZohoLeadFieldMap Map,
+        string Diagnostic);
     private sealed record ZohoLeadFieldMap(
-        string NextActionApiName,
-        string LinkedInApiName,
-        string FacebookApiName,
-        string InstagramApiName,
-        string YouTubeApiName,
-        string TikTokApiName,
-        string PinterestApiName,
-        string XTwitterApiName,
-        string BlueskyApiName,
-        string CustomerOrPartnerApiName)
+        string? CompanyNumberApiName,
+        string? EstablishedApiName,
+        string? NextActionApiName,
+        string? LinkedInApiName,
+        string? FacebookApiName,
+        string? InstagramApiName,
+        string? YouTubeApiName,
+        string? TikTokApiName,
+        string? PinterestApiName,
+        string? XTwitterApiName,
+        string? BlueskyApiName,
+        string? CustomerOrPartnerApiName,
+        string? LocalSeoLinkApiName,
+        string? LogoApiName,
+        string? MainPhotoApiName)
     {
         public static ZohoLeadFieldMap Default { get; } = new(
-            "Next_Action",
-            "Company_LinkedIn",
-            "Company_Facebook",
-            "Instagram",
-            "YouTube",
-            "TikTok",
-            "Pinterest",
-            "X_Twitter",
-            "Bluesky",
-            "Customer_or_Partner");
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null);
     }
     private sealed record ZohoMutationResult(string? LeadId, string? Action);
 }

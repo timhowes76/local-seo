@@ -12,6 +12,8 @@ public interface IZohoCrmClient
     Task<JsonDocument> UpsertLeadAsync(object leadPayload, IReadOnlyList<string> duplicateCheckFields, CancellationToken ct = default);
     Task<JsonDocument> UpdateLeadAsync(string leadId, object leadPayload, CancellationToken ct = default);
     Task<JsonDocument> GetLeadByIdAsync(string leadId, CancellationToken ct = default);
+    Task<JsonDocument> GetLeadFieldsAsync(int page = 1, int perPage = 200, CancellationToken ct = default);
+    Task UploadLeadPhotoAsync(string leadId, byte[] content, string fileName, string contentType, CancellationToken ct = default);
     Task<JsonDocument> PingAsync(CancellationToken ct = default);
 }
 
@@ -96,8 +98,40 @@ public sealed class ZohoCrmClient(
         return SendWithAuthRetryAsync(() => new HttpRequestMessage(HttpMethod.Get, $"Leads/{encodedLeadId}"), ct);
     }
 
+    public Task<JsonDocument> GetLeadFieldsAsync(int page = 1, int perPage = 200, CancellationToken ct = default)
+    {
+        var normalizedPage = Math.Max(1, page);
+        var normalizedPerPage = Math.Clamp(perPage, 1, 200);
+        return SendWithAuthRetryAsync(
+            () => new HttpRequestMessage(HttpMethod.Get, $"settings/fields?module=Leads&page={normalizedPage}&per_page={normalizedPerPage}"),
+            ct);
+    }
+
     public Task<JsonDocument> PingAsync(CancellationToken ct = default)
         => SendWithAuthRetryAsync(() => new HttpRequestMessage(HttpMethod.Get, "Leads?per_page=1&page=1"), ct);
+
+    public Task UploadLeadPhotoAsync(string leadId, byte[] content, string fileName, string contentType, CancellationToken ct = default)
+    {
+        var normalizedLeadId = (leadId ?? string.Empty).Trim();
+        if (normalizedLeadId.Length == 0)
+            throw new InvalidOperationException("Zoho lead ID is required.");
+        if (content is null || content.Length == 0)
+            throw new InvalidOperationException("Lead photo content is required.");
+
+        var encodedLeadId = Uri.EscapeDataString(normalizedLeadId);
+        var normalizedFileName = string.IsNullOrWhiteSpace(fileName) ? "company-logo.jpg" : fileName.Trim();
+        var normalizedContentType = string.IsNullOrWhiteSpace(contentType) ? "image/jpeg" : contentType.Trim();
+        return SendWithAuthRetryNoResponseAsync(() =>
+        {
+            var request = new HttpRequestMessage(HttpMethod.Post, $"Leads/{encodedLeadId}/photo");
+            var multipart = new MultipartFormDataContent();
+            var fileContent = new ByteArrayContent(content);
+            fileContent.Headers.ContentType = MediaTypeHeaderValue.Parse(normalizedContentType);
+            multipart.Add(fileContent, "file", normalizedFileName);
+            request.Content = multipart;
+            return request;
+        }, ct);
+    }
 
     private async Task<JsonDocument> SendWithAuthRetryAsync(Func<HttpRequestMessage> requestFactory, CancellationToken ct)
     {
@@ -134,10 +168,51 @@ public sealed class ZohoCrmClient(
                 (int)response.StatusCode,
                 requestId ?? "n/a",
                 SummarizeBody(body));
-            throw new InvalidOperationException($"Zoho CRM request failed with HTTP {(int)response.StatusCode}.");
+            throw new InvalidOperationException($"Zoho CRM request failed with HTTP {(int)response.StatusCode}. {SummarizeBody(body)}");
         }
 
         throw new InvalidOperationException("Zoho CRM request failed after token refresh retry.");
+    }
+
+    private async Task SendWithAuthRetryNoResponseAsync(Func<HttpRequestMessage> requestFactory, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(requestFactory);
+
+        for (var attempt = 1; attempt <= 2; attempt++)
+        {
+            var accessToken = attempt == 1
+                ? await tokenService.GetValidAccessTokenAsync(ct)
+                : await tokenService.ForceRefreshAccessTokenAsync(ct);
+
+            using var request = requestFactory();
+            request.Headers.Authorization = new AuthenticationHeaderValue("Zoho-oauthtoken", accessToken);
+            request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+
+            using var response = await httpClient.SendAsync(request, ct);
+            var body = await response.Content.ReadAsStringAsync(ct);
+            if (response.IsSuccessStatusCode)
+                return;
+
+            var requestId = GetRequestId(response);
+            if (attempt == 1 && IsInvalidTokenResponse(response.StatusCode, body))
+            {
+                logger.LogWarning(
+                    "Zoho CRM photo upload returned an invalid token response. Status {StatusCode}; RequestId {RequestId}; Body {Body}",
+                    (int)response.StatusCode,
+                    requestId ?? "n/a",
+                    SummarizeBody(body));
+                continue;
+            }
+
+            logger.LogWarning(
+                "Zoho CRM photo upload failed. Status {StatusCode}; RequestId {RequestId}; Body {Body}",
+                (int)response.StatusCode,
+                requestId ?? "n/a",
+                SummarizeBody(body));
+            throw new InvalidOperationException($"Zoho CRM photo upload failed with HTTP {(int)response.StatusCode}. {SummarizeBody(body)}");
+        }
+
+        throw new InvalidOperationException("Zoho CRM photo upload failed after token refresh retry.");
     }
 
     private static JsonDocument ParseJsonOrDefault(string body)

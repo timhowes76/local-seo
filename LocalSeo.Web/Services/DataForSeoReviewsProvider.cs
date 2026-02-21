@@ -8,6 +8,7 @@ using Dapper;
 using LocalSeo.Web.Data;
 using LocalSeo.Web.Models;
 using LocalSeo.Web.Options;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Options;
 
 namespace LocalSeo.Web.Services;
@@ -17,12 +18,14 @@ public sealed class DataForSeoReviewsProvider(
     IHttpClientFactory httpClientFactory,
     IOptions<DataForSeoOptions> options,
     IReviewVelocityService reviewVelocityService,
+    IWebHostEnvironment webHostEnvironment,
     ILogger<DataForSeoReviewsProvider> logger) : IReviewsProvider, IDataForSeoTaskTracker
 {
     private const string TaskTypeReviews = "reviews";
     private const string TaskTypeMyBusinessInfo = "my_business_info";
     private const string TaskTypeMyBusinessUpdates = "my_business_updates";
     private const string TaskTypeQuestionsAndAnswers = "questions_and_answers";
+    private const string TaskTypeSocialProfiles = "social_profiles";
 
     public async Task FetchAndStoreReviewsAsync(
         string placeId,
@@ -35,9 +38,10 @@ public sealed class DataForSeoReviewsProvider(
         bool fetchMyBusinessInfo,
         bool fetchGoogleUpdates,
         bool fetchGoogleQuestionsAndAnswers,
+        bool fetchGoogleSocialProfiles,
         CancellationToken ct)
     {
-        if (!fetchGoogleReviews && !fetchMyBusinessInfo && !fetchGoogleUpdates && !fetchGoogleQuestionsAndAnswers)
+        if (!fetchGoogleReviews && !fetchMyBusinessInfo && !fetchGoogleUpdates && !fetchGoogleQuestionsAndAnswers && !fetchGoogleSocialProfiles)
             return;
 
         var cfg = options.Value;
@@ -51,6 +55,8 @@ public sealed class DataForSeoReviewsProvider(
                 await LogTaskFailureAsync(placeId, locationName, TaskTypeMyBusinessUpdates, "DataForSEO credentials are not configured.", ct);
             if (fetchGoogleQuestionsAndAnswers)
                 await LogTaskFailureAsync(placeId, locationName, TaskTypeQuestionsAndAnswers, "DataForSEO credentials are not configured.", ct);
+            if (fetchGoogleSocialProfiles)
+                await LogTaskFailureAsync(placeId, locationName, TaskTypeSocialProfiles, "DataForSEO credentials are not configured.", ct);
             logger.LogWarning("DataForSEO credentials are not configured; skipping review fetch for place {PlaceId}.", placeId);
             return;
         }
@@ -126,6 +132,22 @@ public sealed class DataForSeoReviewsProvider(
                 logger.LogWarning(ex, "DataForSEO questions_and_answers task creation failed for place {PlaceId}.", placeId);
             }
         }
+
+        if (fetchGoogleSocialProfiles)
+        {
+            try
+            {
+                await FetchAndStoreSocialProfilesAsync(placeId, locationName, cfg, ct);
+            }
+            catch (Exception ex) when (!ct.IsCancellationRequested)
+            {
+                await LogTaskFailureAsync(placeId, locationName, TaskTypeSocialProfiles, ex.Message, ct);
+                logger.LogWarning(ex, "DataForSEO social_profiles call failed for place {PlaceId}.", placeId);
+            }
+        }
+
+        if (!fetchGoogleReviews && !fetchMyBusinessInfo && !fetchGoogleUpdates && !fetchGoogleQuestionsAndAnswers)
+            return;
 
         try
         {
@@ -243,11 +265,12 @@ WHEN NOT MATCHED THEN
             }, cancellationToken: ct));
     }
 
-    public async Task<IReadOnlyList<DataForSeoTaskRow>> GetLatestTasksAsync(int take, string? taskType, CancellationToken ct)
+    public async Task<IReadOnlyList<DataForSeoTaskRow>> GetLatestTasksAsync(int take, string? taskType, string? status, CancellationToken ct)
     {
         var normalizedTaskType = string.IsNullOrWhiteSpace(taskType) || string.Equals(taskType, "all", StringComparison.OrdinalIgnoreCase)
             ? null
             : NormalizeTaskType(taskType);
+        var normalizedStatus = NormalizeTaskStatus(status);
         await using var conn = (Microsoft.Data.SqlClient.SqlConnection)await connectionFactory.OpenConnectionAsync(ct);
         var rows = await conn.QueryAsync<DataForSeoTaskRow>(new CommandDefinition(@"
 SELECT TOP (@Take)
@@ -271,9 +294,10 @@ SELECT TOP (@Take)
   LastError
 FROM dbo.DataForSeoReviewTask
 WHERE @TaskType IS NULL OR COALESCE(TaskType, 'reviews') = @TaskType
+  AND (@Status IS NULL OR Status = @Status)
 ORDER BY
   DataForSeoReviewTaskId DESC;",
-            new { Take = Math.Clamp(take, 1, 2000), TaskType = normalizedTaskType }, cancellationToken: ct));
+            new { Take = Math.Clamp(take, 1, 2000), TaskType = normalizedTaskType, Status = normalizedStatus }, cancellationToken: ct));
         return rows.ToList();
     }
 
@@ -497,8 +521,10 @@ WHERE DataForSeoReviewTaskId=@DataForSeoReviewTaskId;",
                 return new DataForSeoPopulateResult(infoSnapshot.IsCompleted, msg, 0);
             }
 
+            var resolvedInfo = await ResolveBusinessInfoAssetPathsAsync(task.PlaceId, infoSnapshot.Info, ct);
+
             await using var infoTx = await conn.BeginTransactionAsync(ct);
-            var infoUpserted = await UpsertPlaceBusinessInfoAsync(conn, infoTx, task.PlaceId, infoSnapshot.Info, ct);
+            var infoUpserted = await UpsertPlaceBusinessInfoAsync(conn, infoTx, task.PlaceId, resolvedInfo, ct);
 
             await conn.ExecuteAsync(new CommandDefinition(@"
 UPDATE dbo.DataForSeoReviewTask
@@ -1031,6 +1057,8 @@ UPDATE dbo.Place
 SET
   Description=COALESCE(@Description, Description),
   PhotoCount=COALESCE(@PhotoCount, PhotoCount),
+  LogoUrl=COALESCE(@LogoUrl, LogoUrl),
+  MainPhotoUrl=COALESCE(@MainPhotoUrl, MainPhotoUrl),
   OtherCategoriesJson=@OtherCategoriesJson,
   PlaceTopicsJson=@PlaceTopicsJson,
   LastSeenUtc=SYSUTCDATETIME()
@@ -1040,11 +1068,197 @@ WHERE PlaceId=@PlaceId;",
                 PlaceId = placeId,
                 Description = TruncateText(payload.Description, 750),
                 payload.PhotoCount,
+                payload.LogoUrl,
+                payload.MainPhotoUrl,
                 OtherCategoriesJson = otherCategories,
                 PlaceTopicsJson = placeTopics
             }, tx, cancellationToken: ct));
 
         return 1;
+    }
+
+    private async Task<BusinessInfoPayload> ResolveBusinessInfoAssetPathsAsync(
+        string placeId,
+        BusinessInfoPayload payload,
+        CancellationToken ct)
+    {
+        var currentAssets = await GetCurrentPlaceAssetsAsync(placeId, ct);
+        var payloadLogoUrl = payload.LogoUrl ?? ExtractImageUrlFromRawJson(payload.RawJson, preferLogo: true);
+        var payloadMainPhotoUrl = payload.MainPhotoUrl ?? ExtractImageUrlFromRawJson(payload.RawJson, preferLogo: false);
+
+        var logoSourceUrl = payloadLogoUrl ?? currentAssets?.LogoUrl;
+        var mainPhotoSourceUrl = payloadMainPhotoUrl ?? currentAssets?.MainPhotoUrl;
+
+        var resolvedLogoUrl = await DownloadPlaceImageAsync(placeId, logoSourceUrl, "logo", "site-assets/place-logo", ct);
+        var resolvedMainPhotoUrl = await DownloadPlaceImageAsync(placeId, mainPhotoSourceUrl, "main-photo", "site-assets/place-main-photo", ct);
+
+        return payload with
+        {
+            LogoUrl = CoalesceAssetUrl(resolvedLogoUrl, payloadLogoUrl, currentAssets?.LogoUrl),
+            MainPhotoUrl = CoalesceAssetUrl(resolvedMainPhotoUrl, payloadMainPhotoUrl, currentAssets?.MainPhotoUrl)
+        };
+    }
+
+    private async Task<PlaceAssetUrls?> GetCurrentPlaceAssetsAsync(string placeId, CancellationToken ct)
+    {
+        await using var conn = (Microsoft.Data.SqlClient.SqlConnection)await connectionFactory.OpenConnectionAsync(ct);
+        return await conn.QuerySingleOrDefaultAsync<PlaceAssetUrls>(new CommandDefinition(@"
+SELECT TOP 1
+  LogoUrl,
+  MainPhotoUrl
+FROM dbo.Place
+WHERE PlaceId = @PlaceId;", new { PlaceId = placeId }, cancellationToken: ct));
+    }
+
+    private async Task<string?> DownloadPlaceImageAsync(
+        string placeId,
+        string? sourceUrl,
+        string kind,
+        string relativeDirectory,
+        CancellationToken ct)
+    {
+        var normalizedSourceUrl = NormalizeAbsoluteHttpUrl(sourceUrl);
+        if (string.IsNullOrWhiteSpace(normalizedSourceUrl))
+            return null;
+
+        var webRootPath = webHostEnvironment.WebRootPath;
+        if (string.IsNullOrWhiteSpace(webRootPath) && !string.IsNullOrWhiteSpace(webHostEnvironment.ContentRootPath))
+            webRootPath = Path.Combine(webHostEnvironment.ContentRootPath, "wwwroot");
+        if (string.IsNullOrWhiteSpace(webRootPath))
+            return null;
+
+        var fullDirectory = Path.Combine(
+            webRootPath,
+            relativeDirectory.Replace('/', Path.DirectorySeparatorChar));
+        Directory.CreateDirectory(fullDirectory);
+
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, normalizedSourceUrl);
+            request.Headers.TryAddWithoutValidation("User-Agent", "LocalSeo.Web/1.0");
+            request.Headers.TryAddWithoutValidation("Accept", "image/*,*/*;q=0.8");
+            var client = httpClientFactory.CreateClient();
+            using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
+            if (!response.IsSuccessStatusCode)
+                return null;
+
+            await using var sourceStream = await response.Content.ReadAsStreamAsync(ct);
+            using var memory = new MemoryStream();
+            await sourceStream.CopyToAsync(memory, ct);
+            if (memory.Length == 0)
+                return null;
+
+            var extension = GetImageFileExtension(
+                response.Content.Headers.ContentType?.MediaType,
+                normalizedSourceUrl);
+            var fileName = BuildAssetFileName(placeId, kind, normalizedSourceUrl, extension);
+            var fullPath = Path.Combine(fullDirectory, fileName);
+
+            await File.WriteAllBytesAsync(fullPath, memory.ToArray(), ct);
+            var relativeUrl = "/" + relativeDirectory.Trim('/').Replace("\\", "/") + "/" + fileName;
+            return relativeUrl;
+        }
+        catch (Exception ex) when (!ct.IsCancellationRequested)
+        {
+            logger.LogWarning(
+                ex,
+                "Failed to download place {Kind} image for place {PlaceId} from {Url}.",
+                kind,
+                placeId,
+                normalizedSourceUrl);
+            return null;
+        }
+    }
+
+    private static string? CoalesceAssetUrl(string? downloadedUrl, string? payloadUrl, string? currentUrl)
+    {
+        if (!string.IsNullOrWhiteSpace(downloadedUrl))
+            return downloadedUrl;
+
+        var payloadLocal = NormalizeLocalAssetUrl(payloadUrl);
+        if (!string.IsNullOrWhiteSpace(payloadLocal))
+            return payloadLocal;
+
+        var currentLocal = NormalizeLocalAssetUrl(currentUrl);
+        if (!string.IsNullOrWhiteSpace(currentLocal))
+            return currentLocal;
+
+        return NormalizeAbsoluteHttpUrl(payloadUrl)
+            ?? NormalizeAbsoluteHttpUrl(currentUrl);
+    }
+
+    private static string? NormalizeLocalAssetUrl(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        var normalized = value.Trim().Replace('\\', '/');
+        if (normalized.StartsWith("~/", StringComparison.Ordinal))
+            normalized = "/" + normalized[2..];
+
+        if (normalized.StartsWith("/", StringComparison.Ordinal))
+            return normalized;
+
+        if (normalized.StartsWith("site-assets/", StringComparison.OrdinalIgnoreCase))
+            return "/" + normalized;
+
+        if (normalized.StartsWith("wwwroot/", StringComparison.OrdinalIgnoreCase))
+            return "/" + normalized["wwwroot/".Length..];
+
+        return null;
+    }
+
+    private static string BuildAssetFileName(string placeId, string kind, string sourceUrl, string extension)
+    {
+        var safePlaceId = SanitizeFilePart(placeId);
+        using var sha = SHA256.Create();
+        var hashBytes = sha.ComputeHash(Encoding.UTF8.GetBytes(sourceUrl));
+        var hash = Convert.ToHexString(hashBytes).ToLowerInvariant();
+        return $"{safePlaceId}-{kind}-{hash[..16]}{extension}";
+    }
+
+    private static string SanitizeFilePart(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return "place";
+
+        var chars = value
+            .Trim()
+            .Select(ch => char.IsLetterOrDigit(ch) ? ch : '-')
+            .ToArray();
+        var normalized = new string(chars).Trim('-');
+        return string.IsNullOrWhiteSpace(normalized) ? "place" : normalized.ToLowerInvariant();
+    }
+
+    private static string GetImageFileExtension(string? mediaType, string sourceUrl)
+    {
+        if (!string.IsNullOrWhiteSpace(mediaType))
+        {
+            var normalizedMediaType = mediaType.Trim().ToLowerInvariant();
+            if (normalizedMediaType.Contains("jpeg"))
+                return ".jpg";
+            if (normalizedMediaType.Contains("png"))
+                return ".png";
+            if (normalizedMediaType.Contains("webp"))
+                return ".webp";
+            if (normalizedMediaType.Contains("gif"))
+                return ".gif";
+            if (normalizedMediaType.Contains("bmp"))
+                return ".bmp";
+            if (normalizedMediaType.Contains("svg"))
+                return ".svg";
+            if (normalizedMediaType.Contains("avif"))
+                return ".avif";
+        }
+
+        if (Uri.TryCreate(sourceUrl, UriKind.Absolute, out var uri))
+        {
+            var ext = Path.GetExtension(uri.AbsolutePath);
+            if (!string.IsNullOrWhiteSpace(ext) && ext.Length <= 10)
+                return ext.ToLowerInvariant();
+        }
+
+        return ".jpg";
     }
 
     private async Task<TaskCreationResult> CreateReviewsTaskAsync(
@@ -1272,6 +1486,310 @@ WHERE PlaceId=@PlaceId;",
         return new TaskCreationResult(taskId, taskStatusCode, taskStatusMessage);
     }
 
+    private async Task FetchAndStoreSocialProfilesAsync(
+        string placeId,
+        string? locationName,
+        DataForSeoOptions cfg,
+        CancellationToken ct)
+    {
+        var seed = await GetSocialProfilesSeedAsync(placeId, ct);
+        var keyword = BuildSocialProfilesKeyword(seed, locationName);
+        if (string.IsNullOrWhiteSpace(keyword))
+            throw new InvalidOperationException("Unable to determine a keyword for social profiles lookup.");
+
+        var requestItem = new Dictionary<string, object?>
+        {
+            ["keyword"] = keyword,
+            ["depth"] = Math.Clamp(cfg.SocialProfilesDepth, 1, 20)
+        };
+
+        var effectiveLocationName = FirstNonEmpty(locationName, seed.SearchLocationName, cfg.SocialProfilesLocationName);
+        if (!string.IsNullOrWhiteSpace(effectiveLocationName))
+            requestItem["location_name"] = effectiveLocationName.Trim();
+        if (!string.IsNullOrWhiteSpace(cfg.SocialProfilesLanguageName))
+            requestItem["language_name"] = cfg.SocialProfilesLanguageName.Trim();
+
+        var endpoint = BuildApiUrl(cfg.BaseUrl, cfg.SocialProfilesOrganicPath);
+        using var request = CreateRequest(HttpMethod.Post, endpoint, cfg);
+        request.Content = JsonContent.Create(new[] { requestItem });
+
+        var client = httpClientFactory.CreateClient();
+        using var response = await client.SendAsync(request, ct);
+        var body = await response.Content.ReadAsStringAsync(ct);
+        if (!response.IsSuccessStatusCode)
+            throw new HttpRequestException($"DataForSEO social_profiles request failed with status {(int)response.StatusCode}: {body}");
+
+        using var document = JsonDocument.Parse(body);
+        var root = document.RootElement;
+        if (!root.TryGetProperty("tasks", out var tasks) || tasks.ValueKind != JsonValueKind.Array || tasks.GetArrayLength() == 0)
+            throw new InvalidOperationException("DataForSEO social_profiles response did not include any tasks.");
+
+        var task = tasks[0];
+        var taskStatusCode = task.TryGetProperty("status_code", out var statusCodeNode) && statusCodeNode.TryGetInt32(out var code)
+            ? code
+            : 0;
+        var taskStatusMessage = task.TryGetProperty("status_message", out var statusMessageNode)
+            ? statusMessageNode.GetString()
+            : null;
+        var taskId = task.TryGetProperty("id", out var idNode) ? idNode.GetString() : null;
+
+        var socialUrls = ExtractSocialUrlsFromSerpTask(task);
+        await UpsertSocialProfilesAsync(placeId, socialUrls, ct);
+
+        var status = taskStatusCode is >= 20000 and < 30000
+            ? socialUrls.HasAny ? "Populated" : "NoData"
+            : "Error";
+        var statusMessage = taskStatusMessage;
+        if (status == "NoData" && string.IsNullOrWhiteSpace(statusMessage))
+            statusMessage = "No social profile URLs found in SERP results.";
+
+        await UpsertTaskRowAsync(
+            placeId,
+            seed.SearchLocationName,
+            TaskTypeSocialProfiles,
+            string.IsNullOrWhiteSpace(taskId) ? $"{TaskTypeSocialProfiles}-live-{Guid.NewGuid():N}" : taskId!,
+            status,
+            taskStatusCode,
+            statusMessage,
+            endpoint,
+            status == "Error" ? statusMessage : null,
+            ct);
+    }
+
+    private async Task<SocialProfilesSeedRow> GetSocialProfilesSeedAsync(string placeId, CancellationToken ct)
+    {
+        await using var conn = (Microsoft.Data.SqlClient.SqlConnection)await connectionFactory.OpenConnectionAsync(ct);
+        var row = await conn.QuerySingleOrDefaultAsync<SocialProfilesSeedRow>(new CommandDefinition(@"
+SELECT TOP 1
+  PlaceId,
+  DisplayName,
+  NationalPhoneNumber,
+  WebsiteUri,
+  SearchLocationName
+FROM dbo.Place
+WHERE PlaceId=@PlaceId;", new { PlaceId = placeId }, cancellationToken: ct));
+
+        if (row is null)
+            throw new InvalidOperationException($"Place '{placeId}' was not found.");
+
+        return row;
+    }
+
+    private async Task UpsertSocialProfilesAsync(string placeId, SocialUrlSet socialUrls, CancellationToken ct)
+    {
+        var socialPayload = socialUrls.HasAny
+            ? JsonSerializer.Serialize(socialUrls.AsDictionary())
+            : null;
+
+        await using var conn = (Microsoft.Data.SqlClient.SqlConnection)await connectionFactory.OpenConnectionAsync(ct);
+        await conn.ExecuteAsync(new CommandDefinition(@"
+UPDATE dbo.Place
+SET
+  FacebookUrl = COALESCE(@FacebookUrl, FacebookUrl),
+  InstagramUrl = COALESCE(@InstagramUrl, InstagramUrl),
+  LinkedInUrl = COALESCE(@LinkedInUrl, LinkedInUrl),
+  XUrl = COALESCE(@XUrl, XUrl),
+  YouTubeUrl = COALESCE(@YouTubeUrl, YouTubeUrl),
+  TikTokUrl = COALESCE(@TikTokUrl, TikTokUrl),
+  PinterestUrl = COALESCE(@PinterestUrl, PinterestUrl),
+  BlueskyUrl = COALESCE(@BlueskyUrl, BlueskyUrl),
+  SocialProfilesJson = COALESCE(@SocialProfilesJson, SocialProfilesJson),
+  LastSeenUtc = SYSUTCDATETIME()
+WHERE PlaceId = @PlaceId;", new
+        {
+            PlaceId = placeId,
+            socialUrls.FacebookUrl,
+            socialUrls.InstagramUrl,
+            socialUrls.LinkedInUrl,
+            socialUrls.XUrl,
+            socialUrls.YouTubeUrl,
+            socialUrls.TikTokUrl,
+            socialUrls.PinterestUrl,
+            socialUrls.BlueskyUrl,
+            SocialProfilesJson = socialPayload
+        }, cancellationToken: ct));
+    }
+
+    private static string BuildSocialProfilesKeyword(SocialProfilesSeedRow seed, string? requestedLocationName)
+    {
+        var displayName = NormalizeText(seed.DisplayName, 300);
+        var fallbackName = ExtractDomainToken(seed.WebsiteUri);
+        var baseName = FirstNonEmpty(displayName, fallbackName, seed.PlaceId);
+        var phoneNumber = NormalizePhoneForSearch(seed.NationalPhoneNumber);
+        var town = NormalizeTownForSearch(FirstNonEmpty(requestedLocationName, seed.SearchLocationName));
+
+        if (string.IsNullOrWhiteSpace(baseName)
+            || string.IsNullOrWhiteSpace(phoneNumber)
+            || string.IsNullOrWhiteSpace(town))
+        {
+            return string.Empty;
+        }
+
+        return $"{baseName} {phoneNumber} {town}";
+    }
+
+    private static SocialUrlSet ExtractSocialUrlsFromSerpTask(JsonElement task)
+    {
+        var map = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (!task.TryGetProperty("result", out var resultArray) || resultArray.ValueKind != JsonValueKind.Array)
+            return SocialUrlSet.Empty;
+
+        foreach (var result in resultArray.EnumerateArray())
+            ExtractSocialUrlsFromNode(result, map, 0);
+
+        return new SocialUrlSet(
+            GetFromMap(map, "facebook"),
+            GetFromMap(map, "instagram"),
+            GetFromMap(map, "linkedin"),
+            GetFromMap(map, "x"),
+            GetFromMap(map, "youtube"),
+            GetFromMap(map, "tiktok"),
+            GetFromMap(map, "pinterest"),
+            GetFromMap(map, "bluesky"));
+    }
+
+    private static void ExtractSocialUrlsFromNode(JsonElement node, IDictionary<string, string> map, int depth)
+    {
+        if (depth > 8 || map.Count >= 8)
+            return;
+
+        switch (node.ValueKind)
+        {
+            case JsonValueKind.String:
+                TryCaptureSocialUrl(node.GetString(), map);
+                return;
+            case JsonValueKind.Array:
+                foreach (var item in node.EnumerateArray())
+                    ExtractSocialUrlsFromNode(item, map, depth + 1);
+                return;
+            case JsonValueKind.Object:
+                foreach (var prop in node.EnumerateObject())
+                    ExtractSocialUrlsFromNode(prop.Value, map, depth + 1);
+                return;
+        }
+    }
+
+    private static void TryCaptureSocialUrl(string? candidate, IDictionary<string, string> map)
+    {
+        var normalized = NormalizeAbsoluteHttpUrl(candidate);
+        if (string.IsNullOrWhiteSpace(normalized) || !Uri.TryCreate(normalized, UriKind.Absolute, out var uri))
+            return;
+
+        var platform = ResolveSocialPlatform(uri);
+        if (platform is null || map.ContainsKey(platform))
+            return;
+
+        map[platform] = uri.AbsoluteUri.TrimEnd('/');
+    }
+
+    private static string? ResolveSocialPlatform(Uri uri)
+    {
+        var host = uri.Host.Trim().ToLowerInvariant();
+        if (host.StartsWith("www.", StringComparison.Ordinal))
+            host = host[4..];
+
+        if (host.EndsWith("facebook.com", StringComparison.Ordinal))
+            return "facebook";
+        if (host.EndsWith("instagram.com", StringComparison.Ordinal))
+            return "instagram";
+        if (host.EndsWith("linkedin.com", StringComparison.Ordinal))
+            return "linkedin";
+        if (host.EndsWith("x.com", StringComparison.Ordinal) || host.EndsWith("twitter.com", StringComparison.Ordinal))
+            return "x";
+        if (host.EndsWith("youtube.com", StringComparison.Ordinal) || host.EndsWith("youtu.be", StringComparison.Ordinal))
+            return "youtube";
+        if (host.EndsWith("tiktok.com", StringComparison.Ordinal))
+            return "tiktok";
+        if (host.EndsWith("pinterest.com", StringComparison.Ordinal))
+            return "pinterest";
+        if (host.EndsWith("bsky.app", StringComparison.Ordinal) || host.EndsWith("bluesky.social", StringComparison.Ordinal))
+            return "bluesky";
+
+        return null;
+    }
+
+    private static string? GetFromMap(IReadOnlyDictionary<string, string> map, string key)
+        => map.TryGetValue(key, out var value) ? value : null;
+
+    private static string? FirstNonEmpty(params string?[] values)
+        => values.FirstOrDefault(x => !string.IsNullOrWhiteSpace(x))?.Trim();
+
+    private static string? NormalizeText(string? value, int maxLength)
+    {
+        var trimmed = (value ?? string.Empty).Trim();
+        if (trimmed.Length == 0)
+            return null;
+        return trimmed.Length <= maxLength ? trimmed : trimmed[..maxLength];
+    }
+
+    private static string? ExtractDomainToken(string? websiteUri)
+    {
+        var normalized = NormalizeAbsoluteHttpUrl(websiteUri);
+        if (string.IsNullOrWhiteSpace(normalized) || !Uri.TryCreate(normalized, UriKind.Absolute, out var uri))
+            return null;
+
+        var host = uri.Host.Trim().ToLowerInvariant();
+        if (host.StartsWith("www.", StringComparison.Ordinal))
+            host = host[4..];
+        if (host.Length == 0)
+            return null;
+
+        var token = host.Split('.', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
+        return NormalizeText(token, 120);
+    }
+
+    private static string? NormalizeTownForSearch(string? locationName)
+    {
+        var normalized = NormalizeText(locationName, 200);
+        if (string.IsNullOrWhiteSpace(normalized))
+            return null;
+
+        var town = normalized;
+        var commaIndex = town.IndexOf(',', StringComparison.Ordinal);
+        if (commaIndex >= 0)
+            town = town[..commaIndex];
+
+        var cleanedChars = town
+            .Where(c => char.IsLetterOrDigit(c) || c == '\'' || c == '-' || char.IsWhiteSpace(c))
+            .ToArray();
+        if (cleanedChars.Length == 0)
+            return null;
+
+        var compact = string.Join(' ', new string(cleanedChars)
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries));
+        return NormalizeText(compact, 120);
+    }
+
+    private static string? NormalizePhoneForSearch(string? phoneNumber)
+    {
+        if (string.IsNullOrWhiteSpace(phoneNumber))
+            return null;
+
+        var groups = new List<string>();
+        var current = new StringBuilder();
+        foreach (var ch in phoneNumber)
+        {
+            if (char.IsDigit(ch))
+            {
+                current.Append(ch);
+                continue;
+            }
+
+            if (current.Length > 0)
+            {
+                groups.Add(current.ToString());
+                current.Clear();
+            }
+        }
+
+        if (current.Length > 0)
+            groups.Add(current.ToString());
+        if (groups.Count == 0)
+            return null;
+
+        return string.Join(' ', groups);
+    }
+
     private static bool IsLocationNameFollowupCandidate(string? statusMessage)
     {
         if (string.IsNullOrWhiteSpace(statusMessage))
@@ -1457,7 +1975,7 @@ WHERE PlaceId=@PlaceId;",
         using var document = JsonDocument.Parse(body);
         var root = document.RootElement;
         if (!root.TryGetProperty("tasks", out var tasks) || tasks.ValueKind != JsonValueKind.Array || tasks.GetArrayLength() == 0)
-            return new BusinessInfoTaskSnapshot(0, "No tasks in response.", false, false, new BusinessInfoPayload(null, null, [], [], null));
+            return new BusinessInfoTaskSnapshot(0, "No tasks in response.", false, false, new BusinessInfoPayload(null, null, [], [], null, null, null));
 
         var task = tasks[0];
         var taskStatusCode = task.TryGetProperty("status_code", out var statusCodeNode) && statusCodeNode.TryGetInt32(out var code)
@@ -1491,7 +2009,7 @@ WHERE PlaceId=@PlaceId;",
         }
 
         if (payload is null)
-            payload = new BusinessInfoPayload(null, null, [], [], null);
+            payload = new BusinessInfoPayload(null, null, [], [], null, null, null);
 
         return new BusinessInfoTaskSnapshot(taskStatusCode, taskStatusMessage, isCompleted, payload.HasValues, payload);
     }
@@ -1757,13 +2275,190 @@ WHERE PlaceId=@PlaceId;",
 
         var additionalCategories = ExtractStringList(item, "additional_categories");
         var placeTopics = ExtractStringList(item, "place_topics");
+        var logoUrl = ExtractFirstImageUrl(item,
+            "logo_url",
+            "logo_image_url",
+            "logo",
+            "profile_image_url",
+            "profile_image");
+        var mainPhotoUrl = ExtractFirstImageUrl(item,
+            "main_photo_url",
+            "main_photo",
+            "cover_photo_url",
+            "cover_photo",
+            "main_image_url",
+            "main_image",
+            "featured_image",
+            "photo_url",
+            "image_url",
+            "photo",
+            "image",
+            "photos",
+            "images",
+            "images_url",
+            "photos_data",
+            "media");
 
         return new BusinessInfoPayload(
             TruncateText(description, 750),
             GetInt(item, "total_photos"),
             additionalCategories,
             placeTopics,
+            logoUrl,
+            mainPhotoUrl,
             item.GetRawText());
+    }
+
+    private static string? ExtractImageUrlFromRawJson(string? rawJson, bool preferLogo)
+    {
+        if (string.IsNullOrWhiteSpace(rawJson))
+            return null;
+
+        try
+        {
+            using var document = JsonDocument.Parse(rawJson);
+            var root = document.RootElement;
+            var propertyCandidates = preferLogo
+                ? new[]
+                {
+                    "logo_url", "logo_image_url", "logo", "profile_image_url", "profile_image", "brand_logo", "icon_url", "icon"
+                }
+                : new[]
+                {
+                    "main_photo_url", "main_photo", "cover_photo_url", "cover_photo", "main_image_url", "main_image",
+                    "featured_image", "photo_url", "image_url", "photo", "image", "photos", "images", "images_url", "photos_data", "media"
+                };
+            return ExtractFirstImageUrl(root, propertyCandidates) ?? ExtractImageUrlFromNode(root, 0);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    private static string? ExtractFirstImageUrl(JsonElement item, params string[] propertyCandidates)
+    {
+        if (item.ValueKind != JsonValueKind.Object)
+            return ExtractImageUrlFromNode(item, 0);
+
+        foreach (var propertyName in propertyCandidates)
+        {
+            if (!item.TryGetProperty(propertyName, out var node) || node.ValueKind == JsonValueKind.Null)
+                continue;
+
+            var url = ExtractImageUrlFromNode(node, 0);
+            if (!string.IsNullOrWhiteSpace(url))
+                return url;
+        }
+
+        return null;
+    }
+
+    private static string? ExtractImageUrlFromNode(JsonElement node, int depth)
+    {
+        if (depth > 5)
+            return null;
+
+        if (node.ValueKind == JsonValueKind.String)
+            return NormalizeAbsoluteHttpUrl(node.GetString());
+
+        if (node.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in node.EnumerateArray())
+            {
+                var nested = ExtractImageUrlFromNode(item, depth + 1);
+                if (!string.IsNullOrWhiteSpace(nested))
+                    return nested;
+            }
+
+            return null;
+        }
+
+        if (node.ValueKind != JsonValueKind.Object)
+            return null;
+
+        foreach (var key in new[]
+        {
+            "url",
+            "image_url",
+            "logo_url",
+            "main_photo_url",
+            "main_image_url",
+            "thumbnail_url",
+            "icon_url",
+            "photo_url",
+            "src",
+            "value"
+        })
+        {
+            var value = GetString(node, key);
+            var normalized = NormalizeAbsoluteHttpUrl(value);
+            if (!string.IsNullOrWhiteSpace(normalized))
+                return normalized;
+        }
+
+        foreach (var key in new[]
+        {
+            "image",
+            "logo",
+            "photo",
+            "main_photo",
+            "cover_photo",
+            "main_image",
+            "featured_image",
+            "images",
+            "photos",
+            "thumbnails",
+            "media",
+            "photos_data",
+            "items",
+            "gallery"
+        })
+        {
+            if (!node.TryGetProperty(key, out var nestedNode) || nestedNode.ValueKind == JsonValueKind.Null)
+                continue;
+
+            var nested = ExtractImageUrlFromNode(nestedNode, depth + 1);
+            if (!string.IsNullOrWhiteSpace(nested))
+                return nested;
+        }
+
+        foreach (var prop in node.EnumerateObject())
+        {
+            if (prop.Value.ValueKind is JsonValueKind.Object or JsonValueKind.Array)
+            {
+                var name = prop.Name.ToLowerInvariant();
+                if (name.Contains("image", StringComparison.Ordinal)
+                    || name.Contains("photo", StringComparison.Ordinal)
+                    || name.Contains("logo", StringComparison.Ordinal)
+                    || name.Contains("cover", StringComparison.Ordinal)
+                    || name.Contains("icon", StringComparison.Ordinal)
+                    || name.Contains("picture", StringComparison.Ordinal)
+                    || name.Contains("media", StringComparison.Ordinal))
+                {
+                    var nested = ExtractImageUrlFromNode(prop.Value, depth + 1);
+                    if (!string.IsNullOrWhiteSpace(nested))
+                        return nested;
+                }
+            }
+            else if (prop.Value.ValueKind == JsonValueKind.String)
+            {
+                var name = prop.Name.ToLowerInvariant();
+                if (name.Contains("image", StringComparison.Ordinal)
+                    || name.Contains("photo", StringComparison.Ordinal)
+                    || name.Contains("logo", StringComparison.Ordinal)
+                    || name.Contains("cover", StringComparison.Ordinal)
+                    || name.Contains("icon", StringComparison.Ordinal)
+                    || name.Contains("picture", StringComparison.Ordinal))
+                {
+                    var normalized = NormalizeAbsoluteHttpUrl(prop.Value.GetString());
+                    if (!string.IsNullOrWhiteSpace(normalized))
+                        return normalized;
+                }
+            }
+        }
+
+        return null;
     }
 
     private static UpdatePayload? ParseMyBusinessUpdate(JsonElement item)
@@ -2018,7 +2713,20 @@ WHERE PlaceId=@PlaceId;",
             return TaskTypeMyBusinessUpdates;
         if (string.Equals(taskType, TaskTypeQuestionsAndAnswers, StringComparison.OrdinalIgnoreCase))
             return TaskTypeQuestionsAndAnswers;
+        if (string.Equals(taskType, TaskTypeSocialProfiles, StringComparison.OrdinalIgnoreCase))
+            return TaskTypeSocialProfiles;
         return TaskTypeReviews;
+    }
+
+    private static string? NormalizeTaskStatus(string? status)
+    {
+        if (string.IsNullOrWhiteSpace(status) || string.Equals(status, "all", StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        var normalized = status.Trim();
+        if (normalized.Length > 40)
+            normalized = normalized[..40];
+        return normalized;
     }
 
 
@@ -2090,6 +2798,26 @@ WHERE PlaceId=@PlaceId;",
         return nested.TryGetDecimal(out var value) ? value : null;
     }
 
+    private static string? NormalizeAbsoluteHttpUrl(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        var normalized = value.Trim();
+        if (normalized.StartsWith("//", StringComparison.Ordinal))
+            normalized = "https:" + normalized;
+
+        if (!Uri.TryCreate(normalized, UriKind.Absolute, out var uri))
+            return null;
+        if (!string.Equals(uri.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        return uri.AbsoluteUri;
+    }
+
     private static DateTime? ParseTimestamp(string? value)
     {
         if (string.IsNullOrWhiteSpace(value))
@@ -2138,6 +2866,50 @@ WHERE PlaceId=@PlaceId;",
             return null;
         var trimmed = value.Trim();
         return trimmed.Length <= maxLength ? trimmed : trimmed[..maxLength];
+    }
+
+    private sealed record SocialProfilesSeedRow(
+        string PlaceId,
+        string? DisplayName,
+        string? NationalPhoneNumber,
+        string? WebsiteUri,
+        string? SearchLocationName);
+
+    private sealed record SocialUrlSet(
+        string? FacebookUrl,
+        string? InstagramUrl,
+        string? LinkedInUrl,
+        string? XUrl,
+        string? YouTubeUrl,
+        string? TikTokUrl,
+        string? PinterestUrl,
+        string? BlueskyUrl)
+    {
+        public static SocialUrlSet Empty { get; } = new(null, null, null, null, null, null, null, null);
+
+        public bool HasAny =>
+            !string.IsNullOrWhiteSpace(FacebookUrl)
+            || !string.IsNullOrWhiteSpace(InstagramUrl)
+            || !string.IsNullOrWhiteSpace(LinkedInUrl)
+            || !string.IsNullOrWhiteSpace(XUrl)
+            || !string.IsNullOrWhiteSpace(YouTubeUrl)
+            || !string.IsNullOrWhiteSpace(TikTokUrl)
+            || !string.IsNullOrWhiteSpace(PinterestUrl)
+            || !string.IsNullOrWhiteSpace(BlueskyUrl);
+
+        public IReadOnlyDictionary<string, string> AsDictionary()
+        {
+            var dict = new Dictionary<string, string>(StringComparer.Ordinal);
+            if (!string.IsNullOrWhiteSpace(FacebookUrl)) dict["facebook"] = FacebookUrl;
+            if (!string.IsNullOrWhiteSpace(InstagramUrl)) dict["instagram"] = InstagramUrl;
+            if (!string.IsNullOrWhiteSpace(LinkedInUrl)) dict["linkedin"] = LinkedInUrl;
+            if (!string.IsNullOrWhiteSpace(XUrl)) dict["x"] = XUrl;
+            if (!string.IsNullOrWhiteSpace(YouTubeUrl)) dict["youtube"] = YouTubeUrl;
+            if (!string.IsNullOrWhiteSpace(TikTokUrl)) dict["tiktok"] = TikTokUrl;
+            if (!string.IsNullOrWhiteSpace(PinterestUrl)) dict["pinterest"] = PinterestUrl;
+            if (!string.IsNullOrWhiteSpace(BlueskyUrl)) dict["bluesky"] = BlueskyUrl;
+            return dict;
+        }
     }
 
     private sealed record TaskCreationResult(string? TaskId, int StatusCode, string? StatusMessage);
@@ -2233,18 +3005,26 @@ WHERE PlaceId=@PlaceId;",
         bool IsCompleted,
         string Body);
 
+    private sealed record PlaceAssetUrls(
+        string? LogoUrl,
+        string? MainPhotoUrl);
+
     private sealed record BusinessInfoPayload(
         string? Description,
         int? PhotoCount,
         IReadOnlyList<string> AdditionalCategories,
         IReadOnlyList<string> PlaceTopics,
+        string? LogoUrl,
+        string? MainPhotoUrl,
         string? RawJson)
     {
         public bool HasValues =>
             !string.IsNullOrWhiteSpace(Description)
             || PhotoCount.HasValue
             || AdditionalCategories.Count > 0
-            || PlaceTopics.Count > 0;
+            || PlaceTopics.Count > 0
+            || !string.IsNullOrWhiteSpace(LogoUrl)
+            || !string.IsNullOrWhiteSpace(MainPhotoUrl);
     }
 
     private sealed record BusinessInfoTaskSnapshot(
