@@ -1,0 +1,261 @@
+@model EmailLogListViewModel
+@{
+    ViewData["Title"] = "Email Log";
+    var query = Model.Query;
+    var fromValue = query.DateFromUtc.HasValue ? query.DateFromUtc.Value.ToString("yyyy-MM-dd") : string.Empty;
+    var toValue = query.DateToUtc.HasValue ? query.DateToUtc.Value.ToString("yyyy-MM-dd") : string.Empty;
+    var currentPage = Math.Max(1, query.PageNumber);
+    var totalPages = Math.Max(1, Model.TotalPages);
+    var hasPrev = currentPage > 1;
+    var hasNext = currentPage < totalPages;
+
+    string BuildPageUrl(int pageNumber)
+    {
+        var q = new List<string>
+        {
+            $"page={pageNumber}",
+            $"pageSize={query.PageSize}"
+        };
+        if (query.DateFromUtc.HasValue)
+            q.Add($"fromUtc={Uri.EscapeDataString(query.DateFromUtc.Value.ToString("yyyy-MM-dd"))}");
+        if (query.DateToUtc.HasValue)
+            q.Add($"toUtc={Uri.EscapeDataString(query.DateToUtc.Value.ToString("yyyy-MM-dd"))}");
+        if (!string.IsNullOrWhiteSpace(query.TemplateKey))
+            q.Add($"templateKey={Uri.EscapeDataString(query.TemplateKey)}");
+        if (!string.IsNullOrWhiteSpace(query.Status))
+            q.Add($"status={Uri.EscapeDataString(query.Status)}");
+        if (!string.IsNullOrWhiteSpace(query.ProviderEventType))
+            q.Add($"providerEventType={Uri.EscapeDataString(query.ProviderEventType)}");
+        if (!string.IsNullOrWhiteSpace(query.RecipientContains))
+            q.Add($"recipient={Uri.EscapeDataString(query.RecipientContains)}");
+        if (!string.IsNullOrWhiteSpace(query.CorrelationId))
+            q.Add($"correlationId={Uri.EscapeDataString(query.CorrelationId)}");
+        if (!string.IsNullOrWhiteSpace(query.MessageId))
+            q.Add($"messageId={Uri.EscapeDataString(query.MessageId)}");
+        return "/admin/logs/emails?" + string.Join("&", q);
+    }
+}
+
+<div class="page-stack">
+    <section class="card">
+        <div class="toolbar">
+            <a href="/admin/logs" class="btn btn-secondary">Back to Logs</a>
+            <a href="/admin" class="btn btn-secondary">Back to Admin</a>
+        </div>
+    </section>
+
+    <section class="card">
+        <h2 class="card-title">Filters</h2>
+        <form method="get" action="/admin/logs/emails" class="places-filter-line">
+            <label for="email-log-from">From</label>
+            <input id="email-log-from" name="fromUtc" type="date" value="@fromValue" />
+
+            <label for="email-log-to">To</label>
+            <input id="email-log-to" name="toUtc" type="date" value="@toValue" />
+
+            <label for="email-log-template">Template</label>
+            <select id="email-log-template" name="templateKey">
+                <option value="">All</option>
+                @foreach (var key in Model.TemplateKeys)
+                {
+                    if (string.Equals(key, query.TemplateKey, StringComparison.OrdinalIgnoreCase))
+                    {
+                        <option value="@key" selected>@key</option>
+                    }
+                    else
+                    {
+                        <option value="@key">@key</option>
+                    }
+                }
+            </select>
+
+            <label for="email-log-status">Status</label>
+            <select id="email-log-status" name="status">
+                @if (string.IsNullOrWhiteSpace(query.Status))
+                {
+                    <option value="" selected>All</option>
+                }
+                else
+                {
+                    <option value="">All</option>
+                }
+                @if (string.Equals(query.Status, "Queued", StringComparison.OrdinalIgnoreCase))
+                {
+                    <option value="Queued" selected>Queued</option>
+                }
+                else
+                {
+                    <option value="Queued">Queued</option>
+                }
+                @if (string.Equals(query.Status, "Sent", StringComparison.OrdinalIgnoreCase))
+                {
+                    <option value="Sent" selected>Sent</option>
+                }
+                else
+                {
+                    <option value="Sent">Sent</option>
+                }
+                @if (string.Equals(query.Status, "Failed", StringComparison.OrdinalIgnoreCase))
+                {
+                    <option value="Failed" selected>Failed</option>
+                }
+                else
+                {
+                    <option value="Failed">Failed</option>
+                }
+            </select>
+
+            <label for="email-log-provider-event">Provider Event</label>
+            <input id="email-log-provider-event" name="providerEventType" type="text" value="@query.ProviderEventType" maxlength="50" placeholder="delivered, bounce, deferred..." />
+
+            <label for="email-log-recipient">Recipient</label>
+            <input id="email-log-recipient" name="recipient" type="text" value="@query.RecipientContains" maxlength="320" placeholder="email contains..." />
+
+            <label for="email-log-correlation">Correlation ID</label>
+            <input id="email-log-correlation" name="correlationId" type="text" value="@query.CorrelationId" maxlength="64" />
+
+            <label for="email-log-messageid">Message ID</label>
+            <input id="email-log-messageid" name="messageId" type="text" value="@query.MessageId" maxlength="200" />
+
+            <label for="email-log-page-size">Page Size</label>
+            <select id="email-log-page-size" name="pageSize">
+                @if (query.PageSize == 25)
+                {
+                    <option value="25" selected>25</option>
+                }
+                else
+                {
+                    <option value="25">25</option>
+                }
+                @if (query.PageSize == 50)
+                {
+                    <option value="50" selected>50</option>
+                }
+                else
+                {
+                    <option value="50">50</option>
+                }
+                @if (query.PageSize == 100)
+                {
+                    <option value="100" selected>100</option>
+                }
+                else
+                {
+                    <option value="100">100</option>
+                }
+                @if (query.PageSize == 500)
+                {
+                    <option value="500" selected>500</option>
+                }
+                else
+                {
+                    <option value="500">500</option>
+                }
+                @if (query.PageSize == 1000)
+                {
+                    <option value="1000" selected>1000</option>
+                }
+                else
+                {
+                    <option value="1000">1000</option>
+                }
+            </select>
+
+            <input type="hidden" name="page" value="1" />
+            <button type="submit" class="btn btn-secondary">Apply</button>
+            <a href="/admin/logs/emails" class="btn btn-secondary">Clear</a>
+        </form>
+    </section>
+
+    <section class="card">
+        <h2 class="card-title">Outbound Emails</h2>
+        <p class="muted">Total results: @Model.TotalCount</p>
+
+        @if (Model.Rows.Count == 0)
+        {
+            <p class="muted">No email logs found for the current filter.</p>
+        }
+        else
+        {
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Created (UTC)</th>
+                            <th>Template</th>
+                            <th>Recipient</th>
+                            <th>Status</th>
+                            <th>Last Provider Event</th>
+                            <th>Correlation ID</th>
+                            <th>Message ID</th>
+                            <th>Details</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var row in Model.Rows)
+                        {
+                            <tr>
+                                <td>@row.CreatedUtc.ToString("u")</td>
+                                <td>@row.TemplateKey</td>
+                                <td>@row.ToEmail</td>
+                                <td>
+                                    @if (string.Equals(row.Status, "Failed", StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        <span class="status-pill status-inactive">Failed</span>
+                                    }
+                                    else if (string.Equals(row.Status, "Sent", StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        <span class="status-pill status-active">Sent</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="status-pill">@row.Status</span>
+                                    }
+                                </td>
+                                <td>
+                                    @if (string.IsNullOrWhiteSpace(row.LastProviderEvent))
+                                    {
+                                        <span class="muted">N/A</span>
+                                    }
+                                    else
+                                    {
+                                        <span>@row.LastProviderEvent</span>
+                                        if (row.LastProviderEventUtc.HasValue)
+                                        {
+                                            <div class="muted">@row.LastProviderEventUtc.Value.ToString("u")</div>
+                                        }
+                                    }
+                                </td>
+                                <td>@(string.IsNullOrWhiteSpace(row.CorrelationId) ? "N/A" : row.CorrelationId)</td>
+                                <td>@(string.IsNullOrWhiteSpace(row.SendGridMessageId) ? "N/A" : row.SendGridMessageId)</td>
+                                <td><a class="btn btn-secondary" href="/admin/logs/emails/@row.Id">View</a></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+
+        <div class="toolbar review-pager">
+            @if (hasPrev)
+            {
+                <a class="btn btn-secondary" href="@BuildPageUrl(currentPage - 1)">Previous</a>
+            }
+            else
+            {
+                <button type="button" class="btn btn-secondary" disabled>Previous</button>
+            }
+
+            <span class="muted">Page @currentPage of @totalPages (@Model.TotalCount total)</span>
+
+            @if (hasNext)
+            {
+                <a class="btn btn-secondary" href="@BuildPageUrl(currentPage + 1)">Next</a>
+            }
+            else
+            {
+                <button type="button" class="btn btn-secondary" disabled>Next</button>
+            }
+        </div>
+    </section>
+</div>

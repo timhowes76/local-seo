@@ -1837,6 +1837,163 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_UserLogins_IpAddress_Att
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_UserLogins_Succeeded_AttemptedAtUtc' AND object_id = OBJECT_ID('dbo.UserLogins'))
   CREATE INDEX IX_UserLogins_Succeeded_AttemptedAtUtc ON dbo.UserLogins(Succeeded, AttemptedAtUtc DESC);
 
+IF OBJECT_ID('dbo.EmailTemplate','U') IS NULL
+BEGIN
+  CREATE TABLE dbo.EmailTemplate(
+    Id int IDENTITY(1,1) NOT NULL PRIMARY KEY,
+    [Key] nvarchar(100) NOT NULL,
+    [Name] nvarchar(200) NOT NULL,
+    FromName nvarchar(200) NULL,
+    FromEmail nvarchar(320) NOT NULL,
+    SubjectTemplate nvarchar(max) NOT NULL,
+    BodyHtmlTemplate nvarchar(max) NOT NULL,
+    IsSensitive bit NOT NULL CONSTRAINT DF_EmailTemplate_IsSensitive DEFAULT(0),
+    IsEnabled bit NOT NULL CONSTRAINT DF_EmailTemplate_IsEnabled DEFAULT(1),
+    CreatedUtc datetime2(3) NOT NULL CONSTRAINT DF_EmailTemplate_CreatedUtc DEFAULT SYSUTCDATETIME(),
+    UpdatedUtc datetime2(3) NOT NULL CONSTRAINT DF_EmailTemplate_UpdatedUtc DEFAULT SYSUTCDATETIME()
+  );
+END;
+IF COL_LENGTH('dbo.EmailTemplate', 'Key') IS NULL
+  ALTER TABLE dbo.EmailTemplate ADD [Key] nvarchar(100) NOT NULL CONSTRAINT DF_EmailTemplate_Key_Alt DEFAULT(N'');
+IF COL_LENGTH('dbo.EmailTemplate', 'Name') IS NULL
+  ALTER TABLE dbo.EmailTemplate ADD [Name] nvarchar(200) NOT NULL CONSTRAINT DF_EmailTemplate_Name_Alt DEFAULT(N'');
+IF COL_LENGTH('dbo.EmailTemplate', 'FromName') IS NULL
+  ALTER TABLE dbo.EmailTemplate ADD FromName nvarchar(200) NULL;
+IF COL_LENGTH('dbo.EmailTemplate', 'FromEmail') IS NULL
+  ALTER TABLE dbo.EmailTemplate ADD FromEmail nvarchar(320) NOT NULL CONSTRAINT DF_EmailTemplate_FromEmail_Alt DEFAULT(N'noreply@example.local');
+IF COL_LENGTH('dbo.EmailTemplate', 'SubjectTemplate') IS NULL
+  ALTER TABLE dbo.EmailTemplate ADD SubjectTemplate nvarchar(max) NOT NULL CONSTRAINT DF_EmailTemplate_SubjectTemplate_Alt DEFAULT(N'');
+IF COL_LENGTH('dbo.EmailTemplate', 'BodyHtmlTemplate') IS NULL
+  ALTER TABLE dbo.EmailTemplate ADD BodyHtmlTemplate nvarchar(max) NOT NULL CONSTRAINT DF_EmailTemplate_BodyHtmlTemplate_Alt DEFAULT(N'');
+IF COL_LENGTH('dbo.EmailTemplate', 'IsSensitive') IS NULL
+  ALTER TABLE dbo.EmailTemplate ADD IsSensitive bit NOT NULL CONSTRAINT DF_EmailTemplate_IsSensitive_Alt DEFAULT(0);
+IF COL_LENGTH('dbo.EmailTemplate', 'IsEnabled') IS NULL
+  ALTER TABLE dbo.EmailTemplate ADD IsEnabled bit NOT NULL CONSTRAINT DF_EmailTemplate_IsEnabled_Alt DEFAULT(1);
+IF COL_LENGTH('dbo.EmailTemplate', 'CreatedUtc') IS NULL
+  ALTER TABLE dbo.EmailTemplate ADD CreatedUtc datetime2(3) NOT NULL CONSTRAINT DF_EmailTemplate_CreatedUtc_Alt DEFAULT SYSUTCDATETIME();
+IF COL_LENGTH('dbo.EmailTemplate', 'UpdatedUtc') IS NULL
+  ALTER TABLE dbo.EmailTemplate ADD UpdatedUtc datetime2(3) NOT NULL CONSTRAINT DF_EmailTemplate_UpdatedUtc_Alt DEFAULT SYSUTCDATETIME();
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='UX_EmailTemplate_Key' AND object_id=OBJECT_ID('dbo.EmailTemplate'))
+  CREATE UNIQUE INDEX UX_EmailTemplate_Key ON dbo.EmailTemplate([Key]);
+
+IF OBJECT_ID('dbo.EmailLog','U') IS NULL
+BEGIN
+  CREATE TABLE dbo.EmailLog(
+    Id bigint IDENTITY(1,1) NOT NULL PRIMARY KEY,
+    CreatedUtc datetime2(3) NOT NULL CONSTRAINT DF_EmailLog_CreatedUtc DEFAULT SYSUTCDATETIME(),
+    TemplateKey nvarchar(100) NOT NULL,
+    ToEmail nvarchar(320) NOT NULL,
+    ToEmailHash binary(32) NOT NULL,
+    FromName nvarchar(200) NULL,
+    FromEmail nvarchar(320) NOT NULL,
+    SubjectRendered nvarchar(max) NOT NULL,
+    BodyHtmlRendered nvarchar(max) NOT NULL,
+    IsSensitive bit NOT NULL CONSTRAINT DF_EmailLog_IsSensitive DEFAULT(0),
+    RedactionApplied bit NOT NULL CONSTRAINT DF_EmailLog_RedactionApplied DEFAULT(0),
+    [Status] nvarchar(20) NOT NULL,
+    [Error] nvarchar(max) NULL,
+    CorrelationId nvarchar(64) NULL,
+    SendGridMessageId nvarchar(200) NULL,
+    LastProviderEvent nvarchar(50) NULL,
+    LastProviderEventUtc datetime2(3) NULL
+  );
+END;
+IF COL_LENGTH('dbo.EmailLog', 'CreatedUtc') IS NULL
+  ALTER TABLE dbo.EmailLog ADD CreatedUtc datetime2(3) NOT NULL CONSTRAINT DF_EmailLog_CreatedUtc_Alt DEFAULT SYSUTCDATETIME();
+IF COL_LENGTH('dbo.EmailLog', 'TemplateKey') IS NULL
+  ALTER TABLE dbo.EmailLog ADD TemplateKey nvarchar(100) NOT NULL CONSTRAINT DF_EmailLog_TemplateKey_Alt DEFAULT(N'');
+IF COL_LENGTH('dbo.EmailLog', 'ToEmail') IS NULL
+  ALTER TABLE dbo.EmailLog ADD ToEmail nvarchar(320) NOT NULL CONSTRAINT DF_EmailLog_ToEmail_Alt DEFAULT(N'');
+IF COL_LENGTH('dbo.EmailLog', 'ToEmailHash') IS NULL
+  ALTER TABLE dbo.EmailLog ADD ToEmailHash binary(32) NOT NULL CONSTRAINT DF_EmailLog_ToEmailHash_Alt DEFAULT(0x0000000000000000000000000000000000000000000000000000000000000000);
+IF COL_LENGTH('dbo.EmailLog', 'FromName') IS NULL
+  ALTER TABLE dbo.EmailLog ADD FromName nvarchar(200) NULL;
+IF COL_LENGTH('dbo.EmailLog', 'FromEmail') IS NULL
+  ALTER TABLE dbo.EmailLog ADD FromEmail nvarchar(320) NOT NULL CONSTRAINT DF_EmailLog_FromEmail_Alt DEFAULT(N'');
+IF COL_LENGTH('dbo.EmailLog', 'SubjectRendered') IS NULL
+  ALTER TABLE dbo.EmailLog ADD SubjectRendered nvarchar(max) NOT NULL CONSTRAINT DF_EmailLog_SubjectRendered_Alt DEFAULT(N'');
+IF COL_LENGTH('dbo.EmailLog', 'BodyHtmlRendered') IS NULL
+  ALTER TABLE dbo.EmailLog ADD BodyHtmlRendered nvarchar(max) NOT NULL CONSTRAINT DF_EmailLog_BodyHtmlRendered_Alt DEFAULT(N'');
+IF COL_LENGTH('dbo.EmailLog', 'IsSensitive') IS NULL
+  ALTER TABLE dbo.EmailLog ADD IsSensitive bit NOT NULL CONSTRAINT DF_EmailLog_IsSensitive_Alt DEFAULT(0);
+IF COL_LENGTH('dbo.EmailLog', 'RedactionApplied') IS NULL
+  ALTER TABLE dbo.EmailLog ADD RedactionApplied bit NOT NULL CONSTRAINT DF_EmailLog_RedactionApplied_Alt DEFAULT(0);
+IF COL_LENGTH('dbo.EmailLog', 'Status') IS NULL
+  ALTER TABLE dbo.EmailLog ADD [Status] nvarchar(20) NOT NULL CONSTRAINT DF_EmailLog_Status_Alt DEFAULT(N'Queued');
+IF COL_LENGTH('dbo.EmailLog', 'Error') IS NULL
+  ALTER TABLE dbo.EmailLog ADD [Error] nvarchar(max) NULL;
+IF COL_LENGTH('dbo.EmailLog', 'CorrelationId') IS NULL
+  ALTER TABLE dbo.EmailLog ADD CorrelationId nvarchar(64) NULL;
+IF COL_LENGTH('dbo.EmailLog', 'SendGridMessageId') IS NULL
+  ALTER TABLE dbo.EmailLog ADD SendGridMessageId nvarchar(200) NULL;
+IF COL_LENGTH('dbo.EmailLog', 'LastProviderEvent') IS NULL
+  ALTER TABLE dbo.EmailLog ADD LastProviderEvent nvarchar(50) NULL;
+IF COL_LENGTH('dbo.EmailLog', 'LastProviderEventUtc') IS NULL
+  ALTER TABLE dbo.EmailLog ADD LastProviderEventUtc datetime2(3) NULL;
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_EmailLog_CreatedUtc' AND object_id=OBJECT_ID('dbo.EmailLog'))
+  CREATE INDEX IX_EmailLog_CreatedUtc ON dbo.EmailLog(CreatedUtc DESC);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_EmailLog_ToEmailHash' AND object_id=OBJECT_ID('dbo.EmailLog'))
+  CREATE INDEX IX_EmailLog_ToEmailHash ON dbo.EmailLog(ToEmailHash);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_EmailLog_TemplateKey' AND object_id=OBJECT_ID('dbo.EmailLog'))
+  CREATE INDEX IX_EmailLog_TemplateKey ON dbo.EmailLog(TemplateKey);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_EmailLog_SendGridMessageId' AND object_id=OBJECT_ID('dbo.EmailLog'))
+  CREATE INDEX IX_EmailLog_SendGridMessageId ON dbo.EmailLog(SendGridMessageId) WHERE SendGridMessageId IS NOT NULL;
+
+IF OBJECT_ID('dbo.EmailProviderEvent','U') IS NULL
+BEGIN
+  CREATE TABLE dbo.EmailProviderEvent(
+    Id bigint IDENTITY(1,1) NOT NULL PRIMARY KEY,
+    EmailLogId bigint NULL,
+    Provider nvarchar(50) NOT NULL CONSTRAINT DF_EmailProviderEvent_Provider DEFAULT(N'SendGrid'),
+    EventType nvarchar(50) NOT NULL,
+    EventUtc datetime2(3) NOT NULL,
+    ProviderMessageId nvarchar(200) NOT NULL,
+    PayloadJson nvarchar(max) NULL,
+    CreatedUtc datetime2(3) NOT NULL CONSTRAINT DF_EmailProviderEvent_CreatedUtc DEFAULT SYSUTCDATETIME()
+  );
+END;
+IF COL_LENGTH('dbo.EmailProviderEvent', 'EmailLogId') IS NULL
+  ALTER TABLE dbo.EmailProviderEvent ADD EmailLogId bigint NULL;
+IF COL_LENGTH('dbo.EmailProviderEvent', 'Provider') IS NULL
+  ALTER TABLE dbo.EmailProviderEvent ADD Provider nvarchar(50) NOT NULL CONSTRAINT DF_EmailProviderEvent_Provider_Alt DEFAULT(N'SendGrid');
+IF COL_LENGTH('dbo.EmailProviderEvent', 'EventType') IS NULL
+  ALTER TABLE dbo.EmailProviderEvent ADD EventType nvarchar(50) NOT NULL CONSTRAINT DF_EmailProviderEvent_EventType_Alt DEFAULT(N'unknown');
+IF COL_LENGTH('dbo.EmailProviderEvent', 'EventUtc') IS NULL
+  ALTER TABLE dbo.EmailProviderEvent ADD EventUtc datetime2(3) NOT NULL CONSTRAINT DF_EmailProviderEvent_EventUtc_Alt DEFAULT SYSUTCDATETIME();
+IF COL_LENGTH('dbo.EmailProviderEvent', 'ProviderMessageId') IS NULL
+  ALTER TABLE dbo.EmailProviderEvent ADD ProviderMessageId nvarchar(200) NOT NULL CONSTRAINT DF_EmailProviderEvent_ProviderMessageId_Alt DEFAULT(N'');
+IF COL_LENGTH('dbo.EmailProviderEvent', 'PayloadJson') IS NULL
+  ALTER TABLE dbo.EmailProviderEvent ADD PayloadJson nvarchar(max) NULL;
+IF COL_LENGTH('dbo.EmailProviderEvent', 'CreatedUtc') IS NULL
+  ALTER TABLE dbo.EmailProviderEvent ADD CreatedUtc datetime2(3) NOT NULL CONSTRAINT DF_EmailProviderEvent_CreatedUtc_Alt DEFAULT SYSUTCDATETIME();
+IF NOT EXISTS (
+  SELECT 1
+  FROM sys.foreign_key_columns fkc
+  JOIN sys.columns pc ON pc.object_id = fkc.parent_object_id AND pc.column_id = fkc.parent_column_id
+  JOIN sys.columns rc ON rc.object_id = fkc.referenced_object_id AND rc.column_id = fkc.referenced_column_id
+  WHERE fkc.parent_object_id = OBJECT_ID('dbo.EmailProviderEvent')
+    AND fkc.referenced_object_id = OBJECT_ID('dbo.EmailLog')
+    AND pc.name = 'EmailLogId'
+    AND rc.name = 'Id'
+)
+  ALTER TABLE dbo.EmailProviderEvent WITH CHECK ADD CONSTRAINT FK_EmailProviderEvent_EmailLog FOREIGN KEY (EmailLogId) REFERENCES dbo.EmailLog(Id) ON DELETE SET NULL;
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='UX_EmailProviderEvent_Idempotency' AND object_id=OBJECT_ID('dbo.EmailProviderEvent'))
+  CREATE UNIQUE INDEX UX_EmailProviderEvent_Idempotency ON dbo.EmailProviderEvent(Provider, ProviderMessageId, EventType, EventUtc);
+
+EXEC(N'
+MERGE dbo.EmailTemplate AS target
+USING (VALUES
+  (N''TwoFactorCode'', N''Two Factor Code'', N''Local SEO Tool'', N''noreply@kontrolit.net'', N''Your Local SEO login code'', N''<p>Your 2FA login code is <strong>[%Code%]</strong>.</p><p>It expires in [%ExpiryMinutes%] minutes.</p>'', 1, 1),
+  (N''PasswordReset'', N''Password Reset'', N''Local SEO Tool'', N''noreply@kontrolit.net'', N''Your Local SEO password reset code'', N''<p>Use code <strong>[%Code%]</strong> to reset your password.</p><p><a href=""[%ResetUrl%]"">Reset password</a></p><p>This code expires in [%ExpiryMinutes%] minutes.</p>'', 1, 1),
+  (N''NewUserInvite'', N''New User Invite'', N''Local SEO Tool'', N''noreply@kontrolit.net'', N''You have been invited to Local SEO'', N''<p>Hi [%RecipientName%],</p><p>You have been invited to Local SEO.</p><p><a href=""[%InviteUrl%]"">Open invite link</a></p><p>This link expires at [%ExpiresAtUtc%].</p>'', 1, 1),
+  (N''InviteOtp'', N''Invite OTP'', N''Local SEO Tool'', N''noreply@kontrolit.net'', N''Your Local SEO invite verification code'', N''<p>Your invite verification code is <strong>[%Code%]</strong>.</p><p>It expires at [%ExpiresAtUtc%].</p>'', 1, 1),
+  (N''ChangePasswordOtp'', N''Change Password OTP'', N''Local SEO Tool'', N''noreply@kontrolit.net'', N''Your Local SEO change password verification code'', N''<p>Your change password verification code is <strong>[%Code%]</strong>.</p><p>It expires at [%ExpiresAtUtc%].</p>'', 1, 1)
+) AS source([Key], [Name], FromName, FromEmail, SubjectTemplate, BodyHtmlTemplate, IsSensitive, IsEnabled)
+ON target.[Key] = source.[Key]
+WHEN NOT MATCHED THEN
+  INSERT([Key], [Name], FromName, FromEmail, SubjectTemplate, BodyHtmlTemplate, IsSensitive, IsEnabled, CreatedUtc, UpdatedUtc)
+  VALUES(source.[Key], source.[Name], source.FromName, source.FromEmail, source.SubjectTemplate, source.BodyHtmlTemplate, source.IsSensitive, source.IsEnabled, SYSUTCDATETIME(), SYSUTCDATETIME());');
+
 IF OBJECT_ID('dbo.LoginCode','U') IS NOT NULL
 BEGIN
   INSERT INTO dbo.EmailCodes(

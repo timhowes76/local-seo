@@ -1,0 +1,59 @@
+@model EmailTemplateListViewModel
+@{
+    ViewData["Title"] = "Email Templates";
+    var statusMessage = TempData["Status"] as string;
+}
+
+<div class="page-stack">
+    @if (!string.IsNullOrWhiteSpace(statusMessage))
+    {
+        <div class="notice">@statusMessage</div>
+    }
+
+    <section class="card">
+        <div class="toolbar">
+            <a href="/admin" class="btn btn-secondary">Back to Admin</a>
+            <a href="/admin/email-templates/create" class="btn btn-primary">Create Template</a>
+        </div>
+    </section>
+
+    <section class="card">
+        <h2 class="card-title">Email Templates</h2>
+        @if (Model.Rows.Count == 0)
+        {
+            <p class="muted">No templates found.</p>
+        }
+        else
+        {
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Key</th>
+                            <th>Name</th>
+                            <th>From</th>
+                            <th>Sensitive</th>
+                            <th>Enabled</th>
+                            <th>Updated (UTC)</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var row in Model.Rows)
+                        {
+                            <tr>
+                                <td>@row.Key</td>
+                                <td>@row.Name</td>
+                                <td>@(string.IsNullOrWhiteSpace(row.FromName) ? row.FromEmail : $"{row.FromName} <{row.FromEmail}>")</td>
+                                <td>@(row.IsSensitive ? "Yes" : "No")</td>
+                                <td>@(row.IsEnabled ? "Yes" : "No")</td>
+                                <td>@row.UpdatedUtc.ToString("u")</td>
+                                <td><a class="btn btn-secondary" href="/admin/email-templates/@row.Id/edit">Edit</a></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </section>
+</div>

@@ -96,10 +96,15 @@ builder.Services.AddAuthentication("LocalCookie")
 builder.Services.AddAuthorization(options =>
 {
     options.AddPolicy("StaffOnly", p => p.RequireAuthenticatedUser());
-    options.AddPolicy("AdminOnly", p => p.RequireAuthenticatedUser().RequireClaim(AuthClaimTypes.IsAdmin, "true"));
+    options.AddPolicy("AdminOnly", p =>
+    {
+        p.RequireAuthenticatedUser();
+        p.AddRequirements(new AdminOnlyRequirement());
+    });
 });
 
 builder.Services.AddScoped<ISqlConnectionFactory, SqlConnectionFactory>();
+builder.Services.AddScoped<Microsoft.AspNetCore.Authorization.IAuthorizationHandler, AdminOnlyAuthorizationHandler>();
 builder.Services.AddScoped<DbBootstrapper>();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<IEmailAddressNormalizer, EmailAddressNormalizer>();
@@ -113,6 +118,17 @@ builder.Services.AddScoped<ICryptoService, CryptoService>();
 builder.Services.AddScoped<IPasswordHasherService, PasswordHasherService>();
 builder.Services.AddScoped<IRateLimiterService, RateLimiterService>();
 builder.Services.AddScoped<IEmailCodeService, EmailCodeService>();
+builder.Services.AddScoped<IEmailTemplateRepository, EmailTemplateRepository>();
+builder.Services.AddScoped<IEmailTemplateService, EmailTemplateService>();
+builder.Services.AddScoped<IEmailTemplateRenderer, EmailTemplateRenderer>();
+builder.Services.AddScoped<IEmailRedactionService, EmailRedactionService>();
+builder.Services.AddScoped<IEmailTokenFactory, EmailTokenFactory>();
+builder.Services.AddScoped<IEmailLogRepository, EmailLogRepository>();
+builder.Services.AddScoped<IEmailProviderEventRepository>(sp => (IEmailProviderEventRepository)sp.GetRequiredService<IEmailLogRepository>());
+builder.Services.AddScoped<IEmailLogQueryService, EmailLogQueryService>();
+builder.Services.AddScoped<IEmailSenderService, EmailSenderService>();
+builder.Services.AddScoped<ISendGridWebhookSignatureValidator, SendGridWebhookSignatureValidator>();
+builder.Services.AddScoped<ISendGridWebhookIngestionService, SendGridWebhookIngestionService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IInviteService, InviteService>();
 builder.Services.AddScoped<IPasswordChangeService, PasswordChangeService>();

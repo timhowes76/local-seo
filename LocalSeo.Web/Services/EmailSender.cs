@@ -1,8 +1,17 @@
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Security.Cryptography;
+using System.Text.RegularExpressions;
+using LocalSeo.Web.Models;
 using LocalSeo.Web.Options;
 using Microsoft.Extensions.Options;
 
 namespace LocalSeo.Web.Services;
+
+public interface IEmailSenderService
+{
+    Task<EmailSendResult> SendAsync(string templateKey, string toEmail, IReadOnlyDictionary<string, string> tokens, string? correlationId, CancellationToken ct);
+}
 
 public interface ISendGridEmailService
 {
@@ -13,94 +22,253 @@ public interface ISendGridEmailService
     Task SendChangePasswordOtpAsync(string email, string code, DateTime expiresAtUtc, CancellationToken ct);
 }
 
-public sealed class SendGridEmailService(
+public sealed class EmailSenderService(
     IHttpClientFactory factory,
     IOptions<SendGridOptions> options,
-    ILogger<SendGridEmailService> logger) : ISendGridEmailService
+    IEmailTemplateService templateService,
+    IEmailTemplateRenderer templateRenderer,
+    IEmailRedactionService redactionService,
+    IEmailLogRepository emailLogRepository,
+    TimeProvider timeProvider,
+    ILogger<EmailSenderService> logger) : IEmailSenderService
 {
-    public Task SendLoginTwoFactorCodeAsync(string email, string code, CancellationToken ct)
+    private static readonly Regex HtmlTagRegex = new("<[^>]*>", RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    public async Task<EmailSendResult> SendAsync(string templateKey, string toEmail, IReadOnlyDictionary<string, string> tokens, string? correlationId, CancellationToken ct)
     {
-        return SendAsync(
-            email,
-            "Your Local SEO login code",
-            $"Your 2FA login code is {code}. It expires in 10 minutes.",
-            ct);
+        var normalizedTemplateKey = NormalizeRequired(templateKey, 100);
+        var normalizedToEmail = NormalizeRequired(toEmail, 320);
+        if (normalizedTemplateKey is null || normalizedToEmail is null)
+            return new EmailSendResult(false, null, 0, "Template key and recipient email are required.");
+
+        var template = await templateService.GetByKeyAsync(normalizedTemplateKey, ct);
+        if (template is null || !template.IsEnabled)
+            return new EmailSendResult(false, null, 0, "Email template is missing or disabled.");
+
+        var normalizedTokens = NormalizeTokens(tokens);
+        var subjectRender = templateRenderer.Render(template.SubjectTemplate, normalizedTokens);
+        var bodyRender = templateRenderer.Render(template.BodyHtmlTemplate, normalizedTokens);
+        if (subjectRender.UnknownTokens.Count > 0 || bodyRender.UnknownTokens.Count > 0)
+        {
+            var unknown = subjectRender.UnknownTokens
+                .Concat(bodyRender.UnknownTokens)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+            logger.LogWarning("Email template rendered with unknown tokens. TemplateKey={TemplateKey} UnknownTokens={UnknownTokens}", normalizedTemplateKey, string.Join(",", unknown));
+        }
+
+        var redaction = redactionService.RedactForStorage(
+            normalizedTemplateKey,
+            template.IsSensitive,
+            subjectRender.RenderedText,
+            bodyRender.RenderedText,
+            normalizedTokens);
+
+        var nowUtc = timeProvider.GetUtcNow().UtcDateTime;
+        var emailLogId = await emailLogRepository.CreateQueuedAsync(new EmailLogCreateRequest(
+            CreatedUtc: nowUtc,
+            TemplateKey: normalizedTemplateKey,
+            ToEmail: normalizedToEmail,
+            ToEmailHash: ComputeEmailHash(normalizedToEmail),
+            FromName: NormalizeNullable(template.FromName, 200),
+            FromEmail: NormalizeRequired(template.FromEmail, 320) ?? "noreply@example.local",
+            SubjectRendered: redaction.SubjectRedacted,
+            BodyHtmlRendered: redaction.BodyHtmlRedacted,
+            IsSensitive: template.IsSensitive,
+            RedactionApplied: redaction.RedactionApplied,
+            Status: "Queued",
+            Error: null,
+            CorrelationId: NormalizeNullable(correlationId, 64)), ct);
+
+        var sendResult = await SendViaProviderAsync(template, normalizedToEmail, subjectRender.RenderedText, bodyRender.RenderedText, ct);
+        if (sendResult.Success)
+        {
+            await emailLogRepository.MarkSentAsync(emailLogId, sendResult.ProviderMessageId, timeProvider.GetUtcNow().UtcDateTime, ct);
+            return sendResult with { EmailLogId = emailLogId };
+        }
+
+        await emailLogRepository.MarkFailedAsync(emailLogId, sendResult.ErrorMessage ?? "Email send failed.", timeProvider.GetUtcNow().UtcDateTime, ct);
+        return sendResult with { EmailLogId = emailLogId };
     }
 
-    public Task SendForgotPasswordCodeAsync(string email, string code, string resetUrl, CancellationToken ct)
-    {
-        return SendAsync(
-            email,
-            "Your Local SEO password reset code",
-            $"Use code {code} to reset your password. Reset link: {resetUrl}. The code expires in 10 minutes.",
-            ct);
-    }
-
-    public Task SendUserInviteAsync(string email, string recipientName, string inviteUrl, DateTime expiresAtUtc, CancellationToken ct)
-    {
-        var friendlyName = string.IsNullOrWhiteSpace(recipientName) ? "there" : recipientName.Trim();
-        return SendAsync(
-            email,
-            "You have been invited to Local SEO",
-            $"Hi {friendlyName}, you have been invited to Local SEO. Open this invite link to start onboarding: {inviteUrl}. This link expires at {expiresAtUtc:u}.",
-            ct);
-    }
-
-    public Task SendInviteOtpAsync(string email, string code, DateTime expiresAtUtc, CancellationToken ct)
-    {
-        return SendAsync(
-            email,
-            "Your Local SEO invite verification code",
-            $"Your invite verification code is {code}. It expires at {expiresAtUtc:u}.",
-            ct);
-    }
-
-    public Task SendChangePasswordOtpAsync(string email, string code, DateTime expiresAtUtc, CancellationToken ct)
-    {
-        return SendAsync(
-            email,
-            "Your Local SEO change password verification code",
-            $"Your change password verification code is {code}. It expires at {expiresAtUtc:u}.",
-            ct);
-    }
-
-    private async Task SendAsync(string email, string subject, string plainTextBody, CancellationToken ct)
+    private async Task<EmailSendResult> SendViaProviderAsync(EmailTemplateRecord template, string toEmail, string renderedSubject, string renderedBodyHtml, CancellationToken ct)
     {
         var cfg = options.Value;
         if (string.IsNullOrWhiteSpace(cfg.ApiKey))
-        {
-            throw new InvalidOperationException("SendGrid API key is not configured.");
-        }
+            return new EmailSendResult(false, null, 0, "SendGrid API key is not configured.");
 
-        if (string.IsNullOrWhiteSpace(cfg.FromEmail))
-        {
-            throw new InvalidOperationException("SendGrid FromEmail is not configured.");
-        }
+        var fromEmail = NormalizeRequired(template.FromEmail, 320) ?? NormalizeRequired(cfg.FromEmail, 320);
+        if (string.IsNullOrWhiteSpace(fromEmail))
+            return new EmailSendResult(false, null, 0, "Template from-email is not configured.");
+
+        var fromName = NormalizeNullable(template.FromName, 200) ?? NormalizeNullable(cfg.FromName, 200);
+        var plainTextBody = BuildPlainText(renderedBodyHtml);
 
         var client = factory.CreateClient();
         using var req = new HttpRequestMessage(HttpMethod.Post, "https://api.sendgrid.com/v3/mail/send");
-        req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", cfg.ApiKey);
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", cfg.ApiKey);
         req.Content = JsonContent.Create(new
         {
-            from = new { email = cfg.FromEmail, name = cfg.FromName },
-            personalizations = new[] { new { to = new[] { new { email } } } },
-            subject,
-            content = new[] { new { type = "text/plain", value = plainTextBody } }
+            from = new { email = fromEmail, name = fromName },
+            personalizations = new[] { new { to = new[] { new { email = toEmail } } } },
+            subject = renderedSubject,
+            content = new[]
+            {
+                new { type = "text/plain", value = plainTextBody },
+                new { type = "text/html", value = renderedBodyHtml }
+            }
         });
 
-        using var resp = await client.SendAsync(req, ct);
-        if (resp.IsSuccessStatusCode)
-            return;
+        using var response = await client.SendAsync(req, ct);
+        var providerMessageId = TryReadProviderMessageId(response);
+        if (response.IsSuccessStatusCode)
+            return new EmailSendResult(true, providerMessageId, 0, null);
 
-        var responseBody = await resp.Content.ReadAsStringAsync(ct);
-        logger.LogError(
-            "SendGrid email send failed. StatusCode={StatusCode} Recipient={Recipient} Body={Body}",
-            (int)resp.StatusCode,
+        var body = await response.Content.ReadAsStringAsync(ct);
+        var safeError = Truncate($"SendGrid HTTP {(int)response.StatusCode}: {body}", 4000) ?? "SendGrid send failed.";
+        logger.LogError("SendGrid send failed. StatusCode={StatusCode} TemplateKey={TemplateKey} Recipient={Recipient}", (int)response.StatusCode, template.Key, toEmail);
+        return new EmailSendResult(false, providerMessageId, 0, safeError);
+    }
+
+    private byte[] ComputeEmailHash(string normalizedToEmail)
+    {
+        var salt = options.Value.EmailHashSalt ?? string.Empty;
+        var payload = $"{normalizedToEmail.ToLowerInvariant()}{salt}";
+        return SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(payload));
+    }
+
+    private static Dictionary<string, string> NormalizeTokens(IReadOnlyDictionary<string, string> tokens)
+    {
+        var normalized = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var pair in tokens)
+        {
+            var key = NormalizeRequired(pair.Key, 100);
+            if (key is null)
+                continue;
+            normalized[key] = pair.Value ?? string.Empty;
+        }
+        return normalized;
+    }
+
+    private static string BuildPlainText(string html)
+    {
+        var stripped = HtmlTagRegex.Replace(html ?? string.Empty, " ");
+        var decoded = System.Net.WebUtility.HtmlDecode(stripped);
+        return string.Join(' ', decoded.Split(['\r', '\n', '\t', ' '], StringSplitOptions.RemoveEmptyEntries));
+    }
+
+    private static string? TryReadProviderMessageId(HttpResponseMessage response)
+    {
+        if (TryReadHeader(response, "X-Message-Id", out var value))
+            return NormalizeNullable(value, 200);
+        if (TryReadHeader(response, "x-message-id", out value))
+            return NormalizeNullable(value, 200);
+        if (TryReadHeader(response, "X-Message-ID", out value))
+            return NormalizeNullable(value, 200);
+        if (TryReadHeader(response, "sg_message_id", out value))
+            return NormalizeNullable(value, 200);
+        return null;
+    }
+
+    private static bool TryReadHeader(HttpResponseMessage response, string headerName, out string value)
+    {
+        value = string.Empty;
+        if (!response.Headers.TryGetValues(headerName, out var values))
+            return false;
+        value = values.FirstOrDefault() ?? string.Empty;
+        return value.Length > 0;
+    }
+
+    private static string? NormalizeRequired(string? value, int maxLength)
+    {
+        var trimmed = (value ?? string.Empty).Trim();
+        if (trimmed.Length == 0)
+            return null;
+        return trimmed.Length <= maxLength ? trimmed : trimmed[..maxLength];
+    }
+
+    private static string? NormalizeNullable(string? value, int maxLength)
+    {
+        var trimmed = (value ?? string.Empty).Trim();
+        if (trimmed.Length == 0)
+            return null;
+        return trimmed.Length <= maxLength ? trimmed : trimmed[..maxLength];
+    }
+
+    private static string? Truncate(string? value, int maxLength)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+        return value.Length <= maxLength ? value : value[..maxLength];
+    }
+}
+
+public sealed class SendGridEmailService(
+    IEmailSenderService sender,
+    IEmailTokenFactory tokenFactory,
+    ISecuritySettingsProvider securitySettingsProvider) : ISendGridEmailService
+{
+    public async Task SendLoginTwoFactorCodeAsync(string email, string code, CancellationToken ct)
+    {
+        var settings = await securitySettingsProvider.GetAsync(ct);
+        var result = await sender.SendAsync(
+            "TwoFactorCode",
             email,
-            responseBody);
-        throw new HttpRequestException(
-            $"SendGrid email send failed with HTTP {(int)resp.StatusCode}.",
-            null,
-            resp.StatusCode);
+            tokenFactory.BuildTwoFactorCodeTokens(code, settings.EmailCodeExpiryMinutes),
+            correlationId: null,
+            ct);
+        EnsureSuccess(result);
+    }
+
+    public async Task SendForgotPasswordCodeAsync(string email, string code, string resetUrl, CancellationToken ct)
+    {
+        var settings = await securitySettingsProvider.GetAsync(ct);
+        var result = await sender.SendAsync(
+            "PasswordReset",
+            email,
+            tokenFactory.BuildPasswordResetTokens(code, resetUrl, settings.EmailCodeExpiryMinutes),
+            correlationId: null,
+            ct);
+        EnsureSuccess(result);
+    }
+
+    public async Task SendUserInviteAsync(string email, string recipientName, string inviteUrl, DateTime expiresAtUtc, CancellationToken ct)
+    {
+        var result = await sender.SendAsync(
+            "NewUserInvite",
+            email,
+            tokenFactory.BuildNewUserInviteTokens(recipientName, inviteUrl, expiresAtUtc),
+            correlationId: null,
+            ct);
+        EnsureSuccess(result);
+    }
+
+    public async Task SendInviteOtpAsync(string email, string code, DateTime expiresAtUtc, CancellationToken ct)
+    {
+        var result = await sender.SendAsync(
+            "InviteOtp",
+            email,
+            tokenFactory.BuildInviteOtpTokens(code, expiresAtUtc),
+            correlationId: null,
+            ct);
+        EnsureSuccess(result);
+    }
+
+    public async Task SendChangePasswordOtpAsync(string email, string code, DateTime expiresAtUtc, CancellationToken ct)
+    {
+        var result = await sender.SendAsync(
+            "ChangePasswordOtp",
+            email,
+            tokenFactory.BuildChangePasswordOtpTokens(code, expiresAtUtc),
+            correlationId: null,
+            ct);
+        EnsureSuccess(result);
+    }
+
+    private static void EnsureSuccess(EmailSendResult result)
+    {
+        if (result.Success)
+            return;
+        throw new InvalidOperationException(result.ErrorMessage ?? "Email send failed.");
     }
 }

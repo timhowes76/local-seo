@@ -1,0 +1,79 @@
+@model EmailTemplateEditViewModel
+@{
+    ViewData["Title"] = "Edit Email Template";
+    var statusMessage = TempData["Status"] as string;
+}
+
+<div class="page-stack">
+    @if (!string.IsNullOrWhiteSpace(statusMessage))
+    {
+        <div class="notice">@statusMessage</div>
+    }
+    @if (!string.IsNullOrWhiteSpace(Model.Message))
+    {
+        <div class="notice">@Model.Message</div>
+    }
+
+    <section class="card">
+        <div class="toolbar">
+            <a href="/admin/email-templates" class="btn btn-secondary">Back to Email Templates</a>
+        </div>
+    </section>
+
+    <section class="card">
+        <h2 class="card-title">Edit Template</h2>
+        <form method="post" action="/admin/email-templates/@Model.Template.Id/edit" class="form-grid">
+            @Html.AntiForgeryToken()
+
+            <label for="template-key">Key</label>
+            <input id="template-key" name="Key" type="text" maxlength="100" value="@Model.Template.Key" required />
+
+            <label for="template-name">Name</label>
+            <input id="template-name" name="Name" type="text" maxlength="200" value="@Model.Template.Name" required />
+
+            <label for="template-from-name">From Name</label>
+            <input id="template-from-name" name="FromName" type="text" maxlength="200" value="@Model.Template.FromName" />
+
+            <label for="template-from-email">From Email</label>
+            <input id="template-from-email" name="FromEmail" type="email" maxlength="320" value="@Model.Template.FromEmail" required />
+
+            <label for="template-subject">Subject Template</label>
+            <textarea id="template-subject" name="SubjectTemplate" rows="3" required>@Model.Template.SubjectTemplate</textarea>
+
+            <label for="template-body">Body HTML Template</label>
+            <textarea id="template-body" name="BodyHtmlTemplate" rows="14" required>@Model.Template.BodyHtmlTemplate</textarea>
+
+            <label class="checkbox-inline">
+                <input type="checkbox" name="IsSensitive" value="true" @(Model.Template.IsSensitive ? "checked" : null) />
+                <span>Sensitive template (store only redacted output in logs)</span>
+            </label>
+
+            <label class="checkbox-inline">
+                <input type="checkbox" name="IsEnabled" value="true" @(Model.Template.IsEnabled ? "checked" : null) />
+                <span>Enabled</span>
+            </label>
+
+            <div class="toolbar">
+                <button type="submit" class="btn btn-primary">Save Template</button>
+                <a class="btn btn-secondary" href="/admin/email-templates">Cancel</a>
+            </div>
+        </form>
+    </section>
+
+    <section class="card">
+        <h2 class="card-title">Available Tokens</h2>
+        @if (Model.AvailableTokens.Count == 0)
+        {
+            <p class="muted">No token hints for this key yet.</p>
+        }
+        else
+        {
+            <ul>
+                @foreach (var token in Model.AvailableTokens)
+                {
+                    <li><code>[%@token%]</code></li>
+                }
+            </ul>
+        }
+    </section>
+</div>
