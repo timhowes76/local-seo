@@ -544,6 +544,7 @@ public sealed class AdminSettingsModel
 public sealed class AdminSiteSettingsModel
 {
     public string SiteUrl { get; set; } = "https://briskly-viceless-kayleen.ngrok-free.dev/";
+    public string SendGridEventWebhookUrl { get; set; } = "https://briskly-viceless-kayleen.ngrok-free.dev/api/webhooks/sendgrid/events";
 }
 
 public sealed class AdminDataCollectionWindowsSettingsModel

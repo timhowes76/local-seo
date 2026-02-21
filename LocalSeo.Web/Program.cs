@@ -126,6 +126,7 @@ builder.Services.AddScoped<IEmailTokenFactory, EmailTokenFactory>();
 builder.Services.AddScoped<IEmailLogRepository, EmailLogRepository>();
 builder.Services.AddScoped<IEmailProviderEventRepository>(sp => (IEmailProviderEventRepository)sp.GetRequiredService<IEmailLogRepository>());
 builder.Services.AddScoped<IEmailLogQueryService, EmailLogQueryService>();
+builder.Services.AddScoped<IEmailDeliveryStatusSyncService, SendGridEmailDeliveryStatusSyncService>();
 builder.Services.AddScoped<IEmailSenderService, EmailSenderService>();
 builder.Services.AddScoped<ISendGridWebhookSignatureValidator, SendGridWebhookSignatureValidator>();
 builder.Services.AddScoped<ISendGridWebhookIngestionService, SendGridWebhookIngestionService>();

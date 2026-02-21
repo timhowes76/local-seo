@@ -32,7 +32,8 @@ public class AdminController(
         var settings = await adminSettingsService.GetAsync(ct);
         return View(new AdminSiteSettingsModel
         {
-            SiteUrl = settings.SiteUrl
+            SiteUrl = settings.SiteUrl,
+            SendGridEventWebhookUrl = BuildSendGridEventWebhookUrl(settings.SiteUrl)
         });
     }
 
@@ -42,7 +43,10 @@ public class AdminController(
     {
         ValidateSiteUrl(nameof(model.SiteUrl), model.SiteUrl);
         if (!ModelState.IsValid)
+        {
+            model.SendGridEventWebhookUrl = BuildSendGridEventWebhookUrl(model.SiteUrl);
             return View("SettingsSite", model);
+        }
 
         var settings = await adminSettingsService.GetAsync(ct);
         settings.SiteUrl = model.SiteUrl;
@@ -1035,6 +1039,18 @@ public class AdminController(
         {
             ModelState.AddModelError(fieldName, "Site URL must be a valid http/https URL.");
         }
+    }
+
+    private static string BuildSendGridEventWebhookUrl(string? siteUrl)
+    {
+        if (!Uri.TryCreate((siteUrl ?? string.Empty).Trim(), UriKind.Absolute, out var baseUri)
+            || (baseUri.Scheme != Uri.UriSchemeHttp && baseUri.Scheme != Uri.UriSchemeHttps))
+        {
+            return "/api/webhooks/sendgrid/events";
+        }
+
+        var root = baseUri.GetLeftPart(UriPartial.Authority).TrimEnd('/');
+        return $"{root}/api/webhooks/sendgrid/events";
     }
 
     private static string? NormalizeTaskTypeFilter(string? taskType)

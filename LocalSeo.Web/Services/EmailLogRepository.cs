@@ -218,9 +218,17 @@ ORDER BY EventUtc DESC, Id DESC;", new { EmailLogId = emailLogId }, cancellation
 SELECT TOP 1 el.Id
 FROM dbo.EmailLog el
 WHERE el.SendGridMessageId = @ProviderMessageId
-   OR (el.SendGridMessageId IS NOT NULL AND CHARINDEX(el.SendGridMessageId, @ProviderMessageId) = 1)
-   OR (el.SendGridMessageId IS NOT NULL AND CHARINDEX(@ProviderMessageId, el.SendGridMessageId) = 1)
-ORDER BY el.CreatedUtc DESC, el.Id DESC;", new { ProviderMessageId = normalized }, cancellationToken: ct));
+   OR (el.SendGridMessageId IS NOT NULL AND CHARINDEX(el.SendGridMessageId, @ProviderMessageId) > 0)
+   OR (el.SendGridMessageId IS NOT NULL AND CHARINDEX(@ProviderMessageId, el.SendGridMessageId) > 0)
+ORDER BY
+  CASE
+    WHEN el.SendGridMessageId = @ProviderMessageId THEN 0
+    WHEN el.SendGridMessageId IS NOT NULL AND CHARINDEX(el.SendGridMessageId, @ProviderMessageId) > 0 THEN 1
+    WHEN el.SendGridMessageId IS NOT NULL AND CHARINDEX(@ProviderMessageId, el.SendGridMessageId) > 0 THEN 2
+    ELSE 3
+  END,
+  el.CreatedUtc DESC,
+  el.Id DESC;", new { ProviderMessageId = normalized }, cancellationToken: ct));
     }
 
     public async Task UpdateLastProviderEventAsync(long emailLogId, string eventType, DateTime eventUtc, CancellationToken ct)

@@ -9,6 +9,7 @@ namespace LocalSeo.Web.Controllers;
 public sealed class AdminLogsController(
     IUserLoginLogRepository userLoginLogRepository,
     IEmailLogQueryService emailLogQueryService,
+    IEmailDeliveryStatusSyncService emailDeliveryStatusSyncService,
     IEmailTemplateService emailTemplateService) : Controller
 {
     [HttpGet("/admin/logs")]
@@ -107,6 +108,13 @@ public sealed class AdminLogsController(
             totalPages = Math.Max(1, (int)Math.Ceiling(result.TotalCount / (double)normalizedQuery.PageSize));
         }
 
+        var refreshed = await emailDeliveryStatusSyncService.RefreshPendingAsync(result.Items, ct);
+        if (refreshed > 0)
+        {
+            result = await emailLogQueryService.SearchAsync(normalizedQuery, ct);
+            totalPages = Math.Max(1, (int)Math.Ceiling(result.TotalCount / (double)normalizedQuery.PageSize));
+        }
+
         var templateKeys = (await emailTemplateService.ListAsync(ct))
             .Select(x => x.Key)
             .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
@@ -131,6 +139,14 @@ public sealed class AdminLogsController(
         var viewModel = await emailLogQueryService.GetDetailsAsync(id, ct);
         if (viewModel is null)
             return NotFound();
+
+        var refreshed = await emailDeliveryStatusSyncService.RefreshPendingAsync(viewModel.Log, ct);
+        if (refreshed)
+        {
+            viewModel = await emailLogQueryService.GetDetailsAsync(id, ct);
+            if (viewModel is null)
+                return NotFound();
+        }
 
         return View(viewModel);
     }

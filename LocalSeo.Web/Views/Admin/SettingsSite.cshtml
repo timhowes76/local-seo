@@ -25,6 +25,12 @@
                 @Html.ValidationMessage(nameof(Model.SiteUrl))
             </div>
 
+            <div class="form-row">
+                <label for="SendGridEventWebhookUrl">SendGrid Event Webhook URL</label>
+                <input id="SendGridEventWebhookUrl" type="text" value="@Model.SendGridEventWebhookUrl" readonly />
+                <small class="muted">Use this exact URL in SendGrid Event Webhook settings.</small>
+            </div>
+
             <div class="toolbar">
                 <button type="submit">Save Settings</button>
             </div>

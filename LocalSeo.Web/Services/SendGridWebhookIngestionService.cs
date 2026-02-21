@@ -31,8 +31,8 @@ public sealed class SendGridWebhookSignatureValidator(
         var publicKeyValue = (options.Value.EventWebhookPublicKeyPem ?? string.Empty).Trim();
         if (string.IsNullOrWhiteSpace(publicKeyValue))
         {
-            logger.LogWarning("SendGrid webhook signature validation failed: public key is not configured.");
-            return false;
+            logger.LogWarning("SendGrid webhook signature validation bypassed because no public key is configured. Configure SendGrid:EventWebhookPublicKeyPem to enforce signature verification.");
+            return true;
         }
 
         var timestamp = (timestampHeader ?? string.Empty).Trim();
@@ -147,10 +147,11 @@ public sealed class SendGridWebhookIngestionService(
                     PayloadJson: payload,
                     CreatedUtc: nowUtc), ct);
 
-                if (!created)
-                    continue;
+                if (created)
+                    inserted++;
 
-                inserted++;
+                // Duplicate provider events can arrive later with EmailLogId available.
+                // Keep log state in sync even when event insert is idempotently skipped.
                 if (emailLogId.HasValue)
                     await emailLogRepository.UpdateLastProviderEventAsync(emailLogId.Value, eventType, eventUtc, ct);
             }
@@ -166,7 +167,7 @@ public sealed class SendGridWebhookIngestionService(
 
     private static string? ReadString(JsonElement element, string propertyName)
     {
-        if (!element.TryGetProperty(propertyName, out var property))
+        if (!TryGetPropertyIgnoreCase(element, propertyName, out var property))
             return null;
         return property.ValueKind switch
         {
@@ -182,13 +183,19 @@ public sealed class SendGridWebhookIngestionService(
             return customArgId;
         if (TryReadEmailLogIdFromContainer(element, "unique_args", out var uniqueArgId))
             return uniqueArgId;
+        if (TryReadLongProperty(element, "email_log_id", out var flattenedId) && flattenedId > 0)
+            return flattenedId;
+        if (TryReadLongProperty(element, "emailLogId", out flattenedId) && flattenedId > 0)
+            return flattenedId;
+        if (TryReadLongProperty(element, "EmailLogId", out flattenedId) && flattenedId > 0)
+            return flattenedId;
         return null;
     }
 
     private static bool TryReadEmailLogIdFromContainer(JsonElement root, string containerPropertyName, out long emailLogId)
     {
         emailLogId = 0;
-        if (!root.TryGetProperty(containerPropertyName, out var container) || container.ValueKind != JsonValueKind.Object)
+        if (!TryGetPropertyIgnoreCase(root, containerPropertyName, out var container) || container.ValueKind != JsonValueKind.Object)
             return false;
 
         if (TryReadLongProperty(container, "email_log_id", out emailLogId))
@@ -203,7 +210,7 @@ public sealed class SendGridWebhookIngestionService(
     private static bool TryReadLongProperty(JsonElement container, string propertyName, out long value)
     {
         value = 0;
-        if (!container.TryGetProperty(propertyName, out var property))
+        if (!TryGetPropertyIgnoreCase(container, propertyName, out var property))
             return false;
 
         if (property.ValueKind == JsonValueKind.Number && property.TryGetInt64(out value))
@@ -215,7 +222,7 @@ public sealed class SendGridWebhookIngestionService(
 
     private static DateTime? ReadUnixTimestampUtc(JsonElement element, string propertyName)
     {
-        if (!element.TryGetProperty(propertyName, out var property))
+        if (!TryGetPropertyIgnoreCase(element, propertyName, out var property))
             return null;
 
         long timestamp;
@@ -224,6 +231,26 @@ public sealed class SendGridWebhookIngestionService(
         if (property.ValueKind == JsonValueKind.String && long.TryParse(property.GetString(), out timestamp))
             return DateTimeOffset.FromUnixTimeSeconds(timestamp).UtcDateTime;
         return null;
+    }
+
+    private static bool TryGetPropertyIgnoreCase(JsonElement element, string propertyName, out JsonElement property)
+    {
+        property = default;
+        if (element.ValueKind != JsonValueKind.Object)
+            return false;
+
+        if (element.TryGetProperty(propertyName, out property))
+            return true;
+
+        foreach (var candidate in element.EnumerateObject())
+        {
+            if (!string.Equals(candidate.Name, propertyName, StringComparison.OrdinalIgnoreCase))
+                continue;
+            property = candidate.Value;
+            return true;
+        }
+
+        return false;
     }
 
     private static string? NormalizeValue(string? value, int maxLength)

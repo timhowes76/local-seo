@@ -3,10 +3,12 @@ using System.IO;
 using System.Text;
 using LocalSeo.Web.Controllers;
 using LocalSeo.Web.Models;
+using LocalSeo.Web.Options;
 using LocalSeo.Web.Services;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 
 namespace LocalSeo.Web.Tests;
 
@@ -119,6 +121,90 @@ public class EmailAndWebhookTests
         Assert.Equal(1, providerRepo.StoredCount);
     }
 
+    [Fact]
+    public async Task SendGridWebhookIngestion_DuplicateEvent_WithLaterEmailLogId_UpdatesLog()
+    {
+        var logRepo = new FakeEmailLogRepository();
+        var providerRepo = new FakeProviderEventRepository();
+        var service = new SendGridWebhookIngestionService(
+            logRepo,
+            providerRepo,
+            TimeProvider.System,
+            NullLogger<SendGridWebhookIngestionService>.Instance);
+
+        const string initialPayload = "[{\"event\":\"delivered\",\"timestamp\":1730000000,\"sg_message_id\":\"msg-456\"}]";
+        const string linkedPayload = "[{\"event\":\"delivered\",\"timestamp\":1730000000,\"sg_message_id\":\"msg-456\",\"email_log_id\":\"42\"}]";
+
+        var first = await service.IngestAsync(initialPayload, CancellationToken.None);
+        var second = await service.IngestAsync(linkedPayload, CancellationToken.None);
+
+        Assert.True(first.Success);
+        Assert.True(second.Success);
+        Assert.Equal(1, first.InsertedCount);
+        Assert.Equal(0, second.InsertedCount);
+        var updated = Assert.Single(logRepo.UpdatedEvents);
+        Assert.Equal(42L, updated.EmailLogId);
+        Assert.Equal("delivered", updated.EventType);
+    }
+
+    [Fact]
+    public async Task SendGridWebhookIngestion_FlattenedEmailLogId_UpdatesLogWithoutMessageLookup()
+    {
+        var logRepo = new FakeEmailLogRepository();
+        var providerRepo = new FakeProviderEventRepository();
+        var service = new SendGridWebhookIngestionService(
+            logRepo,
+            providerRepo,
+            TimeProvider.System,
+            NullLogger<SendGridWebhookIngestionService>.Instance);
+
+        const string payload = "[{\"event\":\"delivered\",\"timestamp\":1730000000,\"sg_message_id\":\"msg-456\",\"email_log_id\":\"42\"}]";
+
+        var result = await service.IngestAsync(payload, CancellationToken.None);
+
+        Assert.True(result.Success);
+        Assert.Equal(1, result.InsertedCount);
+        Assert.Equal(0, logRepo.FindByProviderMessageIdCallCount);
+        var updated = Assert.Single(logRepo.UpdatedEvents);
+        Assert.Equal(42L, updated.EmailLogId);
+        Assert.Equal("delivered", updated.EventType);
+    }
+
+    [Fact]
+    public async Task SendGridWebhookIngestion_CaseInsensitiveCustomArgs_UpdatesLog()
+    {
+        var logRepo = new FakeEmailLogRepository();
+        var providerRepo = new FakeProviderEventRepository();
+        var service = new SendGridWebhookIngestionService(
+            logRepo,
+            providerRepo,
+            TimeProvider.System,
+            NullLogger<SendGridWebhookIngestionService>.Instance);
+
+        const string payload = "[{\"EVENT\":\"Delivered\",\"timestamp\":1730000000,\"SG_MESSAGE_ID\":\"msg-999\",\"Custom_Args\":{\"Email_Log_Id\":\"42\"}}]";
+
+        var result = await service.IngestAsync(payload, CancellationToken.None);
+
+        Assert.True(result.Success);
+        Assert.Equal(1, result.InsertedCount);
+        var updated = Assert.Single(logRepo.UpdatedEvents);
+        Assert.Equal(42L, updated.EmailLogId);
+        Assert.Equal("Delivered", updated.EventType);
+    }
+
+    [Fact]
+    public void SendGridWebhookSignatureValidator_WithoutPublicKey_AllowsWebhook()
+    {
+        var validator = new SendGridWebhookSignatureValidator(
+            Microsoft.Extensions.Options.Options.Create(new SendGridOptions { EventWebhookPublicKeyPem = string.Empty }),
+            TimeProvider.System,
+            NullLogger<SendGridWebhookSignatureValidator>.Instance);
+
+        var isValid = validator.IsValid(null, null, Encoding.UTF8.GetBytes("[]"));
+
+        Assert.True(isValid);
+    }
+
     private sealed class RejectingSignatureValidator : ISendGridWebhookSignatureValidator
     {
         public bool IsValid(string? timestampHeader, string? signatureHeader, ReadOnlySpan<byte> payloadUtf8) => false;
@@ -137,6 +223,11 @@ public class EmailAndWebhookTests
 
     private sealed class FakeEmailLogRepository : IEmailLogRepository
     {
+        private readonly List<UpdatedProviderEvent> updatedEvents = [];
+
+        public int FindByProviderMessageIdCallCount { get; private set; }
+        public IReadOnlyList<UpdatedProviderEvent> UpdatedEvents => updatedEvents;
+
         public Task<long> CreateQueuedAsync(EmailLogCreateRequest request, CancellationToken ct) => Task.FromResult(1L);
 
         public Task MarkSentAsync(long id, string? providerMessageId, DateTime nowUtc, CancellationToken ct) => Task.CompletedTask;
@@ -150,9 +241,16 @@ public class EmailAndWebhookTests
         public Task<IReadOnlyList<EmailProviderEventRow>> ListEventsAsync(long emailLogId, CancellationToken ct) => Task.FromResult<IReadOnlyList<EmailProviderEventRow>>([]);
 
         public Task<long?> FindByProviderMessageIdAsync(string providerMessageId, CancellationToken ct)
-            => Task.FromResult<long?>(providerMessageId == "msg-123" ? 42L : null);
+        {
+            FindByProviderMessageIdCallCount++;
+            return Task.FromResult<long?>(providerMessageId == "msg-123" ? 42L : null);
+        }
 
-        public Task UpdateLastProviderEventAsync(long emailLogId, string eventType, DateTime eventUtc, CancellationToken ct) => Task.CompletedTask;
+        public Task UpdateLastProviderEventAsync(long emailLogId, string eventType, DateTime eventUtc, CancellationToken ct)
+        {
+            updatedEvents.Add(new UpdatedProviderEvent(emailLogId, eventType, eventUtc));
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class FakeProviderEventRepository : IEmailProviderEventRepository
@@ -167,4 +265,7 @@ public class EmailAndWebhookTests
             return Task.FromResult(keys.Add(key));
         }
     }
+
+    private sealed record UpdatedProviderEvent(long EmailLogId, string EventType, DateTime EventUtc);
+
 }
