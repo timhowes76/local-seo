@@ -1,6 +1,53 @@
+@using System.Text.RegularExpressions
 @model EmailLogDetailsViewModel
 @{
     ViewData["Title"] = "Email Log Details";
+
+    var subjectForDisplay = Model.Log.SubjectRendered ?? string.Empty;
+    var bodyForDisplay = Model.Log.BodyHtmlRendered ?? string.Empty;
+    var displayRedactionApplied = Model.Log.RedactionApplied;
+
+    if (Model.Log.IsSensitive)
+    {
+        var codeRegex = new Regex(@"(?<!\d)\d{6,8}(?!\d)", RegexOptions.CultureInvariant);
+        var splitCodeRegex = new Regex(@"(?<!\d)(?:\d[\s-]?){6,8}(?!\d)", RegexOptions.CultureInvariant);
+        var oneTimeLinkRegex = new Regex(@"https?:\/\/[^\s""'<>]*(token=|code=|state=|sig=)[^\s""'<>]*", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        var redactedSubject = oneTimeLinkRegex.Replace(splitCodeRegex.Replace(codeRegex.Replace(subjectForDisplay, "******"), "******"), "(one-time link redacted)");
+        var redactedBody = oneTimeLinkRegex.Replace(splitCodeRegex.Replace(codeRegex.Replace(bodyForDisplay, "******"), "******"), "(one-time link redacted)");
+
+        if (!string.Equals(redactedSubject, subjectForDisplay, StringComparison.Ordinal)
+            || !string.Equals(redactedBody, bodyForDisplay, StringComparison.Ordinal))
+            displayRedactionApplied = true;
+
+        subjectForDisplay = redactedSubject;
+        bodyForDisplay = redactedBody;
+    }
+
+    string DeliveryLabel(string? eventType)
+    {
+        var value = (eventType ?? string.Empty).Trim();
+        if (value.Length == 0)
+            return "Pending";
+        return value;
+    }
+
+    string DeliveryClass(string? eventType)
+    {
+        var value = (eventType ?? string.Empty).Trim().ToLowerInvariant();
+        return value switch
+        {
+            "delivered" => "delivery-pill delivery-delivered",
+            "open" => "delivery-pill delivery-delivered",
+            "click" => "delivery-pill delivery-delivered",
+            "processed" => "delivery-pill delivery-queued",
+            "deferred" => "delivery-pill delivery-deferred",
+            "bounce" => "delivery-pill delivery-failed",
+            "dropped" => "delivery-pill delivery-failed",
+            "spamreport" => "delivery-pill delivery-failed",
+            _ when value.Length == 0 => "delivery-pill delivery-queued",
+            _ => "delivery-pill"
+        };
+    }
 }
 
 <div class="page-stack">
@@ -9,6 +56,18 @@
             <a href="/admin/logs/emails" class="btn btn-secondary">Back to Email Log</a>
             <a href="/admin/logs" class="btn btn-secondary">Back to Logs</a>
         </div>
+    </section>
+
+    <section class="card">
+        <h2 class="card-title">Delivery</h2>
+        <div class="email-log-delivery">
+            <span class="@DeliveryClass(Model.Log.LastProviderEvent)">@DeliveryLabel(Model.Log.LastProviderEvent)</span>
+            @if (Model.Log.LastProviderEventUtc.HasValue)
+            {
+                <span class="muted">@Model.Log.LastProviderEventUtc.Value.ToString("dd MMM yyyy HH:mm") UTC</span>
+            }
+        </div>
+        <p class="muted">Queue status: @Model.Log.Status</p>
     </section>
 
     <section class="card">
@@ -26,14 +85,11 @@
             <dt>From</dt>
             <dd>@(string.IsNullOrWhiteSpace(Model.Log.FromName) ? Model.Log.FromEmail : $"{Model.Log.FromName} <{Model.Log.FromEmail}>")</dd>
 
-            <dt>Status</dt>
-            <dd>@Model.Log.Status</dd>
-
             <dt>Sensitive</dt>
             <dd>@(Model.Log.IsSensitive ? "Yes" : "No")</dd>
 
             <dt>Redaction Applied</dt>
-            <dd>@(Model.Log.RedactionApplied ? "Yes" : "No")</dd>
+            <dd>@(displayRedactionApplied ? "Yes" : "No")</dd>
 
             <dt>Correlation ID</dt>
             <dd>@(string.IsNullOrWhiteSpace(Model.Log.CorrelationId) ? "N/A" : Model.Log.CorrelationId)</dd>
@@ -41,51 +97,40 @@
             <dt>Provider Message ID</dt>
             <dd>@(string.IsNullOrWhiteSpace(Model.Log.SendGridMessageId) ? "N/A" : Model.Log.SendGridMessageId)</dd>
 
-            <dt>Last Provider Event</dt>
-            <dd>
-                @if (string.IsNullOrWhiteSpace(Model.Log.LastProviderEvent))
-                {
-                    <span>N/A</span>
-                }
-                else
-                {
-                    <span>@Model.Log.LastProviderEvent</span>
-                    if (Model.Log.LastProviderEventUtc.HasValue)
-                    {
-                        <span> (@Model.Log.LastProviderEventUtc.Value.ToString("u"))</span>
-                    }
-                }
-            </dd>
-
             @if (!string.IsNullOrWhiteSpace(Model.Log.Error))
             {
                 <dt>Error</dt>
                 <dd>@Model.Log.Error</dd>
             }
         </dl>
+
+        @if (Model.Log.IsSensitive && !Model.Log.RedactionApplied && displayRedactionApplied)
+        {
+            <p class="muted">This record was stored before strict redaction was enforced. Sensitive values are masked in this view.</p>
+        }
     </section>
 
     <section class="card">
         <h2 class="card-title">Rendered Subject</h2>
-        <pre class="code-block">@Model.Log.SubjectRendered</pre>
+        <pre class="code-block">@subjectForDisplay</pre>
     </section>
 
     <section class="card">
         <h2 class="card-title">Rendered HTML Body</h2>
         <p class="muted">Rendered in a sandboxed frame to avoid active scripts.</p>
-        <iframe class="email-preview-frame" sandbox="" srcdoc="@Model.Log.BodyHtmlRendered"></iframe>
+        <iframe class="email-preview-frame" sandbox="" srcdoc="@bodyForDisplay"></iframe>
     </section>
 
     <section class="card">
         <h2 class="card-title">Provider Events</h2>
         @if (Model.Events.Count == 0)
         {
-            <p class="muted">No provider events captured.</p>
+            <p class="muted">No provider events captured yet. Confirm your SendGrid Event Webhook is configured and signed webhook verification is enabled.</p>
         }
         else
         {
             <div class="table-wrap">
-                <table>
+                <table class="email-log-table">
                     <thead>
                         <tr>
                             <th>Event (UTC)</th>
@@ -99,7 +144,7 @@
                         {
                             <tr>
                                 <td>@evt.EventUtc.ToString("u")</td>
-                                <td>@evt.EventType</td>
+                                <td><span class="@DeliveryClass(evt.EventType)">@evt.EventType</span></td>
                                 <td>@evt.ProviderMessageId</td>
                                 <td>
                                     @if (string.IsNullOrWhiteSpace(evt.PayloadJson))

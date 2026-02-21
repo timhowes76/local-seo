@@ -45,6 +45,7 @@ public sealed class EmailSenderService(
         if (template is null || !template.IsEnabled)
             return new EmailSendResult(false, null, 0, "Email template is missing or disabled.");
 
+        var effectiveSensitive = template.IsSensitive || IsAlwaysSensitiveTemplate(normalizedTemplateKey);
         var normalizedTokens = NormalizeTokens(tokens);
         var subjectRender = templateRenderer.Render(template.SubjectTemplate, normalizedTokens);
         var bodyRender = templateRenderer.Render(template.BodyHtmlTemplate, normalizedTokens);
@@ -59,7 +60,7 @@ public sealed class EmailSenderService(
 
         var redaction = redactionService.RedactForStorage(
             normalizedTemplateKey,
-            template.IsSensitive,
+            effectiveSensitive,
             subjectRender.RenderedText,
             bodyRender.RenderedText,
             normalizedTokens);
@@ -74,13 +75,13 @@ public sealed class EmailSenderService(
             FromEmail: NormalizeRequired(template.FromEmail, 320) ?? "noreply@example.local",
             SubjectRendered: redaction.SubjectRedacted,
             BodyHtmlRendered: redaction.BodyHtmlRedacted,
-            IsSensitive: template.IsSensitive,
+            IsSensitive: effectiveSensitive,
             RedactionApplied: redaction.RedactionApplied,
             Status: "Queued",
             Error: null,
             CorrelationId: NormalizeNullable(correlationId, 64)), ct);
 
-        var sendResult = await SendViaProviderAsync(template, normalizedToEmail, subjectRender.RenderedText, bodyRender.RenderedText, ct);
+        var sendResult = await SendViaProviderAsync(emailLogId, template, normalizedToEmail, subjectRender.RenderedText, bodyRender.RenderedText, ct);
         if (sendResult.Success)
         {
             await emailLogRepository.MarkSentAsync(emailLogId, sendResult.ProviderMessageId, timeProvider.GetUtcNow().UtcDateTime, ct);
@@ -91,7 +92,7 @@ public sealed class EmailSenderService(
         return sendResult with { EmailLogId = emailLogId };
     }
 
-    private async Task<EmailSendResult> SendViaProviderAsync(EmailTemplateRecord template, string toEmail, string renderedSubject, string renderedBodyHtml, CancellationToken ct)
+    private async Task<EmailSendResult> SendViaProviderAsync(long emailLogId, EmailTemplateRecord template, string toEmail, string renderedSubject, string renderedBodyHtml, CancellationToken ct)
     {
         var cfg = options.Value;
         if (string.IsNullOrWhiteSpace(cfg.ApiKey))
@@ -110,7 +111,17 @@ public sealed class EmailSenderService(
         req.Content = JsonContent.Create(new
         {
             from = new { email = fromEmail, name = fromName },
-            personalizations = new[] { new { to = new[] { new { email = toEmail } } } },
+            personalizations = new[]
+            {
+                new
+                {
+                    to = new[] { new { email = toEmail } },
+                    custom_args = new
+                    {
+                        email_log_id = emailLogId.ToString()
+                    }
+                }
+            },
             subject = renderedSubject,
             content = new[]
             {
@@ -160,14 +171,25 @@ public sealed class EmailSenderService(
     private static string? TryReadProviderMessageId(HttpResponseMessage response)
     {
         if (TryReadHeader(response, "X-Message-Id", out var value))
-            return NormalizeNullable(value, 200);
+            return NormalizeProviderMessageId(value);
         if (TryReadHeader(response, "x-message-id", out value))
-            return NormalizeNullable(value, 200);
+            return NormalizeProviderMessageId(value);
         if (TryReadHeader(response, "X-Message-ID", out value))
-            return NormalizeNullable(value, 200);
+            return NormalizeProviderMessageId(value);
         if (TryReadHeader(response, "sg_message_id", out value))
-            return NormalizeNullable(value, 200);
+            return NormalizeProviderMessageId(value);
         return null;
+    }
+
+    private static string? NormalizeProviderMessageId(string? value)
+    {
+        var normalized = NormalizeNullable(value, 200);
+        if (string.IsNullOrWhiteSpace(normalized))
+            return null;
+
+        normalized = normalized.Trim().Trim('<', '>', '"', '\'');
+        var firstSegment = normalized.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).FirstOrDefault();
+        return NormalizeNullable(firstSegment ?? normalized, 200);
     }
 
     private static bool TryReadHeader(HttpResponseMessage response, string headerName, out string value)
@@ -200,6 +222,15 @@ public sealed class EmailSenderService(
         if (string.IsNullOrWhiteSpace(value))
             return null;
         return value.Length <= maxLength ? value : value[..maxLength];
+    }
+
+    private static bool IsAlwaysSensitiveTemplate(string templateKey)
+    {
+        return templateKey.Equals("TwoFactorCode", StringComparison.OrdinalIgnoreCase)
+               || templateKey.Equals("PasswordReset", StringComparison.OrdinalIgnoreCase)
+               || templateKey.Equals("NewUserInvite", StringComparison.OrdinalIgnoreCase)
+               || templateKey.Equals("InviteOtp", StringComparison.OrdinalIgnoreCase)
+               || templateKey.Equals("ChangePasswordOtp", StringComparison.OrdinalIgnoreCase);
     }
 }
 

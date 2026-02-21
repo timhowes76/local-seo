@@ -123,16 +123,20 @@ public sealed class SendGridWebhookIngestionService(
             {
                 received++;
                 var eventType = NormalizeValue(ReadString(evt, "event"), 50) ?? "unknown";
+                var emailLogId = ReadEmailLogId(evt);
                 var providerMessageId = NormalizeValue(ReadString(evt, "sg_message_id"), 200)
                     ?? NormalizeValue(ReadString(evt, "smtp-id"), 200)
                     ?? NormalizeValue(ReadString(evt, "smtp_id"), 200)
-                    ?? NormalizeValue(ReadString(evt, "message_id"), 200);
+                    ?? NormalizeValue(ReadString(evt, "message_id"), 200)
+                    ?? NormalizeValue(ReadString(evt, "sg_event_id"), 200)
+                    ?? (emailLogId.HasValue ? $"email-log-{emailLogId.Value}" : null);
 
                 if (string.IsNullOrWhiteSpace(providerMessageId))
                     continue;
 
                 var eventUtc = ReadUnixTimestampUtc(evt, "timestamp") ?? nowUtc;
-                var emailLogId = await emailLogRepository.FindByProviderMessageIdAsync(providerMessageId, ct);
+                if (!emailLogId.HasValue)
+                    emailLogId = await emailLogRepository.FindByProviderMessageIdAsync(providerMessageId, ct);
                 var payload = Truncate(evt.GetRawText(), MaxPayloadLength);
                 var created = await providerEventRepository.InsertIfNotExistsAsync(new EmailProviderEventCreateRequest(
                     EmailLogId: emailLogId,
@@ -170,6 +174,43 @@ public sealed class SendGridWebhookIngestionService(
             JsonValueKind.Number => property.GetRawText(),
             _ => null
         };
+    }
+
+    private static long? ReadEmailLogId(JsonElement element)
+    {
+        if (TryReadEmailLogIdFromContainer(element, "custom_args", out var customArgId))
+            return customArgId;
+        if (TryReadEmailLogIdFromContainer(element, "unique_args", out var uniqueArgId))
+            return uniqueArgId;
+        return null;
+    }
+
+    private static bool TryReadEmailLogIdFromContainer(JsonElement root, string containerPropertyName, out long emailLogId)
+    {
+        emailLogId = 0;
+        if (!root.TryGetProperty(containerPropertyName, out var container) || container.ValueKind != JsonValueKind.Object)
+            return false;
+
+        if (TryReadLongProperty(container, "email_log_id", out emailLogId))
+            return emailLogId > 0;
+        if (TryReadLongProperty(container, "emailLogId", out emailLogId))
+            return emailLogId > 0;
+        if (TryReadLongProperty(container, "EmailLogId", out emailLogId))
+            return emailLogId > 0;
+        return false;
+    }
+
+    private static bool TryReadLongProperty(JsonElement container, string propertyName, out long value)
+    {
+        value = 0;
+        if (!container.TryGetProperty(propertyName, out var property))
+            return false;
+
+        if (property.ValueKind == JsonValueKind.Number && property.TryGetInt64(out value))
+            return true;
+        if (property.ValueKind == JsonValueKind.String && long.TryParse(property.GetString(), out value))
+            return true;
+        return false;
     }
 
     private static DateTime? ReadUnixTimestampUtc(JsonElement element, string propertyName)

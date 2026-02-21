@@ -57,6 +57,7 @@ public sealed class EmailRedactionService : IEmailRedactionService
     private const string OneTimeLinkMask = "(one-time link redacted)";
 
     private static readonly Regex DigitsFallbackRegex = new(@"(?<!\d)\d{6,8}(?!\d)", RegexOptions.Compiled | RegexOptions.CultureInvariant);
+    private static readonly Regex SplitDigitsFallbackRegex = new(@"(?<!\d)(?:\d[\s-]?){6,8}(?!\d)", RegexOptions.Compiled | RegexOptions.CultureInvariant);
     private static readonly Regex OneTimeLinkFallbackRegex = new(@"https?:\/\/[^\s""'<>]*(token=|code=|state=|sig=)[^\s""'<>]*", RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
 
     public EmailRedactionResult RedactForStorage(string templateKey, bool isSensitive, string renderedSubject, string renderedBodyHtml, IReadOnlyDictionary<string, string> tokens)
@@ -85,8 +86,8 @@ public sealed class EmailRedactionService : IEmailRedactionService
                                    || !string.Equals(beforeBody, body, StringComparison.Ordinal);
             }
 
-            var fallbackSubject = DigitsFallbackRegex.Replace(subject, CodeMask);
-            var fallbackBody = DigitsFallbackRegex.Replace(body, CodeMask);
+            var fallbackSubject = SplitDigitsFallbackRegex.Replace(DigitsFallbackRegex.Replace(subject, CodeMask), CodeMask);
+            var fallbackBody = SplitDigitsFallbackRegex.Replace(DigitsFallbackRegex.Replace(body, CodeMask), CodeMask);
             if (!string.Equals(subject, fallbackSubject, StringComparison.Ordinal) || !string.Equals(body, fallbackBody, StringComparison.Ordinal))
                 redactionApplied = true;
             subject = fallbackSubject;

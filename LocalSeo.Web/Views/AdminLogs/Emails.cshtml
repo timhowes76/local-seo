@@ -34,6 +34,32 @@
             q.Add($"messageId={Uri.EscapeDataString(query.MessageId)}");
         return "/admin/logs/emails?" + string.Join("&", q);
     }
+
+    string DeliveryLabel(string? eventType)
+    {
+        var value = (eventType ?? string.Empty).Trim();
+        if (value.Length == 0)
+            return "Pending";
+        return value;
+    }
+
+    string DeliveryClass(string? eventType)
+    {
+        var value = (eventType ?? string.Empty).Trim().ToLowerInvariant();
+        return value switch
+        {
+            "delivered" => "delivery-pill delivery-delivered",
+            "open" => "delivery-pill delivery-delivered",
+            "click" => "delivery-pill delivery-delivered",
+            "processed" => "delivery-pill delivery-queued",
+            "deferred" => "delivery-pill delivery-deferred",
+            "bounce" => "delivery-pill delivery-failed",
+            "dropped" => "delivery-pill delivery-failed",
+            "spamreport" => "delivery-pill delivery-failed",
+            _ when value.Length == 0 => "delivery-pill delivery-queued",
+            _ => "delivery-pill"
+        };
+    }
 }
 
 <div class="page-stack">
@@ -46,124 +72,144 @@
 
     <section class="card">
         <h2 class="card-title">Filters</h2>
-        <form method="get" action="/admin/logs/emails" class="places-filter-line">
-            <label for="email-log-from">From</label>
-            <input id="email-log-from" name="fromUtc" type="date" value="@fromValue" />
+        <form method="get" action="/admin/logs/emails" class="email-log-filters">
+            <div class="email-filter-item">
+                <label for="email-log-from">Date From</label>
+                <input id="email-log-from" name="fromUtc" type="date" value="@fromValue" />
+            </div>
 
-            <label for="email-log-to">To</label>
-            <input id="email-log-to" name="toUtc" type="date" value="@toValue" />
+            <div class="email-filter-item">
+                <label for="email-log-to">Date To</label>
+                <input id="email-log-to" name="toUtc" type="date" value="@toValue" />
+            </div>
 
-            <label for="email-log-template">Template</label>
-            <select id="email-log-template" name="templateKey">
-                <option value="">All</option>
-                @foreach (var key in Model.TemplateKeys)
-                {
-                    if (string.Equals(key, query.TemplateKey, StringComparison.OrdinalIgnoreCase))
+            <div class="email-filter-item">
+                <label for="email-log-template">Template</label>
+                <select id="email-log-template" name="templateKey">
+                    <option value="">All</option>
+                    @foreach (var key in Model.TemplateKeys)
                     {
-                        <option value="@key" selected>@key</option>
+                        if (string.Equals(key, query.TemplateKey, StringComparison.OrdinalIgnoreCase))
+                        {
+                            <option value="@key" selected>@key</option>
+                        }
+                        else
+                        {
+                            <option value="@key">@key</option>
+                        }
+                    }
+                </select>
+            </div>
+
+            <div class="email-filter-item">
+                <label for="email-log-status">Queue Status</label>
+                <select id="email-log-status" name="status">
+                    @if (string.IsNullOrWhiteSpace(query.Status))
+                    {
+                        <option value="" selected>All</option>
                     }
                     else
                     {
-                        <option value="@key">@key</option>
+                        <option value="">All</option>
                     }
-                }
-            </select>
+                    @if (string.Equals(query.Status, "Queued", StringComparison.OrdinalIgnoreCase))
+                    {
+                        <option value="Queued" selected>Queued</option>
+                    }
+                    else
+                    {
+                        <option value="Queued">Queued</option>
+                    }
+                    @if (string.Equals(query.Status, "Sent", StringComparison.OrdinalIgnoreCase))
+                    {
+                        <option value="Sent" selected>Sent</option>
+                    }
+                    else
+                    {
+                        <option value="Sent">Sent</option>
+                    }
+                    @if (string.Equals(query.Status, "Failed", StringComparison.OrdinalIgnoreCase))
+                    {
+                        <option value="Failed" selected>Failed</option>
+                    }
+                    else
+                    {
+                        <option value="Failed">Failed</option>
+                    }
+                </select>
+            </div>
 
-            <label for="email-log-status">Status</label>
-            <select id="email-log-status" name="status">
-                @if (string.IsNullOrWhiteSpace(query.Status))
-                {
-                    <option value="" selected>All</option>
-                }
-                else
-                {
-                    <option value="">All</option>
-                }
-                @if (string.Equals(query.Status, "Queued", StringComparison.OrdinalIgnoreCase))
-                {
-                    <option value="Queued" selected>Queued</option>
-                }
-                else
-                {
-                    <option value="Queued">Queued</option>
-                }
-                @if (string.Equals(query.Status, "Sent", StringComparison.OrdinalIgnoreCase))
-                {
-                    <option value="Sent" selected>Sent</option>
-                }
-                else
-                {
-                    <option value="Sent">Sent</option>
-                }
-                @if (string.Equals(query.Status, "Failed", StringComparison.OrdinalIgnoreCase))
-                {
-                    <option value="Failed" selected>Failed</option>
-                }
-                else
-                {
-                    <option value="Failed">Failed</option>
-                }
-            </select>
+            <div class="email-filter-item">
+                <label for="email-log-provider-event">Delivery Event</label>
+                <input id="email-log-provider-event" name="providerEventType" type="text" value="@query.ProviderEventType" maxlength="50" placeholder="delivered, bounce, deferred..." />
+            </div>
 
-            <label for="email-log-provider-event">Provider Event</label>
-            <input id="email-log-provider-event" name="providerEventType" type="text" value="@query.ProviderEventType" maxlength="50" placeholder="delivered, bounce, deferred..." />
+            <div class="email-filter-item">
+                <label for="email-log-recipient">Recipient</label>
+                <input id="email-log-recipient" name="recipient" type="text" value="@query.RecipientContains" maxlength="320" placeholder="email contains..." />
+            </div>
 
-            <label for="email-log-recipient">Recipient</label>
-            <input id="email-log-recipient" name="recipient" type="text" value="@query.RecipientContains" maxlength="320" placeholder="email contains..." />
+            <div class="email-filter-item">
+                <label for="email-log-correlation">Correlation ID</label>
+                <input id="email-log-correlation" name="correlationId" type="text" value="@query.CorrelationId" maxlength="64" />
+            </div>
 
-            <label for="email-log-correlation">Correlation ID</label>
-            <input id="email-log-correlation" name="correlationId" type="text" value="@query.CorrelationId" maxlength="64" />
+            <div class="email-filter-item">
+                <label for="email-log-messageid">Message ID</label>
+                <input id="email-log-messageid" name="messageId" type="text" value="@query.MessageId" maxlength="200" />
+            </div>
 
-            <label for="email-log-messageid">Message ID</label>
-            <input id="email-log-messageid" name="messageId" type="text" value="@query.MessageId" maxlength="200" />
+            <div class="email-filter-item">
+                <label for="email-log-page-size">Page Size</label>
+                <select id="email-log-page-size" name="pageSize">
+                    @if (query.PageSize == 25)
+                    {
+                        <option value="25" selected>25</option>
+                    }
+                    else
+                    {
+                        <option value="25">25</option>
+                    }
+                    @if (query.PageSize == 50)
+                    {
+                        <option value="50" selected>50</option>
+                    }
+                    else
+                    {
+                        <option value="50">50</option>
+                    }
+                    @if (query.PageSize == 100)
+                    {
+                        <option value="100" selected>100</option>
+                    }
+                    else
+                    {
+                        <option value="100">100</option>
+                    }
+                    @if (query.PageSize == 500)
+                    {
+                        <option value="500" selected>500</option>
+                    }
+                    else
+                    {
+                        <option value="500">500</option>
+                    }
+                    @if (query.PageSize == 1000)
+                    {
+                        <option value="1000" selected>1000</option>
+                    }
+                    else
+                    {
+                        <option value="1000">1000</option>
+                    }
+                </select>
+            </div>
 
-            <label for="email-log-page-size">Page Size</label>
-            <select id="email-log-page-size" name="pageSize">
-                @if (query.PageSize == 25)
-                {
-                    <option value="25" selected>25</option>
-                }
-                else
-                {
-                    <option value="25">25</option>
-                }
-                @if (query.PageSize == 50)
-                {
-                    <option value="50" selected>50</option>
-                }
-                else
-                {
-                    <option value="50">50</option>
-                }
-                @if (query.PageSize == 100)
-                {
-                    <option value="100" selected>100</option>
-                }
-                else
-                {
-                    <option value="100">100</option>
-                }
-                @if (query.PageSize == 500)
-                {
-                    <option value="500" selected>500</option>
-                }
-                else
-                {
-                    <option value="500">500</option>
-                }
-                @if (query.PageSize == 1000)
-                {
-                    <option value="1000" selected>1000</option>
-                }
-                else
-                {
-                    <option value="1000">1000</option>
-                }
-            </select>
-
-            <input type="hidden" name="page" value="1" />
-            <button type="submit" class="btn btn-secondary">Apply</button>
-            <a href="/admin/logs/emails" class="btn btn-secondary">Clear</a>
+            <div class="email-filter-actions">
+                <input type="hidden" name="page" value="1" />
+                <button type="submit" class="btn btn-secondary">Apply</button>
+                <a href="/admin/logs/emails" class="btn btn-secondary">Clear</a>
+            </div>
         </form>
     </section>
 
@@ -177,17 +223,15 @@
         }
         else
         {
-            <div class="table-wrap">
-                <table>
+            <div class="table-wrap email-log-table-wrap">
+                <table class="email-log-table">
                     <thead>
                         <tr>
                             <th>Created (UTC)</th>
                             <th>Template</th>
                             <th>Recipient</th>
-                            <th>Status</th>
-                            <th>Last Provider Event</th>
-                            <th>Correlation ID</th>
-                            <th>Message ID</th>
+                            <th>Queue Status</th>
+                            <th>Delivery</th>
                             <th>Details</th>
                         </tr>
                     </thead>
@@ -195,7 +239,7 @@
                         @foreach (var row in Model.Rows)
                         {
                             <tr>
-                                <td>@row.CreatedUtc.ToString("u")</td>
+                                <td>@row.CreatedUtc.ToString("dd MMM yyyy HH:mm")</td>
                                 <td>@row.TemplateKey</td>
                                 <td>@row.ToEmail</td>
                                 <td>
@@ -213,21 +257,14 @@
                                     }
                                 </td>
                                 <td>
-                                    @if (string.IsNullOrWhiteSpace(row.LastProviderEvent))
-                                    {
-                                        <span class="muted">N/A</span>
-                                    }
-                                    else
-                                    {
-                                        <span>@row.LastProviderEvent</span>
-                                        if (row.LastProviderEventUtc.HasValue)
+                                    <div class="email-log-delivery">
+                                        <span class="@DeliveryClass(row.LastProviderEvent)">@DeliveryLabel(row.LastProviderEvent)</span>
+                                        @if (row.LastProviderEventUtc.HasValue)
                                         {
-                                            <div class="muted">@row.LastProviderEventUtc.Value.ToString("u")</div>
+                                            <span class="muted">@row.LastProviderEventUtc.Value.ToString("dd MMM yyyy HH:mm")</span>
                                         }
-                                    }
+                                    </div>
                                 </td>
-                                <td>@(string.IsNullOrWhiteSpace(row.CorrelationId) ? "N/A" : row.CorrelationId)</td>
-                                <td>@(string.IsNullOrWhiteSpace(row.SendGridMessageId) ? "N/A" : row.SendGridMessageId)</td>
                                 <td><a class="btn btn-secondary" href="/admin/logs/emails/@row.Id">View</a></td>
                             </tr>
                         }
