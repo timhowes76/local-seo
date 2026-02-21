@@ -54,7 +54,8 @@ public class InviteServicesTests
                 LockedoutUntilUtc: null,
                 InviteStatus: UserLifecycleStatus.Pending,
                 SessionVersion: 0,
-                UseGravatar: false));
+                UseGravatar: false,
+                IsDarkMode: false));
 
         var crypto = new CryptoService(Microsoft.Extensions.Options.Options.Create(new InviteOptions
         {
@@ -147,7 +148,7 @@ public class InviteServicesTests
         public Task<IReadOnlyList<AdminUserListRow>> ListByStatusAsync(UserStatusFilter filter, string? searchTerm, CancellationToken ct)
             => Task.FromResult<IReadOnlyList<AdminUserListRow>>([]);
 
-        public Task<bool> UpdateProfileAsync(int userId, string firstName, string lastName, bool useGravatar, CancellationToken ct)
+        public Task<bool> UpdateProfileAsync(int userId, string firstName, string lastName, bool useGravatar, bool isDarkMode, CancellationToken ct)
         {
             if (current.Id != userId)
                 return Task.FromResult(false);
@@ -156,7 +157,8 @@ public class InviteServicesTests
             {
                 FirstName = firstName,
                 LastName = lastName,
-                UseGravatar = useGravatar
+                UseGravatar = useGravatar,
+                IsDarkMode = isDarkMode
             };
             return Task.FromResult(true);
         }

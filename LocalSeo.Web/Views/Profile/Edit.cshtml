@@ -28,6 +28,13 @@
             </label>
             <p class="form-help">Gravatar is a third-party avatar service and may receive an email hash and your IP address when retrieving your avatar image.</p>
         </div>
+        <div class="form-row">
+            <label class="inline-group" for="profile-is-dark-mode">
+                <input id="profile-is-dark-mode" name="IsDarkMode" type="checkbox" value="true" @(Model.Profile.IsDarkMode ? "checked" : null) />
+                <span>Dark mode</span>
+            </label>
+            <p class="form-help">Enable dark mode across the app, including the login page on this subdomain.</p>
+        </div>
         <div class="toolbar">
             <button type="submit">Save Profile</button>
         </div>

@@ -30,7 +30,8 @@ public sealed class ProfileController(
             {
                 FirstName = user.FirstName,
                 LastName = user.LastName,
-                UseGravatar = user.UseGravatar
+                UseGravatar = user.UseGravatar,
+                IsDarkMode = user.IsDarkMode
             }
         });
     }
@@ -54,12 +55,13 @@ public sealed class ProfileController(
                 {
                     FirstName = firstName ?? string.Empty,
                     LastName = lastName ?? string.Empty,
-                    UseGravatar = model.UseGravatar
+                    UseGravatar = model.UseGravatar,
+                    IsDarkMode = model.IsDarkMode
                 }
             });
         }
 
-        var updated = await userRepository.UpdateProfileAsync(user.Id, firstName, lastName, model.UseGravatar, ct);
+        var updated = await userRepository.UpdateProfileAsync(user.Id, firstName, lastName, model.UseGravatar, model.IsDarkMode, ct);
         if (!updated)
         {
             return View("Edit", new ProfileEditViewModel
@@ -69,7 +71,8 @@ public sealed class ProfileController(
                 {
                     FirstName = firstName,
                     LastName = lastName,
-                    UseGravatar = model.UseGravatar
+                    UseGravatar = model.UseGravatar,
+                    IsDarkMode = model.IsDarkMode
                 }
             });
         }
@@ -89,6 +92,27 @@ public sealed class ProfileController(
                 nowUtc,
                 model.UseGravatar);
         }
+
+        if (user.IsDarkMode != model.IsDarkMode)
+        {
+            logger.LogInformation(
+                "Audit DarkModeToggled UserId={UserId} AtUtc={AtUtc} Enabled={Enabled}",
+                user.Id,
+                nowUtc,
+                model.IsDarkMode);
+        }
+
+        var refreshedUser = await userRepository.GetByIdAsync(user.Id, ct);
+        var signInUser = refreshedUser ?? user with
+        {
+            FirstName = firstName,
+            LastName = lastName,
+            UseGravatar = model.UseGravatar,
+            IsDarkMode = model.IsDarkMode
+        };
+        await RefreshSignInAsync(signInUser);
+
+        ThemeCookieHelper.ApplyThemeCookie(Response, model.IsDarkMode);
 
         TempData["Status"] = "Profile updated.";
         return RedirectToAction(nameof(Edit));
@@ -261,5 +285,23 @@ public sealed class ProfileController(
         if (trimmed.Length == 0)
             return null;
         return trimmed.Length <= maxLength ? trimmed : trimmed[..maxLength];
+    }
+
+    private async Task RefreshSignInAsync(UserRecord user)
+    {
+        var claims = new List<Claim>
+        {
+            new(ClaimTypes.NameIdentifier, user.Id.ToString()),
+            new(ClaimTypes.Email, user.EmailAddress),
+            new(ClaimTypes.Name, $"{user.FirstName} {user.LastName}".Trim()),
+            new(AuthClaimTypes.IsAdmin, user.IsAdmin ? "true" : "false"),
+            new(AuthClaimTypes.SessionVersion, user.SessionVersion.ToString())
+        };
+
+        if (user.IsAdmin)
+            claims.Add(new Claim(ClaimTypes.Role, "Admin"));
+
+        var identity = new ClaimsIdentity(claims, "LocalCookie");
+        await HttpContext.SignInAsync("LocalCookie", new ClaimsPrincipal(identity));
     }
 }

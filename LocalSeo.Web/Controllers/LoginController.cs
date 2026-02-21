@@ -159,5 +159,6 @@ public class LoginController(IAuthService authService) : Controller
 
         var identity = new ClaimsIdentity(claims, "LocalCookie");
         await HttpContext.SignInAsync("LocalCookie", new ClaimsPrincipal(identity));
+        ThemeCookieHelper.ApplyThemeCookie(Response, user.IsDarkMode);
     }
 }

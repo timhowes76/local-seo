@@ -73,7 +73,8 @@ public sealed record UserRecord(
     DateTime? LockedoutUntilUtc,
     UserLifecycleStatus InviteStatus,
     int SessionVersion,
-    bool UseGravatar);
+    bool UseGravatar,
+    bool IsDarkMode);
 
 public sealed record EmailCodeRecord(
     int EmailCodeId,

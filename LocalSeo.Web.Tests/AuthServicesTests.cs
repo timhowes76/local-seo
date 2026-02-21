@@ -44,7 +44,8 @@ public class AuthServicesTests
                 LockedoutUntilUtc: null,
                 InviteStatus: UserLifecycleStatus.Active,
                 SessionVersion: 0,
-                UseGravatar: false));
+                UseGravatar: false,
+                IsDarkMode: false));
 
         var service = new AuthService(
             userRepository,
@@ -150,7 +151,8 @@ public class AuthServicesTests
                 LockedoutUntilUtc: null,
                 InviteStatus: UserLifecycleStatus.Active,
                 SessionVersion: 0,
-                UseGravatar: false));
+                UseGravatar: false,
+                IsDarkMode: false));
 
         var sendGrid = new NoopSendGridEmailService();
         var service = new AuthService(
@@ -306,7 +308,7 @@ public class AuthServicesTests
             return Task.FromResult(true);
         }
 
-        public Task<bool> UpdateProfileAsync(int userId, string firstName, string lastName, bool useGravatar, CancellationToken ct)
+        public Task<bool> UpdateProfileAsync(int userId, string firstName, string lastName, bool useGravatar, bool isDarkMode, CancellationToken ct)
         {
             if (current.Id != userId)
                 return Task.FromResult(false);
@@ -315,7 +317,8 @@ public class AuthServicesTests
             {
                 FirstName = firstName,
                 LastName = lastName,
-                UseGravatar = useGravatar
+                UseGravatar = useGravatar,
+                IsDarkMode = isDarkMode
             };
             return Task.FromResult(true);
         }

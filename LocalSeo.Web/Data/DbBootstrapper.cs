@@ -1580,6 +1580,7 @@ BEGIN
     IsActive bit NOT NULL CONSTRAINT DF_User_IsActive DEFAULT(1),
     IsAdmin bit NOT NULL CONSTRAINT DF_User_IsAdmin DEFAULT(0),
     UseGravatar bit NOT NULL CONSTRAINT DF_User_UseGravatar DEFAULT(0),
+    IsDarkMode bit NOT NULL CONSTRAINT DF_User_IsDarkMode DEFAULT(0),
     SessionVersion int NOT NULL CONSTRAINT DF_User_SessionVersion DEFAULT(0),
     InviteStatus tinyint NOT NULL CONSTRAINT DF_User_InviteStatus DEFAULT(1),
     DateCreatedAtUtc datetime2(0) NOT NULL CONSTRAINT DF_User_DateCreatedAtUtc DEFAULT SYSUTCDATETIME(),
@@ -1601,6 +1602,8 @@ IF COL_LENGTH('dbo.[User]', 'IsAdmin') IS NULL
   ALTER TABLE dbo.[User] ADD IsAdmin bit NOT NULL CONSTRAINT DF_User_IsAdmin_Alt DEFAULT(0);
 IF COL_LENGTH('dbo.[User]', 'UseGravatar') IS NULL
   ALTER TABLE dbo.[User] ADD UseGravatar bit NOT NULL CONSTRAINT DF_User_UseGravatar_Alt DEFAULT(0);
+IF COL_LENGTH('dbo.[User]', 'IsDarkMode') IS NULL
+  ALTER TABLE dbo.[User] ADD IsDarkMode bit NOT NULL CONSTRAINT DF_User_IsDarkMode_Alt DEFAULT(0);
 IF COL_LENGTH('dbo.[User]', 'SessionVersion') IS NULL
   ALTER TABLE dbo.[User] ADD SessionVersion int NOT NULL CONSTRAINT DF_User_SessionVersion_Alt DEFAULT(0);
 IF COL_LENGTH('dbo.[User]', 'InviteStatus') IS NULL

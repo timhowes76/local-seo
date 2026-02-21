@@ -36,7 +36,8 @@ public class AvatarResolverTests
             LockedoutUntilUtc: null,
             InviteStatus: UserLifecycleStatus.Active,
             SessionVersion: 0,
-            UseGravatar: true);
+            UseGravatar: true,
+            IsDarkMode: false);
 
         var avatar = resolver.Resolve(user, 64);
 
@@ -67,7 +68,8 @@ public class AvatarResolverTests
             LockedoutUntilUtc: null,
             InviteStatus: UserLifecycleStatus.Active,
             SessionVersion: 0,
-            UseGravatar: false);
+            UseGravatar: false,
+            IsDarkMode: false);
 
         var avatar = resolver.Resolve(user, 64);
 
