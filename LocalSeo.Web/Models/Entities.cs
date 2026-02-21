@@ -547,6 +547,12 @@ public sealed class AdminSiteSettingsModel
     public string SendGridEventWebhookUrl { get; set; } = "https://briskly-viceless-kayleen.ngrok-free.dev/api/webhooks/sendgrid/events";
 }
 
+public sealed class AdminEmailSignatureSettingsModel
+{
+    public string GlobalSignatureHtml { get; set; } = "<p>Kind regards,<br/>Local SEO Team</p>";
+    public string WrapperViewPath { get; set; } = "_EmailWrapper.cshtml";
+}
+
 public sealed class AdminDataCollectionWindowsSettingsModel
 {
     public int EnhancedGoogleDataRefreshHours { get; set; } = 24;

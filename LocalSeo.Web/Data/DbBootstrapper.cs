@@ -1841,11 +1841,13 @@ IF OBJECT_ID('dbo.EmailTemplate','U') IS NULL
 BEGIN
   CREATE TABLE dbo.EmailTemplate(
     Id int IDENTITY(1,1) NOT NULL PRIMARY KEY,
+    EmailTemplateId AS (CONVERT(int, [Id])) PERSISTED,
     [Key] nvarchar(100) NOT NULL,
     [Name] nvarchar(200) NOT NULL,
     FromName nvarchar(200) NULL,
     FromEmail nvarchar(320) NOT NULL,
-    SubjectTemplate nvarchar(max) NOT NULL,
+    SubjectTemplate nvarchar(255) NOT NULL,
+    ViewPath nvarchar(260) NOT NULL CONSTRAINT DF_EmailTemplate_ViewPath DEFAULT(N'PasswordReset.cshtml'),
     BodyHtmlTemplate nvarchar(max) NOT NULL,
     IsSensitive bit NOT NULL CONSTRAINT DF_EmailTemplate_IsSensitive DEFAULT(0),
     IsEnabled bit NOT NULL CONSTRAINT DF_EmailTemplate_IsEnabled DEFAULT(1),
@@ -1862,7 +1864,18 @@ IF COL_LENGTH('dbo.EmailTemplate', 'FromName') IS NULL
 IF COL_LENGTH('dbo.EmailTemplate', 'FromEmail') IS NULL
   ALTER TABLE dbo.EmailTemplate ADD FromEmail nvarchar(320) NOT NULL CONSTRAINT DF_EmailTemplate_FromEmail_Alt DEFAULT(N'noreply@example.local');
 IF COL_LENGTH('dbo.EmailTemplate', 'SubjectTemplate') IS NULL
-  ALTER TABLE dbo.EmailTemplate ADD SubjectTemplate nvarchar(max) NOT NULL CONSTRAINT DF_EmailTemplate_SubjectTemplate_Alt DEFAULT(N'');
+  ALTER TABLE dbo.EmailTemplate ADD SubjectTemplate nvarchar(255) NOT NULL CONSTRAINT DF_EmailTemplate_SubjectTemplate_Alt DEFAULT(N'');
+IF EXISTS (SELECT 1 FROM sys.columns WHERE object_id=OBJECT_ID('dbo.EmailTemplate') AND name='SubjectTemplate' AND max_length = -1)
+BEGIN
+  UPDATE dbo.EmailTemplate
+  SET SubjectTemplate = LEFT(ISNULL(SubjectTemplate, N''), 255)
+  WHERE LEN(ISNULL(SubjectTemplate, N'')) > 255;
+  ALTER TABLE dbo.EmailTemplate ALTER COLUMN SubjectTemplate nvarchar(255) NOT NULL;
+END;
+IF COL_LENGTH('dbo.EmailTemplate', 'EmailTemplateId') IS NULL
+  ALTER TABLE dbo.EmailTemplate ADD EmailTemplateId AS (CONVERT(int, [Id])) PERSISTED;
+IF COL_LENGTH('dbo.EmailTemplate', 'ViewPath') IS NULL
+  ALTER TABLE dbo.EmailTemplate ADD ViewPath nvarchar(260) NOT NULL CONSTRAINT DF_EmailTemplate_ViewPath_Alt DEFAULT(N'PasswordReset.cshtml');
 IF COL_LENGTH('dbo.EmailTemplate', 'BodyHtmlTemplate') IS NULL
   ALTER TABLE dbo.EmailTemplate ADD BodyHtmlTemplate nvarchar(max) NOT NULL CONSTRAINT DF_EmailTemplate_BodyHtmlTemplate_Alt DEFAULT(N'');
 IF COL_LENGTH('dbo.EmailTemplate', 'IsSensitive') IS NULL
@@ -1875,6 +1888,46 @@ IF COL_LENGTH('dbo.EmailTemplate', 'UpdatedUtc') IS NULL
   ALTER TABLE dbo.EmailTemplate ADD UpdatedUtc datetime2(3) NOT NULL CONSTRAINT DF_EmailTemplate_UpdatedUtc_Alt DEFAULT SYSUTCDATETIME();
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='UX_EmailTemplate_Key' AND object_id=OBJECT_ID('dbo.EmailTemplate'))
   CREATE UNIQUE INDEX UX_EmailTemplate_Key ON dbo.EmailTemplate([Key]);
+IF COL_LENGTH('dbo.EmailTemplate', 'EmailTemplateId') IS NOT NULL
+   AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='UX_EmailTemplate_EmailTemplateId' AND object_id=OBJECT_ID('dbo.EmailTemplate'))
+  EXEC(N'CREATE UNIQUE INDEX UX_EmailTemplate_EmailTemplateId ON dbo.EmailTemplate(EmailTemplateId);');
+IF COL_LENGTH('dbo.EmailTemplate', 'ViewPath') IS NOT NULL
+  EXEC(N'
+UPDATE dbo.EmailTemplate
+SET ViewPath = CASE
+                 WHEN [Key] = N''PasswordReset'' THEN N''PasswordReset.cshtml''
+                 WHEN LEN(LTRIM(RTRIM(ISNULL(ViewPath, N'''')))) = 0 THEN CONCAT([Key], N''.cshtml'')
+                 ELSE ViewPath
+               END
+WHERE ViewPath IS NULL
+   OR LEN(LTRIM(RTRIM(ViewPath))) = 0;');
+
+IF OBJECT_ID('dbo.EmailSettings','U') IS NULL
+BEGIN
+  CREATE TABLE dbo.EmailSettings(
+    EmailSettingsId int IDENTITY(1,1) NOT NULL PRIMARY KEY,
+    FromEmail nvarchar(320) NOT NULL,
+    FromName nvarchar(200) NOT NULL,
+    GlobalSignatureHtml nvarchar(max) NOT NULL,
+    WrapperViewPath nvarchar(260) NOT NULL,
+    UpdatedUtc datetime2(3) NOT NULL CONSTRAINT DF_EmailSettings_UpdatedUtc DEFAULT SYSUTCDATETIME()
+  );
+END;
+IF COL_LENGTH('dbo.EmailSettings', 'FromEmail') IS NULL
+  ALTER TABLE dbo.EmailSettings ADD FromEmail nvarchar(320) NOT NULL CONSTRAINT DF_EmailSettings_FromEmail_Alt DEFAULT(N'noreply@example.local');
+IF COL_LENGTH('dbo.EmailSettings', 'FromName') IS NULL
+  ALTER TABLE dbo.EmailSettings ADD FromName nvarchar(200) NOT NULL CONSTRAINT DF_EmailSettings_FromName_Alt DEFAULT(N'Local SEO');
+IF COL_LENGTH('dbo.EmailSettings', 'GlobalSignatureHtml') IS NULL
+  ALTER TABLE dbo.EmailSettings ADD GlobalSignatureHtml nvarchar(max) NOT NULL CONSTRAINT DF_EmailSettings_GlobalSignatureHtml_Alt DEFAULT(N'<p>Regards,<br/>Local SEO Team</p>');
+IF COL_LENGTH('dbo.EmailSettings', 'WrapperViewPath') IS NULL
+  ALTER TABLE dbo.EmailSettings ADD WrapperViewPath nvarchar(260) NOT NULL CONSTRAINT DF_EmailSettings_WrapperViewPath_Alt DEFAULT(N'_EmailWrapper.cshtml');
+IF COL_LENGTH('dbo.EmailSettings', 'UpdatedUtc') IS NULL
+  ALTER TABLE dbo.EmailSettings ADD UpdatedUtc datetime2(3) NOT NULL CONSTRAINT DF_EmailSettings_UpdatedUtc_Alt DEFAULT SYSUTCDATETIME();
+IF NOT EXISTS (SELECT 1 FROM dbo.EmailSettings)
+BEGIN
+  INSERT INTO dbo.EmailSettings(FromEmail, FromName, GlobalSignatureHtml, WrapperViewPath, UpdatedUtc)
+  VALUES(N'noreply@kontrolit.net', N'Local SEO Tool', N'<p>Kind regards,<br/>Local SEO Team</p>', N'_EmailWrapper.cshtml', SYSUTCDATETIME());
+END;
 
 IF OBJECT_ID('dbo.EmailLog','U') IS NULL
 BEGIN
@@ -1983,16 +2036,20 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='UX_EmailProviderEvent_Idemp
 EXEC(N'
 MERGE dbo.EmailTemplate AS target
 USING (VALUES
-  (N''TwoFactorCode'', N''Two Factor Code'', N''Local SEO Tool'', N''noreply@kontrolit.net'', N''Your Local SEO login code'', N''<p>Your 2FA login code is <strong>[%Code%]</strong>.</p><p>It expires in [%ExpiryMinutes%] minutes.</p>'', 1, 1),
-  (N''PasswordReset'', N''Password Reset'', N''Local SEO Tool'', N''noreply@kontrolit.net'', N''Your Local SEO password reset code'', N''<p>Use code <strong>[%Code%]</strong> to reset your password.</p><p><a href=""[%ResetUrl%]"">Reset password</a></p><p>This code expires in [%ExpiryMinutes%] minutes.</p>'', 1, 1),
-  (N''NewUserInvite'', N''New User Invite'', N''Local SEO Tool'', N''noreply@kontrolit.net'', N''You have been invited to Local SEO'', N''<p>Hi [%RecipientName%],</p><p>You have been invited to Local SEO.</p><p><a href=""[%InviteUrl%]"">Open invite link</a></p><p>This link expires at [%ExpiresAtUtc%].</p>'', 1, 1),
-  (N''InviteOtp'', N''Invite OTP'', N''Local SEO Tool'', N''noreply@kontrolit.net'', N''Your Local SEO invite verification code'', N''<p>Your invite verification code is <strong>[%Code%]</strong>.</p><p>It expires at [%ExpiresAtUtc%].</p>'', 1, 1),
-  (N''ChangePasswordOtp'', N''Change Password OTP'', N''Local SEO Tool'', N''noreply@kontrolit.net'', N''Your Local SEO change password verification code'', N''<p>Your change password verification code is <strong>[%Code%]</strong>.</p><p>It expires at [%ExpiresAtUtc%].</p>'', 1, 1)
-) AS source([Key], [Name], FromName, FromEmail, SubjectTemplate, BodyHtmlTemplate, IsSensitive, IsEnabled)
+  (N''TwoFactorCode'', N''Two Factor Code'', N''Local SEO Tool'', N''noreply@kontrolit.net'', N''Your Local SEO login code'', N''TwoFactorCode.cshtml'', N''<p>Your 2FA login code is <strong>[%Code%]</strong>.</p><p>It expires in [%ExpiryMinutes%] minutes.</p>'', 1, 1),
+  (N''PasswordReset'', N''Password Reset'', N''Local SEO Tool'', N''noreply@kontrolit.net'', N''Your Local SEO password reset code'', N''PasswordReset.cshtml'', N''<p>Use code <strong>[%Code%]</strong> to reset your password.</p><p><a href=""[%ResetUrl%]"">Reset password</a></p><p>This code expires in [%ExpiryMinutes%] minutes.</p>'', 1, 1),
+  (N''NewUserInvite'', N''New User Invite'', N''Local SEO Tool'', N''noreply@kontrolit.net'', N''You have been invited to Local SEO'', N''NewUserInvite.cshtml'', N''<p>Hi [%RecipientName%],</p><p>You have been invited to Local SEO.</p><p><a href=""[%InviteUrl%]"">Open invite link</a></p><p>This link expires at [%ExpiresAtUtc%].</p>'', 1, 1),
+  (N''InviteOtp'', N''Invite OTP'', N''Local SEO Tool'', N''noreply@kontrolit.net'', N''Your Local SEO invite verification code'', N''InviteOtp.cshtml'', N''<p>Your invite verification code is <strong>[%Code%]</strong>.</p><p>It expires at [%ExpiresAtUtc%].</p>'', 1, 1),
+  (N''ChangePasswordOtp'', N''Change Password OTP'', N''Local SEO Tool'', N''noreply@kontrolit.net'', N''Your Local SEO change password verification code'', N''ChangePasswordOtp.cshtml'', N''<p>Your change password verification code is <strong>[%Code%]</strong>.</p><p>It expires at [%ExpiresAtUtc%].</p>'', 1, 1)
+) AS source([Key], [Name], FromName, FromEmail, SubjectTemplate, ViewPath, BodyHtmlTemplate, IsSensitive, IsEnabled)
 ON target.[Key] = source.[Key]
+WHEN MATCHED AND (target.ViewPath IS NULL OR LEN(LTRIM(RTRIM(target.ViewPath))) = 0) THEN
+  UPDATE SET
+    target.ViewPath = source.ViewPath,
+    target.UpdatedUtc = SYSUTCDATETIME()
 WHEN NOT MATCHED THEN
-  INSERT([Key], [Name], FromName, FromEmail, SubjectTemplate, BodyHtmlTemplate, IsSensitive, IsEnabled, CreatedUtc, UpdatedUtc)
-  VALUES(source.[Key], source.[Name], source.FromName, source.FromEmail, source.SubjectTemplate, source.BodyHtmlTemplate, source.IsSensitive, source.IsEnabled, SYSUTCDATETIME(), SYSUTCDATETIME());');
+  INSERT([Key], [Name], FromName, FromEmail, SubjectTemplate, ViewPath, BodyHtmlTemplate, IsSensitive, IsEnabled, CreatedUtc, UpdatedUtc)
+  VALUES(source.[Key], source.[Name], source.FromName, source.FromEmail, source.SubjectTemplate, source.ViewPath, source.BodyHtmlTemplate, source.IsSensitive, source.IsEnabled, SYSUTCDATETIME(), SYSUTCDATETIME());');
 
 IF OBJECT_ID('dbo.LoginCode','U') IS NOT NULL
 BEGIN

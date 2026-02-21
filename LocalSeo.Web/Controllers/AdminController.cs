@@ -10,6 +10,7 @@ namespace LocalSeo.Web.Controllers;
 public class AdminController(
     IDataForSeoTaskTracker dataForSeoTaskTracker,
     IAdminSettingsService adminSettingsService,
+    IEmailSignatureSettingsService emailSignatureSettingsService,
     IGbLocationDataListService gbLocationDataListService,
     IGoogleBusinessProfileCategoryService googleBusinessProfileCategoryService,
     IGoogleBusinessProfileOAuthService googleBusinessProfileOAuthService) : Controller
@@ -53,6 +54,22 @@ public class AdminController(
         await adminSettingsService.SaveAsync(settings, ct);
         TempData["Status"] = "Site settings saved.";
         return RedirectToAction(nameof(SettingsSite));
+    }
+
+    [HttpGet("/admin/settings/email-signature")]
+    public async Task<IActionResult> SettingsEmailSignature(CancellationToken ct)
+    {
+        var model = await emailSignatureSettingsService.GetAsync(ct);
+        return View(model);
+    }
+
+    [HttpPost("/admin/settings/email-signature")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> SaveSettingsEmailSignature(AdminEmailSignatureSettingsModel model, CancellationToken ct)
+    {
+        await emailSignatureSettingsService.SaveAsync(model.GlobalSignatureHtml ?? string.Empty, ct);
+        TempData["Status"] = "Email signature settings saved.";
+        return RedirectToAction(nameof(SettingsEmailSignature));
     }
 
     [HttpGet("/admin/settings/data-collection-windows")]

@@ -27,6 +27,7 @@ public sealed class EmailSenderService(
     IOptions<SendGridOptions> options,
     IEmailTemplateService templateService,
     IEmailTemplateRenderer templateRenderer,
+    IEmailWrapperComposer wrapperComposer,
     IEmailRedactionService redactionService,
     IEmailLogRepository emailLogRepository,
     TimeProvider timeProvider,
@@ -65,6 +66,12 @@ public sealed class EmailSenderService(
             bodyRender.RenderedText,
             normalizedTokens);
 
+        var wrappedHtml = await wrapperComposer.ComposeAsync(
+            subjectRender.RenderedText,
+            bodyRender.RenderedText,
+            NormalizeNullable(template.FromName, 200),
+            ct);
+
         var nowUtc = timeProvider.GetUtcNow().UtcDateTime;
         var emailLogId = await emailLogRepository.CreateQueuedAsync(new EmailLogCreateRequest(
             CreatedUtc: nowUtc,
@@ -81,7 +88,7 @@ public sealed class EmailSenderService(
             Error: null,
             CorrelationId: NormalizeNullable(correlationId, 64)), ct);
 
-        var sendResult = await SendViaProviderAsync(emailLogId, template, normalizedToEmail, subjectRender.RenderedText, bodyRender.RenderedText, ct);
+        var sendResult = await SendViaProviderAsync(emailLogId, template, normalizedToEmail, subjectRender.RenderedText, wrappedHtml, ct);
         if (sendResult.Success)
         {
             await emailLogRepository.MarkSentAsync(emailLogId, sendResult.ProviderMessageId, timeProvider.GetUtcNow().UtcDateTime, ct);

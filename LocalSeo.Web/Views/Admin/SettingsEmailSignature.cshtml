@@ -1,0 +1,124 @@
+@model AdminEmailSignatureSettingsModel
+@{
+    ViewData["Title"] = "Email Signature Settings";
+    var statusMessage = TempData["Status"] as string;
+}
+
+<div class="page-stack">
+    @if (!string.IsNullOrWhiteSpace(statusMessage))
+    {
+        <div class="notice">@statusMessage</div>
+    }
+
+    <section class="card">
+        <div class="card-header">
+            <h2 class="card-title">Email Signature</h2>
+            <a class="btn btn-secondary" href="/admin/settings">Back to Settings</a>
+        </div>
+
+        <form method="post" action="/admin/settings/email-signature" class="form-grid" id="email-signature-form">
+            @Html.AntiForgeryToken()
+
+            <div class="form-row">
+                <label for="signature-editor">Global Signature HTML</label>
+                <small class="muted">This signature is appended to every email sent by the app.</small>
+
+                <div class="wysiwyg-toolbar" role="toolbar" aria-label="Email signature formatting">
+                    <button type="button" class="btn btn-secondary" data-cmd="bold"><strong>B</strong></button>
+                    <button type="button" class="btn btn-secondary" data-cmd="italic"><em>I</em></button>
+                    <button type="button" class="btn btn-secondary" data-cmd="underline"><u>U</u></button>
+                    <button type="button" class="btn btn-secondary" data-cmd="insertUnorderedList">Bullets</button>
+                    <button type="button" class="btn btn-secondary" data-cmd="insertOrderedList">Numbered</button>
+                    <button type="button" class="btn btn-secondary" id="insert-link">Link</button>
+                    <button type="button" class="btn btn-secondary" data-cmd="removeFormat">Clear</button>
+                </div>
+
+                <div id="signature-editor" class="wysiwyg-editor" contenteditable="true">@Html.Raw(Model.GlobalSignatureHtml)</div>
+                <textarea id="GlobalSignatureHtml" name="GlobalSignatureHtml" hidden>@Model.GlobalSignatureHtml</textarea>
+                @Html.ValidationMessage(nameof(Model.GlobalSignatureHtml))
+
+                <noscript>
+                    <label for="GlobalSignatureHtmlNoScript">Global Signature HTML (No JavaScript)</label>
+                    <textarea id="GlobalSignatureHtmlNoScript" name="GlobalSignatureHtml" rows="10">@Model.GlobalSignatureHtml</textarea>
+                </noscript>
+            </div>
+
+            <div class="form-row">
+                <label for="WrapperViewPath">Email Wrapper View</label>
+                <input id="WrapperViewPath" type="text" value="@Model.WrapperViewPath" readonly />
+                <small class="muted">All emails are rendered using this wrapper view.</small>
+            </div>
+
+            <div class="toolbar">
+                <button type="submit">Save Settings</button>
+            </div>
+        </form>
+    </section>
+</div>
+
+<style>
+    .wysiwyg-toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin: 10px 0 8px 0;
+    }
+
+    .wysiwyg-toolbar .btn {
+        min-width: 44px;
+        padding: 6px 10px;
+    }
+
+    .wysiwyg-editor {
+        min-height: 190px;
+        border: 1px solid var(--border, #d1d5db);
+        border-radius: 10px;
+        background: #fff;
+        padding: 12px;
+        line-height: 1.55;
+    }
+
+    .wysiwyg-editor:focus {
+        outline: 2px solid rgba(37, 99, 235, 0.25);
+        border-color: #3b82f6;
+    }
+</style>
+
+<script>
+    (function () {
+        const form = document.getElementById('email-signature-form');
+        const editor = document.getElementById('signature-editor');
+        const hidden = document.getElementById('GlobalSignatureHtml');
+        if (!form || !editor || !hidden) {
+            return;
+        }
+
+        const buttons = document.querySelectorAll('.wysiwyg-toolbar [data-cmd]');
+        buttons.forEach(function (button) {
+            button.addEventListener('click', function () {
+                const command = button.getAttribute('data-cmd');
+                if (!command) {
+                    return;
+                }
+                document.execCommand(command, false);
+                editor.focus();
+            });
+        });
+
+        const insertLinkButton = document.getElementById('insert-link');
+        if (insertLinkButton) {
+            insertLinkButton.addEventListener('click', function () {
+                const url = window.prompt('Enter link URL');
+                if (!url) {
+                    return;
+                }
+                document.execCommand('createLink', false, url.trim());
+                editor.focus();
+            });
+        }
+
+        form.addEventListener('submit', function () {
+            hidden.value = editor.innerHTML;
+        });
+    })();
+</script>
