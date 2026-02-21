@@ -9,6 +9,7 @@ public interface IUserRepository
     Task<UserRecord?> GetByNormalizedEmailAsync(string emailNormalized, CancellationToken ct);
     Task<UserRecord?> GetByIdAsync(int id, CancellationToken ct);
     Task<IReadOnlyList<AdminUserListRow>> ListByStatusAsync(UserStatusFilter filter, string? searchTerm, CancellationToken ct);
+    Task<bool> UpdateProfileAsync(int userId, string firstName, string lastName, bool useGravatar, CancellationToken ct);
     Task<bool> UpdateUserAsync(int userId, string firstName, string lastName, string emailAddress, string emailAddressNormalized, bool isAdmin, UserLifecycleStatus inviteStatus, CancellationToken ct);
     Task<bool> DeleteUserAsync(int userId, CancellationToken ct);
     Task RecordFailedPasswordAttemptAsync(int userId, int lockoutThreshold, int lockoutMinutes, DateTime nowUtc, CancellationToken ct);
@@ -38,7 +39,8 @@ SELECT TOP 1
   LastLoginAtUtc,
   FailedPasswordAttempts,
   LockedoutUntilUtc,
-  CAST(InviteStatus AS tinyint) AS InviteStatus
+  CAST(InviteStatus AS tinyint) AS InviteStatus,
+  UseGravatar
 FROM dbo.[User]
 WHERE EmailAddressNormalized = @EmailAddressNormalized;",
             new { EmailAddressNormalized = emailNormalized },
@@ -64,7 +66,8 @@ SELECT TOP 1
   LastLoginAtUtc,
   FailedPasswordAttempts,
   LockedoutUntilUtc,
-  CAST(InviteStatus AS tinyint) AS InviteStatus
+  CAST(InviteStatus AS tinyint) AS InviteStatus,
+  UseGravatar
 FROM dbo.[User]
 WHERE Id = @Id;",
             new { Id = id },
@@ -194,6 +197,32 @@ WHERE Id = @Id;",
 
         await tx.CommitAsync(ct);
         return true;
+    }
+
+    public async Task<bool> UpdateProfileAsync(int userId, string firstName, string lastName, bool useGravatar, CancellationToken ct)
+    {
+        var normalizedFirstName = Truncate(firstName, 100);
+        var normalizedLastName = Truncate(lastName, 100);
+        if (string.IsNullOrWhiteSpace(normalizedFirstName) || string.IsNullOrWhiteSpace(normalizedLastName))
+            return false;
+
+        await using var conn = (Microsoft.Data.SqlClient.SqlConnection)await connectionFactory.OpenConnectionAsync(ct);
+        var updated = await conn.ExecuteAsync(new CommandDefinition(@"
+UPDATE dbo.[User]
+SET
+  FirstName = @FirstName,
+  LastName = @LastName,
+  UseGravatar = @UseGravatar
+WHERE Id = @Id;",
+            new
+            {
+                Id = userId,
+                FirstName = normalizedFirstName,
+                LastName = normalizedLastName,
+                UseGravatar = useGravatar
+            },
+            cancellationToken: ct));
+        return updated == 1;
     }
 
     public async Task<bool> UpdateUserAsync(int userId, string firstName, string lastName, string emailAddress, string emailAddressNormalized, bool isAdmin, UserLifecycleStatus inviteStatus, CancellationToken ct)

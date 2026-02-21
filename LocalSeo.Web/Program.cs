@@ -64,7 +64,10 @@ builder.Services.AddAuthentication("LocalCookie")
                     {
                         context.RejectPrincipal();
                         await context.HttpContext.SignOutAsync("LocalCookie");
+                        return;
                     }
+
+                    context.HttpContext.Items["CurrentUserRecord"] = user;
                 }
                 catch
                 {
@@ -84,6 +87,7 @@ builder.Services.AddScoped<ISqlConnectionFactory, SqlConnectionFactory>();
 builder.Services.AddScoped<DbBootstrapper>();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<IEmailAddressNormalizer, EmailAddressNormalizer>();
+builder.Services.AddScoped<IAvatarResolver, AvatarResolver>();
 builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<IUserLoginLogRepository, UserLoginLogRepository>();
 builder.Services.AddScoped<IUserInviteRepository, UserInviteRepository>();

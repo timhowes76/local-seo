@@ -44,7 +44,8 @@ public class AuthServicesTests
                 LastLoginAtUtc: null,
                 FailedPasswordAttempts: 0,
                 LockedoutUntilUtc: null,
-                InviteStatus: UserLifecycleStatus.Active));
+                InviteStatus: UserLifecycleStatus.Active,
+                UseGravatar: false));
 
         var service = new AuthService(
             userRepository,
@@ -148,7 +149,8 @@ public class AuthServicesTests
                 LastLoginAtUtc: null,
                 FailedPasswordAttempts: 0,
                 LockedoutUntilUtc: null,
-                InviteStatus: UserLifecycleStatus.Active));
+                InviteStatus: UserLifecycleStatus.Active,
+                UseGravatar: false));
 
         var sendGrid = new NoopSendGridEmailService();
         var service = new AuthService(
@@ -261,6 +263,20 @@ public class AuthServicesTests
                 IsAdmin = isAdmin,
                 InviteStatus = inviteStatus,
                 IsActive = inviteStatus == UserLifecycleStatus.Active
+            };
+            return Task.FromResult(true);
+        }
+
+        public Task<bool> UpdateProfileAsync(int userId, string firstName, string lastName, bool useGravatar, CancellationToken ct)
+        {
+            if (current.Id != userId)
+                return Task.FromResult(false);
+
+            current = current with
+            {
+                FirstName = firstName,
+                LastName = lastName,
+                UseGravatar = useGravatar
             };
             return Task.FromResult(true);
         }

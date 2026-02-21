@@ -18,7 +18,7 @@ public interface IInviteService
     Task<InviteTokenValidationResult> ValidateInviteTokenAsync(string? token, CancellationToken ct);
     Task<InviteOtpResult> SendOtpAsync(string? token, string? requestedFromIp, CancellationToken ct);
     Task<InviteOtpResult> VerifyOtpAsync(string? token, string? code, string? requestedFromIp, CancellationToken ct);
-    Task<InviteSetPasswordResult> SetPasswordAsync(string? token, string? newPassword, string? confirmPassword, CancellationToken ct);
+    Task<InviteSetPasswordResult> SetPasswordAsync(string? token, string? newPassword, string? confirmPassword, bool useGravatar, CancellationToken ct);
     string MaskEmailAddress(string? emailAddress);
 }
 
@@ -273,7 +273,7 @@ public sealed class InviteService(
         }
     }
 
-    public async Task<InviteSetPasswordResult> SetPasswordAsync(string? token, string? newPassword, string? confirmPassword, CancellationToken ct)
+    public async Task<InviteSetPasswordResult> SetPasswordAsync(string? token, string? newPassword, string? confirmPassword, bool useGravatar, CancellationToken ct)
     {
         try
         {
@@ -300,6 +300,7 @@ public sealed class InviteService(
                 invite.UserId,
                 passwordHash,
                 passwordHasherService.PasswordHashVersion,
+                useGravatar,
                 nowUtc,
                 ct);
 

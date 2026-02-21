@@ -53,7 +53,7 @@ public sealed class InviteController(IInviteService inviteService) : Controller
         if (!validation.Invite.OtpVerifiedAtUtc.HasValue)
             return View("Accept", BuildAcceptViewModel(token, validation.Invite, "Please verify your email first.", otpSent: false));
 
-        return View(BuildSetPasswordViewModel(token, validation.Invite, message: null));
+        return View(BuildSetPasswordViewModel(token, validation.Invite, message: null, useGravatar: false));
     }
 
     [HttpPost("/invite/set-password")]
@@ -67,14 +67,14 @@ public sealed class InviteController(IInviteService inviteService) : Controller
         if (!validation.Invite.OtpVerifiedAtUtc.HasValue)
             return View("Accept", BuildAcceptViewModel(model.Token, validation.Invite, "Please verify your email first.", otpSent: false));
 
-        var result = await inviteService.SetPasswordAsync(model.Token, model.NewPassword, model.ConfirmPassword, ct);
+        var result = await inviteService.SetPasswordAsync(model.Token, model.NewPassword, model.ConfirmPassword, model.UseGravatar, ct);
         if (result.Success)
         {
             TempData["Status"] = result.Message;
             return Redirect("/login");
         }
 
-        return View(BuildSetPasswordViewModel(model.Token, validation.Invite, result.Message));
+        return View(BuildSetPasswordViewModel(model.Token, validation.Invite, result.Message, model.UseGravatar));
     }
 
     private InviteAcceptViewModel BuildAcceptViewModel(string token, UserInviteRecord invite, string? message, bool otpSent)
@@ -91,13 +91,14 @@ public sealed class InviteController(IInviteService inviteService) : Controller
         };
     }
 
-    private InviteSetPasswordViewModel BuildSetPasswordViewModel(string token, UserInviteRecord invite, string? message)
+    private InviteSetPasswordViewModel BuildSetPasswordViewModel(string token, UserInviteRecord invite, string? message, bool useGravatar)
     {
         return new InviteSetPasswordViewModel
         {
             Token = token,
             EmailAddressMasked = inviteService.MaskEmailAddress(invite.EmailAddress),
-            Message = message
+            Message = message,
+            UseGravatar = useGravatar
         };
     }
 }

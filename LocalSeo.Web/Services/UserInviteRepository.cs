@@ -36,7 +36,7 @@ public interface IUserInviteRepository
     Task<InviteOtpRecord?> GetLatestInviteOtpAsync(long userInviteId, DateTime nowUtc, CancellationToken ct);
     Task MarkInviteOtpAttemptFailureAsync(long inviteOtpId, DateTime nowUtc, int maxAttempts, int lockMinutes, CancellationToken ct);
     Task<bool> MarkInviteOtpUsedAsync(long inviteOtpId, DateTime nowUtc, CancellationToken ct);
-    Task<bool> CompleteInviteAsync(long userInviteId, int userId, byte[] passwordHash, byte passwordHashVersion, DateTime nowUtc, CancellationToken ct);
+    Task<bool> CompleteInviteAsync(long userInviteId, int userId, byte[] passwordHash, byte passwordHashVersion, bool useGravatar, DateTime nowUtc, CancellationToken ct);
 }
 
 public sealed class UserInviteRepository(ISqlConnectionFactory connectionFactory) : IUserInviteRepository
@@ -402,7 +402,7 @@ WHERE InviteOtpId = @InviteOtpId
         return updated > 0;
     }
 
-    public async Task<bool> CompleteInviteAsync(long userInviteId, int userId, byte[] passwordHash, byte passwordHashVersion, DateTime nowUtc, CancellationToken ct)
+    public async Task<bool> CompleteInviteAsync(long userInviteId, int userId, byte[] passwordHash, byte passwordHashVersion, bool useGravatar, DateTime nowUtc, CancellationToken ct)
     {
         await using var conn = (Microsoft.Data.SqlClient.SqlConnection)await connectionFactory.OpenConnectionAsync(ct);
         await using var tx = await conn.BeginTransactionAsync(ct);
@@ -444,6 +444,7 @@ SET
   DatePasswordLastSetUtc = @NowUtc,
   FailedPasswordAttempts = 0,
   LockedoutUntilUtc = NULL,
+  UseGravatar = @UseGravatar,
   IsActive = 1,
   InviteStatus = @InviteStatusActive
 WHERE Id = @UserId;",
@@ -452,6 +453,7 @@ WHERE Id = @UserId;",
                 UserId = userId,
                 PasswordHash = passwordHash,
                 PasswordHashVersion = passwordHashVersion,
+                UseGravatar = useGravatar,
                 NowUtc = nowUtc,
                 InviteStatusActive = (byte)UserLifecycleStatus.Active
             },

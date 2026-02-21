@@ -160,10 +160,134 @@ a:hover {
     display: flex;
     align-items: center;
     gap: var(--space-2);
+    position: relative;
 }
 
 .topbar-user {
     color: var(--text-muted);
+}
+
+.avatar-menu {
+    position: relative;
+}
+
+.avatar-menu > summary {
+    list-style: none;
+}
+
+.avatar-menu > summary::-webkit-details-marker {
+    display: none;
+}
+
+.avatar-menu-toggle {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    border: 1px solid #c7d4e8;
+    background: #ffffff;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    box-shadow: 0 2px 6px rgba(15, 23, 42, 0.08);
+}
+
+.avatar-menu-toggle:focus {
+    outline: 2px solid rgba(13, 110, 253, 0.22);
+    outline-offset: 2px;
+}
+
+.avatar-image {
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    object-fit: cover;
+    display: block;
+}
+
+.avatar-initials {
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    color: #1f3f75;
+    background: linear-gradient(180deg, #e6eefc 0%, #d8e6fb 100%);
+}
+
+.avatar-menu-panel {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 10px);
+    width: 230px;
+    border: 1px solid #d8e0ed;
+    border-radius: 10px;
+    background: #ffffff;
+    box-shadow: 0 12px 24px rgba(15, 23, 42, 0.14);
+    padding: 8px;
+    z-index: 40;
+}
+
+.avatar-menu-heading {
+    display: grid;
+    gap: 2px;
+    padding: 8px;
+    color: #475569;
+    font-size: 12px;
+}
+
+.avatar-menu-heading strong {
+    color: #0f172a;
+    font-size: 13px;
+}
+
+.avatar-menu-item {
+    width: 100%;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    border-radius: 8px;
+    color: #1f2937;
+    padding: 8px;
+    background: transparent;
+    border: 0;
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 13px;
+}
+
+.avatar-menu-item:hover {
+    background: #eef3ff;
+    text-decoration: none;
+}
+
+.avatar-menu-divider {
+    height: 1px;
+    background: #e2e8f0;
+    margin: 6px 0;
+}
+
+.avatar-menu-form {
+    margin: 0;
+}
+
+.avatar-menu-button {
+    justify-content: flex-start;
+    cursor: pointer;
+}
+
+button.avatar-menu-item {
+    border: 0;
+    background: transparent;
+    color: #1f2937;
+    padding: 8px;
+    box-shadow: none;
+}
+
+button.avatar-menu-item:hover {
+    background: #eef3ff;
 }
 
 .breadcrumbs ol {

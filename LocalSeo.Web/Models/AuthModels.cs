@@ -71,7 +71,8 @@ public sealed record UserRecord(
     DateTime? LastLoginAtUtc,
     int FailedPasswordAttempts,
     DateTime? LockedoutUntilUtc,
-    UserLifecycleStatus InviteStatus);
+    UserLifecycleStatus InviteStatus,
+    bool UseGravatar);
 
 public sealed record EmailCodeRecord(
     int EmailCodeId,
@@ -158,6 +159,7 @@ public sealed class InviteSetPasswordFormModel : InviteTokenFormModel
 {
     public string NewPassword { get; set; } = string.Empty;
     public string ConfirmPassword { get; set; } = string.Empty;
+    public bool UseGravatar { get; set; }
 }
 
 public sealed class InviteAcceptViewModel
@@ -175,6 +177,7 @@ public sealed class InviteSetPasswordViewModel
     public string Token { get; init; } = string.Empty;
     public string EmailAddressMasked { get; init; } = string.Empty;
     public string? Message { get; init; }
+    public bool UseGravatar { get; init; }
 }
 
 public sealed record UserInviteRecord(

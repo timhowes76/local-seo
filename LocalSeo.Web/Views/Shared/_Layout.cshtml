@@ -1,3 +1,5 @@
+@inject LocalSeo.Web.Services.IUserRepository UserRepository
+@inject LocalSeo.Web.Services.IAvatarResolver AvatarResolver
 <!DOCTYPE html>
 <html>
 <head>
@@ -14,6 +16,40 @@
     var isAdmin = User.HasClaim(LocalSeo.Web.Services.AuthClaimTypes.IsAdmin, "true");
     var pageTitle = (ViewData["Title"] as string) ?? (ViewContext.RouteData.Values["controller"]?.ToString() ?? "Dashboard");
     var currentController = (ViewContext.RouteData.Values["controller"]?.ToString() ?? string.Empty).ToLowerInvariant();
+    LocalSeo.Web.Models.UserRecord? topbarUser = null;
+    var topbarDisplayName = User.Identity?.Name ?? "User";
+    var topbarAvatar = AvatarResolver.Resolve(null, 40);
+
+    if (isAuthenticated)
+    {
+        if (Context.Items.TryGetValue("CurrentUserRecord", out var currentUserObject)
+            && currentUserObject is LocalSeo.Web.Models.UserRecord resolvedUser)
+        {
+            topbarUser = resolvedUser;
+        }
+        else
+        {
+            var userIdRaw = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            if (int.TryParse(userIdRaw, out var userId) && userId > 0)
+            {
+                try
+                {
+                    topbarUser = await UserRepository.GetByIdAsync(userId, Context.RequestAborted);
+                }
+                catch
+                {
+                    // Keep rendering even if user lookup fails.
+                }
+            }
+        }
+
+        if (topbarUser is not null)
+        {
+            topbarDisplayName = $"{topbarUser.FirstName} {topbarUser.LastName}".Trim();
+            topbarAvatar = AvatarResolver.Resolve(topbarUser, 40);
+        }
+    }
+
     var breadcrumbMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
     {
         ["admin"] = "Admin",
@@ -24,6 +60,8 @@
         ["search"] = "Search",
         ["runs"] = "Runs",
         ["places"] = "Places",
+        ["profile"] = "Profile",
+        ["edit"] = "Edit",
         ["settings"] = "Settings",
         ["logs"] = "Logs",
         ["login-log"] = "Login Log",
@@ -109,11 +147,36 @@
                 <div class="topbar-main">
                     <h1 class="topbar-title">@pageTitle</h1>
                     <div class="topbar-actions">
-                        <span class="topbar-user">@User.Identity?.Name</span>
-                        <form method="post" action="/logout">
-                            @Html.AntiForgeryToken()
-                            <button type="submit" class="btn btn-secondary">Logout</button>
-                        </form>
+                        <details class="avatar-menu">
+                            <summary class="avatar-menu-toggle" aria-label="Open user menu">
+                                @if (!string.IsNullOrWhiteSpace(topbarAvatar.ImageUrl))
+                                {
+                                    <img class="avatar-image" src="@topbarAvatar.ImageUrl" alt="@topbarDisplayName" />
+                                }
+                                else
+                                {
+                                    <span class="avatar-initials">@topbarAvatar.Initials</span>
+                                }
+                            </summary>
+                            <div class="avatar-menu-panel">
+                                <div class="avatar-menu-heading">
+                                    <strong>@topbarDisplayName</strong>
+                                    <span>@(topbarUser?.EmailAddress ?? string.Empty)</span>
+                                </div>
+                                <a class="avatar-menu-item" href="/profile/edit">
+                                    <i class="bi bi-person"></i>
+                                    <span>Edit profile</span>
+                                </a>
+                                <div class="avatar-menu-divider"></div>
+                                <form method="post" action="/logout" class="avatar-menu-form">
+                                    @Html.AntiForgeryToken()
+                                    <button type="submit" class="avatar-menu-item avatar-menu-button">
+                                        <i class="bi bi-box-arrow-right"></i>
+                                        <span>Log out</span>
+                                    </button>
+                                </form>
+                            </div>
+                        </details>
                     </div>
                 </div>
                 @if (breadcrumbs.Count > 1)

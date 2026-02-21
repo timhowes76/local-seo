@@ -52,7 +52,8 @@ public class InviteServicesTests
                 LastLoginAtUtc: null,
                 FailedPasswordAttempts: 0,
                 LockedoutUntilUtc: null,
-                InviteStatus: UserLifecycleStatus.Pending));
+                InviteStatus: UserLifecycleStatus.Pending,
+                UseGravatar: false));
 
         var crypto = new CryptoService(Microsoft.Extensions.Options.Options.Create(new InviteOptions
         {
@@ -149,6 +150,20 @@ public class InviteServicesTests
 
         public Task<IReadOnlyList<AdminUserListRow>> ListByStatusAsync(UserStatusFilter filter, string? searchTerm, CancellationToken ct)
             => Task.FromResult<IReadOnlyList<AdminUserListRow>>([]);
+
+        public Task<bool> UpdateProfileAsync(int userId, string firstName, string lastName, bool useGravatar, CancellationToken ct)
+        {
+            if (current.Id != userId)
+                return Task.FromResult(false);
+
+            current = current with
+            {
+                FirstName = firstName,
+                LastName = lastName,
+                UseGravatar = useGravatar
+            };
+            return Task.FromResult(true);
+        }
 
         public Task<bool> UpdateUserAsync(int userId, string firstName, string lastName, string emailAddress, string emailAddressNormalized, bool isAdmin, UserLifecycleStatus inviteStatus, CancellationToken ct)
         {
@@ -346,7 +361,7 @@ public class InviteServicesTests
             return Task.FromResult(true);
         }
 
-        public Task<bool> CompleteInviteAsync(long userInviteId, int userId, byte[] passwordHash, byte passwordHashVersion, DateTime nowUtc, CancellationToken ct)
+        public Task<bool> CompleteInviteAsync(long userInviteId, int userId, byte[] passwordHash, byte passwordHashVersion, bool useGravatar, DateTime nowUtc, CancellationToken ct)
         {
             var idx = invites.FindIndex(x => x.UserInviteId == userInviteId && x.UserId == userId);
             if (idx < 0)

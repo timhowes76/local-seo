@@ -1,0 +1,35 @@
+@model ProfileEditViewModel
+@{
+    ViewData["Title"] = "Edit Profile";
+}
+
+<div class="card" style="max-width:720px;">
+    <h2 class="card-title">Edit Profile</h2>
+
+    @if (!string.IsNullOrWhiteSpace(Model.Message))
+    {
+        <div class="notice">@Model.Message</div>
+    }
+
+    <form method="post" action="/profile/edit" class="form-grid">
+        @Html.AntiForgeryToken()
+        <div class="form-row">
+            <label for="profile-first-name">First name</label>
+            <input id="profile-first-name" name="FirstName" type="text" maxlength="100" required value="@Model.Profile.FirstName" />
+        </div>
+        <div class="form-row">
+            <label for="profile-last-name">Last name</label>
+            <input id="profile-last-name" name="LastName" type="text" maxlength="100" required value="@Model.Profile.LastName" />
+        </div>
+        <div class="form-row">
+            <label class="inline-group" for="profile-use-gravatar">
+                <input id="profile-use-gravatar" name="UseGravatar" type="checkbox" value="true" @(Model.Profile.UseGravatar ? "checked" : null) />
+                <span>Use Gravatar for my avatar</span>
+            </label>
+            <p class="form-help">Gravatar is a third-party avatar service and may receive an email hash and your IP address when retrieving your avatar image.</p>
+        </div>
+        <div class="toolbar">
+            <button type="submit">Save Profile</button>
+        </div>
+    </form>
+</div>

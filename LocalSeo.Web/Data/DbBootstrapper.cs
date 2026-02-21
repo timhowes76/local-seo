@@ -1418,6 +1418,7 @@ BEGIN
     PasswordHashVersion tinyint NOT NULL CONSTRAINT DF_User_PasswordHashVersion DEFAULT(1),
     IsActive bit NOT NULL CONSTRAINT DF_User_IsActive DEFAULT(1),
     IsAdmin bit NOT NULL CONSTRAINT DF_User_IsAdmin DEFAULT(0),
+    UseGravatar bit NOT NULL CONSTRAINT DF_User_UseGravatar DEFAULT(0),
     InviteStatus tinyint NOT NULL CONSTRAINT DF_User_InviteStatus DEFAULT(1),
     DateCreatedAtUtc datetime2(0) NOT NULL CONSTRAINT DF_User_DateCreatedAtUtc DEFAULT SYSUTCDATETIME(),
     DatePasswordLastSetUtc datetime2(0) NULL,
@@ -1436,6 +1437,8 @@ IF COL_LENGTH('dbo.[User]', 'IsActive') IS NULL
   ALTER TABLE dbo.[User] ADD IsActive bit NOT NULL CONSTRAINT DF_User_IsActive_Alt DEFAULT(1);
 IF COL_LENGTH('dbo.[User]', 'IsAdmin') IS NULL
   ALTER TABLE dbo.[User] ADD IsAdmin bit NOT NULL CONSTRAINT DF_User_IsAdmin_Alt DEFAULT(0);
+IF COL_LENGTH('dbo.[User]', 'UseGravatar') IS NULL
+  ALTER TABLE dbo.[User] ADD UseGravatar bit NOT NULL CONSTRAINT DF_User_UseGravatar_Alt DEFAULT(0);
 IF COL_LENGTH('dbo.[User]', 'InviteStatus') IS NULL
   ALTER TABLE dbo.[User] ADD InviteStatus tinyint NOT NULL CONSTRAINT DF_User_InviteStatus_Alt DEFAULT(1);
 IF COL_LENGTH('dbo.[User]', 'DateCreatedAtUtc') IS NULL
