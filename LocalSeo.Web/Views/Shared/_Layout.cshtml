@@ -4,6 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>@(ViewData["Title"] as string ?? "Local SEO Tool")</title>
+    <link rel="icon" type="image/png" href="/assets/images/favicon.png" />
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" />
     <link rel="stylesheet" href="/css/site.css" />
 </head>
@@ -24,6 +25,10 @@
         ["runs"] = "Runs",
         ["places"] = "Places",
         ["settings"] = "Settings",
+        ["site"] = "Site",
+        ["data-collection-windows"] = "Data Collection Windows",
+        ["map-pack-ctr-model"] = "Map Pack CTR Model",
+        ["zoho-lead-defaults"] = "Zoho Lead Defaults",
         ["location"] = "Location",
         ["category"] = "Category",
         ["keyphrases"] = "Keyphrases",
@@ -66,7 +71,10 @@
 {
     <div class="dashboard-shell">
         <aside class="sidebar">
-            <div class="sidebar-brand">Local SEO Tool</div>
+            <div class="sidebar-brand">
+                <img class="sidebar-brand-logo" src="/assets/images/logo.svg" alt="Kontrolit" />
+                <div class="sidebar-brand-title">Local SEO Tool</div>
+            </div>
             <nav class="sidebar-nav">
                 <a class="sidebar-link @(currentController == "home" ? "is-active" : null)" href="/">
                     <i class="bi bi-house-door"></i>

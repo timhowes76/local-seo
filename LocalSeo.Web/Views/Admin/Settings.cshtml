@@ -1,4 +1,3 @@
-@model AdminSettingsModel
 @{
     ViewData["Title"] = "Settings";
     var statusMessage = TempData["Status"] as string;
@@ -12,118 +11,30 @@
 
     <section class="card">
         <div class="card-header">
-            <h2 class="card-title">Data Collection Windows</h2>
+            <h2 class="card-title">Settings</h2>
             <a class="btn btn-secondary" href="/admin">Back to Admin</a>
         </div>
-
-        <form method="post" action="/admin/settings" class="form-grid">
-            @Html.AntiForgeryToken()
-
-            <div class="form-row">
-                <label for="EnhancedGoogleDataRefreshHours">Number of hours before attempting Google Enhanced Data collection</label>
-                <input id="EnhancedGoogleDataRefreshHours" name="EnhancedGoogleDataRefreshHours" type="number" min="0" step="1" value="@Model.EnhancedGoogleDataRefreshHours" />
-            </div>
-
-            <div class="form-row">
-                <label for="GoogleReviewsRefreshHours">Number of hours before attempting Google Review collection</label>
-                <input id="GoogleReviewsRefreshHours" name="GoogleReviewsRefreshHours" type="number" min="0" step="1" value="@Model.GoogleReviewsRefreshHours" />
-            </div>
-
-            <div class="form-row">
-                <label for="GoogleUpdatesRefreshHours">Number of hours before attempting Google Updates collection</label>
-                <input id="GoogleUpdatesRefreshHours" name="GoogleUpdatesRefreshHours" type="number" min="0" step="1" value="@Model.GoogleUpdatesRefreshHours" />
-            </div>
-
-            <div class="form-row">
-                <label for="GoogleQuestionsAndAnswersRefreshHours">Number of hours before attempting Google Question &amp; Answers collection</label>
-                <input id="GoogleQuestionsAndAnswersRefreshHours" name="GoogleQuestionsAndAnswersRefreshHours" type="number" min="0" step="1" value="@Model.GoogleQuestionsAndAnswersRefreshHours" />
-            </div>
-
-            <div class="form-row">
-                <label for="GoogleSocialProfilesRefreshHours">Number of hours before attempting Google Social Profile collection</label>
-                <input id="GoogleSocialProfilesRefreshHours" name="GoogleSocialProfilesRefreshHours" type="number" min="0" step="1" value="@Model.GoogleSocialProfilesRefreshHours" />
-            </div>
-
-            <div class="form-row">
-                <label for="SearchVolumeRefreshCooldownDays">Search Volume Refresh Cooldown (Days)</label>
-                <input id="SearchVolumeRefreshCooldownDays" name="SearchVolumeRefreshCooldownDays" type="number" min="0" step="1" value="@Model.SearchVolumeRefreshCooldownDays" />
-            </div>
-
-            <h3>Zoho Lead Defaults</h3>
-
-            <div class="form-row">
-                <label for="ZohoLeadOwnerName">Zoho Lead Owner Name</label>
-                <input id="ZohoLeadOwnerName" name="ZohoLeadOwnerName" type="text" maxlength="200" value="@Model.ZohoLeadOwnerName" />
-            </div>
-
-            <div class="form-row">
-                <label for="ZohoLeadOwnerId">Zoho Lead Owner ID</label>
-                <input id="ZohoLeadOwnerId" name="ZohoLeadOwnerId" type="text" maxlength="50" value="@Model.ZohoLeadOwnerId" />
-            </div>
-
-            <div class="form-row">
-                <label for="ZohoLeadNextAction">Zoho Next Action</label>
-                <input id="ZohoLeadNextAction" name="ZohoLeadNextAction" type="text" maxlength="300" value="@Model.ZohoLeadNextAction" />
-            </div>
-
-            <div class="form-row">
-                <label for="SiteUrl">Site URL</label>
-                <input id="SiteUrl" name="SiteUrl" type="url" maxlength="500" value="@Model.SiteUrl" />
-            </div>
-
-            <h3>Map Pack CTR Model</h3>
-
-            <div class="form-row">
-                <label for="MapPackClickSharePercent">Percentage of total clicks that go to the Map Pack</label>
-                <input id="MapPackClickSharePercent" name="MapPackClickSharePercent" type="number" min="0" max="100" step="1" value="@Model.MapPackClickSharePercent" />
-            </div>
-
-            <div class="search-location-row">
-                <div class="form-row">
-                    <label for="MapPackCtrPosition1Percent">Position 1</label>
-                    <input id="MapPackCtrPosition1Percent" name="MapPackCtrPosition1Percent" type="number" min="0" max="100" step="1" value="@Model.MapPackCtrPosition1Percent" />
-                </div>
-                <div class="form-row">
-                    <label for="MapPackCtrPosition2Percent">Position 2</label>
-                    <input id="MapPackCtrPosition2Percent" name="MapPackCtrPosition2Percent" type="number" min="0" max="100" step="1" value="@Model.MapPackCtrPosition2Percent" />
-                </div>
-                <div class="form-row">
-                    <label for="MapPackCtrPosition3Percent">Position 3</label>
-                    <input id="MapPackCtrPosition3Percent" name="MapPackCtrPosition3Percent" type="number" min="0" max="100" step="1" value="@Model.MapPackCtrPosition3Percent" />
-                </div>
-                <div class="form-row">
-                    <label for="MapPackCtrPosition4Percent">Position 4</label>
-                    <input id="MapPackCtrPosition4Percent" name="MapPackCtrPosition4Percent" type="number" min="0" max="100" step="1" value="@Model.MapPackCtrPosition4Percent" />
-                </div>
-                <div class="form-row">
-                    <label for="MapPackCtrPosition5Percent">Position 5</label>
-                    <input id="MapPackCtrPosition5Percent" name="MapPackCtrPosition5Percent" type="number" min="0" max="100" step="1" value="@Model.MapPackCtrPosition5Percent" />
-                </div>
-                <div class="form-row">
-                    <label for="MapPackCtrPosition6Percent">Position 6</label>
-                    <input id="MapPackCtrPosition6Percent" name="MapPackCtrPosition6Percent" type="number" min="0" max="100" step="1" value="@Model.MapPackCtrPosition6Percent" />
-                </div>
-                <div class="form-row">
-                    <label for="MapPackCtrPosition7Percent">Position 7</label>
-                    <input id="MapPackCtrPosition7Percent" name="MapPackCtrPosition7Percent" type="number" min="0" max="100" step="1" value="@Model.MapPackCtrPosition7Percent" />
-                </div>
-                <div class="form-row">
-                    <label for="MapPackCtrPosition8Percent">Position 8</label>
-                    <input id="MapPackCtrPosition8Percent" name="MapPackCtrPosition8Percent" type="number" min="0" max="100" step="1" value="@Model.MapPackCtrPosition8Percent" />
-                </div>
-                <div class="form-row">
-                    <label for="MapPackCtrPosition9Percent">Position 9</label>
-                    <input id="MapPackCtrPosition9Percent" name="MapPackCtrPosition9Percent" type="number" min="0" max="100" step="1" value="@Model.MapPackCtrPosition9Percent" />
-                </div>
-                <div class="form-row">
-                    <label for="MapPackCtrPosition10Percent">Position 10</label>
-                    <input id="MapPackCtrPosition10Percent" name="MapPackCtrPosition10Percent" type="number" min="0" max="100" step="1" value="@Model.MapPackCtrPosition10Percent" />
-                </div>
-            </div>
-
-            <div class="toolbar">
-                <button type="submit">Save Settings</button>
-            </div>
-        </form>
+        <div class="home-nav-grid">
+            <a href="/admin/settings/site" class="home-nav-card">
+                <i class="bi bi-globe2 home-nav-icon"></i>
+                <span class="home-nav-title">Site</span>
+                <span class="home-nav-subtitle">Manage base site URL settings.</span>
+            </a>
+            <a href="/admin/settings/data-collection-windows" class="home-nav-card">
+                <i class="bi bi-clock-history home-nav-icon"></i>
+                <span class="home-nav-title">Data Collection Windows</span>
+                <span class="home-nav-subtitle">Configure refresh windows and cooldowns.</span>
+            </a>
+            <a href="/admin/settings/map-pack-ctr-model" class="home-nav-card">
+                <i class="bi bi-bar-chart-steps home-nav-icon"></i>
+                <span class="home-nav-title">Map Pack CTR Model</span>
+                <span class="home-nav-subtitle">Configure map pack click-share assumptions.</span>
+            </a>
+            <a href="/admin/settings/zoho-lead-defaults" class="home-nav-card">
+                <i class="bi bi-person-vcard home-nav-icon"></i>
+                <span class="home-nav-title">Zoho Lead Defaults</span>
+                <span class="home-nav-subtitle">Set default owner and next action values.</span>
+            </a>
+        </div>
     </section>
 </div>

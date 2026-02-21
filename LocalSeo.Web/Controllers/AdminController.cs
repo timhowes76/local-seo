@@ -24,26 +24,97 @@ public class AdminController(
     public IActionResult DataLists() => View();
 
     [HttpGet("/admin/settings")]
-    public async Task<IActionResult> Settings(CancellationToken ct)
+    public IActionResult Settings() => View();
+
+    [HttpGet("/admin/settings/site")]
+    public async Task<IActionResult> SettingsSite(CancellationToken ct)
     {
-        var model = await adminSettingsService.GetAsync(ct);
-        return View(model);
+        var settings = await adminSettingsService.GetAsync(ct);
+        return View(new AdminSiteSettingsModel
+        {
+            SiteUrl = settings.SiteUrl
+        });
     }
 
-    [HttpPost("/admin/settings")]
+    [HttpPost("/admin/settings/site")]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> SaveSettings(AdminSettingsModel model, CancellationToken ct)
+    public async Task<IActionResult> SaveSettingsSite(AdminSiteSettingsModel model, CancellationToken ct)
     {
-        if (model.EnhancedGoogleDataRefreshHours < 0)
-            ModelState.AddModelError(nameof(model.EnhancedGoogleDataRefreshHours), "Value must be at least 0 hours.");
-        if (model.GoogleReviewsRefreshHours < 0)
-            ModelState.AddModelError(nameof(model.GoogleReviewsRefreshHours), "Value must be at least 0 hours.");
-        if (model.GoogleUpdatesRefreshHours < 0)
-            ModelState.AddModelError(nameof(model.GoogleUpdatesRefreshHours), "Value must be at least 0 hours.");
-        if (model.GoogleQuestionsAndAnswersRefreshHours < 0)
-            ModelState.AddModelError(nameof(model.GoogleQuestionsAndAnswersRefreshHours), "Value must be at least 0 hours.");
-        if (model.SearchVolumeRefreshCooldownDays < 0)
-            ModelState.AddModelError(nameof(model.SearchVolumeRefreshCooldownDays), "Value must be at least 0 days.");
+        ValidateSiteUrl(nameof(model.SiteUrl), model.SiteUrl);
+        if (!ModelState.IsValid)
+            return View("SettingsSite", model);
+
+        var settings = await adminSettingsService.GetAsync(ct);
+        settings.SiteUrl = model.SiteUrl;
+        await adminSettingsService.SaveAsync(settings, ct);
+        TempData["Status"] = "Site settings saved.";
+        return RedirectToAction(nameof(SettingsSite));
+    }
+
+    [HttpGet("/admin/settings/data-collection-windows")]
+    public async Task<IActionResult> SettingsDataCollectionWindows(CancellationToken ct)
+    {
+        var settings = await adminSettingsService.GetAsync(ct);
+        return View(new AdminDataCollectionWindowsSettingsModel
+        {
+            EnhancedGoogleDataRefreshHours = settings.EnhancedGoogleDataRefreshHours,
+            GoogleReviewsRefreshHours = settings.GoogleReviewsRefreshHours,
+            GoogleUpdatesRefreshHours = settings.GoogleUpdatesRefreshHours,
+            GoogleQuestionsAndAnswersRefreshHours = settings.GoogleQuestionsAndAnswersRefreshHours,
+            GoogleSocialProfilesRefreshHours = settings.GoogleSocialProfilesRefreshHours,
+            SearchVolumeRefreshCooldownDays = settings.SearchVolumeRefreshCooldownDays
+        });
+    }
+
+    [HttpPost("/admin/settings/data-collection-windows")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> SaveSettingsDataCollectionWindows(AdminDataCollectionWindowsSettingsModel model, CancellationToken ct)
+    {
+        ValidateNonNegative(nameof(model.EnhancedGoogleDataRefreshHours), model.EnhancedGoogleDataRefreshHours, "hours");
+        ValidateNonNegative(nameof(model.GoogleReviewsRefreshHours), model.GoogleReviewsRefreshHours, "hours");
+        ValidateNonNegative(nameof(model.GoogleUpdatesRefreshHours), model.GoogleUpdatesRefreshHours, "hours");
+        ValidateNonNegative(nameof(model.GoogleQuestionsAndAnswersRefreshHours), model.GoogleQuestionsAndAnswersRefreshHours, "hours");
+        ValidateNonNegative(nameof(model.GoogleSocialProfilesRefreshHours), model.GoogleSocialProfilesRefreshHours, "hours");
+        ValidateNonNegative(nameof(model.SearchVolumeRefreshCooldownDays), model.SearchVolumeRefreshCooldownDays, "days");
+        if (!ModelState.IsValid)
+            return View("SettingsDataCollectionWindows", model);
+
+        var settings = await adminSettingsService.GetAsync(ct);
+        settings.EnhancedGoogleDataRefreshHours = model.EnhancedGoogleDataRefreshHours;
+        settings.GoogleReviewsRefreshHours = model.GoogleReviewsRefreshHours;
+        settings.GoogleUpdatesRefreshHours = model.GoogleUpdatesRefreshHours;
+        settings.GoogleQuestionsAndAnswersRefreshHours = model.GoogleQuestionsAndAnswersRefreshHours;
+        settings.GoogleSocialProfilesRefreshHours = model.GoogleSocialProfilesRefreshHours;
+        settings.SearchVolumeRefreshCooldownDays = model.SearchVolumeRefreshCooldownDays;
+        await adminSettingsService.SaveAsync(settings, ct);
+        TempData["Status"] = "Data collection window settings saved.";
+        return RedirectToAction(nameof(SettingsDataCollectionWindows));
+    }
+
+    [HttpGet("/admin/settings/map-pack-ctr-model")]
+    public async Task<IActionResult> SettingsMapPackCtrModel(CancellationToken ct)
+    {
+        var settings = await adminSettingsService.GetAsync(ct);
+        return View(new AdminMapPackCtrModelSettingsModel
+        {
+            MapPackClickSharePercent = settings.MapPackClickSharePercent,
+            MapPackCtrPosition1Percent = settings.MapPackCtrPosition1Percent,
+            MapPackCtrPosition2Percent = settings.MapPackCtrPosition2Percent,
+            MapPackCtrPosition3Percent = settings.MapPackCtrPosition3Percent,
+            MapPackCtrPosition4Percent = settings.MapPackCtrPosition4Percent,
+            MapPackCtrPosition5Percent = settings.MapPackCtrPosition5Percent,
+            MapPackCtrPosition6Percent = settings.MapPackCtrPosition6Percent,
+            MapPackCtrPosition7Percent = settings.MapPackCtrPosition7Percent,
+            MapPackCtrPosition8Percent = settings.MapPackCtrPosition8Percent,
+            MapPackCtrPosition9Percent = settings.MapPackCtrPosition9Percent,
+            MapPackCtrPosition10Percent = settings.MapPackCtrPosition10Percent
+        });
+    }
+
+    [HttpPost("/admin/settings/map-pack-ctr-model")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> SaveSettingsMapPackCtrModel(AdminMapPackCtrModelSettingsModel model, CancellationToken ct)
+    {
         ValidatePercent(nameof(model.MapPackClickSharePercent), model.MapPackClickSharePercent);
         ValidatePercent(nameof(model.MapPackCtrPosition1Percent), model.MapPackCtrPosition1Percent);
         ValidatePercent(nameof(model.MapPackCtrPosition2Percent), model.MapPackCtrPosition2Percent);
@@ -55,30 +126,54 @@ public class AdminController(
         ValidatePercent(nameof(model.MapPackCtrPosition8Percent), model.MapPackCtrPosition8Percent);
         ValidatePercent(nameof(model.MapPackCtrPosition9Percent), model.MapPackCtrPosition9Percent);
         ValidatePercent(nameof(model.MapPackCtrPosition10Percent), model.MapPackCtrPosition10Percent);
+        if (!ModelState.IsValid)
+            return View("SettingsMapPackCtrModel", model);
+
+        var settings = await adminSettingsService.GetAsync(ct);
+        settings.MapPackClickSharePercent = model.MapPackClickSharePercent;
+        settings.MapPackCtrPosition1Percent = model.MapPackCtrPosition1Percent;
+        settings.MapPackCtrPosition2Percent = model.MapPackCtrPosition2Percent;
+        settings.MapPackCtrPosition3Percent = model.MapPackCtrPosition3Percent;
+        settings.MapPackCtrPosition4Percent = model.MapPackCtrPosition4Percent;
+        settings.MapPackCtrPosition5Percent = model.MapPackCtrPosition5Percent;
+        settings.MapPackCtrPosition6Percent = model.MapPackCtrPosition6Percent;
+        settings.MapPackCtrPosition7Percent = model.MapPackCtrPosition7Percent;
+        settings.MapPackCtrPosition8Percent = model.MapPackCtrPosition8Percent;
+        settings.MapPackCtrPosition9Percent = model.MapPackCtrPosition9Percent;
+        settings.MapPackCtrPosition10Percent = model.MapPackCtrPosition10Percent;
+        await adminSettingsService.SaveAsync(settings, ct);
+        TempData["Status"] = "Map Pack CTR model settings saved.";
+        return RedirectToAction(nameof(SettingsMapPackCtrModel));
+    }
+
+    [HttpGet("/admin/settings/zoho-lead-defaults")]
+    public async Task<IActionResult> SettingsZohoLeadDefaults(CancellationToken ct)
+    {
+        var settings = await adminSettingsService.GetAsync(ct);
+        return View(new AdminZohoLeadDefaultsSettingsModel
+        {
+            ZohoLeadOwnerName = settings.ZohoLeadOwnerName,
+            ZohoLeadOwnerId = settings.ZohoLeadOwnerId,
+            ZohoLeadNextAction = settings.ZohoLeadNextAction
+        });
+    }
+
+    [HttpPost("/admin/settings/zoho-lead-defaults")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> SaveSettingsZohoLeadDefaults(AdminZohoLeadDefaultsSettingsModel model, CancellationToken ct)
+    {
         if (string.IsNullOrWhiteSpace(model.ZohoLeadNextAction))
             ModelState.AddModelError(nameof(model.ZohoLeadNextAction), "Next Action is required.");
-        if (string.IsNullOrWhiteSpace(model.SiteUrl))
-        {
-            ModelState.AddModelError(nameof(model.SiteUrl), "Site URL is required.");
-        }
-        else if (!Uri.TryCreate(model.SiteUrl.Trim(), UriKind.Absolute, out var siteUri)
-            || (siteUri.Scheme != Uri.UriSchemeHttp && siteUri.Scheme != Uri.UriSchemeHttps))
-        {
-            ModelState.AddModelError(nameof(model.SiteUrl), "Site URL must be a valid http/https URL.");
-        }
-
         if (!ModelState.IsValid)
-            return View("Settings", model);
+            return View("SettingsZohoLeadDefaults", model);
 
-        await adminSettingsService.SaveAsync(model, ct);
-        TempData["Status"] = "Settings saved.";
-        return RedirectToAction(nameof(Settings));
-
-        void ValidatePercent(string fieldName, int value)
-        {
-            if (value < 0 || value > 100)
-                ModelState.AddModelError(fieldName, "Value must be between 0 and 100.");
-        }
+        var settings = await adminSettingsService.GetAsync(ct);
+        settings.ZohoLeadOwnerName = model.ZohoLeadOwnerName;
+        settings.ZohoLeadOwnerId = model.ZohoLeadOwnerId;
+        settings.ZohoLeadNextAction = model.ZohoLeadNextAction;
+        await adminSettingsService.SaveAsync(settings, ct);
+        TempData["Status"] = "Zoho lead default settings saved.";
+        return RedirectToAction(nameof(SettingsZohoLeadDefaults));
     }
 
     [HttpGet("/admin/dataforseo-tasks")]
@@ -802,6 +897,33 @@ public class AdminController(
             ? "Town marked as inactive."
             : "Town was not found.";
         return RedirectToAction(nameof(TownsGb), BuildTownListRouteValues(status, q, countyId, page, pageSize));
+    }
+
+    private void ValidateNonNegative(string fieldName, int value, string unitLabel)
+    {
+        if (value < 0)
+            ModelState.AddModelError(fieldName, $"Value must be at least 0 {unitLabel}.");
+    }
+
+    private void ValidatePercent(string fieldName, int value)
+    {
+        if (value < 0 || value > 100)
+            ModelState.AddModelError(fieldName, "Value must be between 0 and 100.");
+    }
+
+    private void ValidateSiteUrl(string fieldName, string? siteUrl)
+    {
+        if (string.IsNullOrWhiteSpace(siteUrl))
+        {
+            ModelState.AddModelError(fieldName, "Site URL is required.");
+            return;
+        }
+
+        if (!Uri.TryCreate(siteUrl.Trim(), UriKind.Absolute, out var siteUri)
+            || (siteUri.Scheme != Uri.UriSchemeHttp && siteUri.Scheme != Uri.UriSchemeHttps))
+        {
+            ModelState.AddModelError(fieldName, "Site URL must be a valid http/https URL.");
+        }
     }
 
     private static string? NormalizeTaskTypeFilter(string? taskType)

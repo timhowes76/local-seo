@@ -15,6 +15,7 @@
         {
             placeId = x.PlaceId,
             displayName = x.DisplayName,
+            logoUrl = x.LogoUrl,
             rating = x.Rating,
             userRatingCount = x.UserRatingCount,
             primaryCategory = x.PrimaryCategory,
@@ -99,13 +100,14 @@
                 <thead>
                     <tr>
                         <th>Rank</th>
+                        <th class="run-logo-col" aria-label="Logo"></th>
                         <th>Name</th>
+                        <th title="Financial Information"><i class="bi bi-bank2" aria-hidden="true"></i></th>
+                        <th title="Zoho Connected"><i class="bi bi-person-vcard-fill" aria-hidden="true"></i></th>
                         <th>Primary Category</th>
                         <th>Avg Clicks</th>
-                        <th>Last Month Clicks</th>
                         <th>Avg Rating</th>
                         <th>Total Reviews</th>
-                        <th>Reviews 90d</th>
                         <th>Days last review</th>
                         <th>Review Status</th>
                         <th>Number of Updates</th>
@@ -116,7 +118,6 @@
                         <th>Other Categories</th>
                         <th>Photos</th>
                         <th>Number of Q&amp;As</th>
-                        <th>Details</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -124,6 +125,7 @@
                 {
                     var websiteYes = !string.IsNullOrWhiteSpace(s.WebsiteUri);
                     var hasOtherCategories = s.HasOtherCategories ?? false;
+                    var hasLogo = !string.IsNullOrWhiteSpace(s.LogoUrl);
                     var descriptionLength = Math.Max(0, s.DescriptionLength ?? 0);
                     var descriptionPercent = Math.Clamp((int)Math.Round((descriptionLength / 750.0) * 100.0), 0, 100);
                     var descriptionStatusClass = descriptionPercent < 33
@@ -133,13 +135,50 @@
                             : "status-healthy";
                     <tr>
                         <td>@s.RankPosition</td>
-                        <td>@(s.DisplayName ?? "N/A")</td>
+                        <td class="run-logo-cell">
+                            @if (hasLogo)
+                            {
+                                <img class="run-place-logo" src="@s.LogoUrl" alt="@(s.DisplayName ?? "Place") logo" loading="lazy" onerror="this.style.display='none';" />
+                            }
+                        </td>
+                        <td><a href="/places/@s.PlaceId?runId=@Model.Run.SearchRunId">@(s.DisplayName ?? "N/A")</a></td>
+                        <td class="run-indicator-cell">
+                            <span class="run-indicator @(s.HasFinancialInfo ? "is-yes" : "is-no")" title="@(s.HasFinancialInfo ? "Financial information available" : "No financial information")">
+                                <i class="bi bi-bank2" aria-hidden="true"></i>
+                            </span>
+                        </td>
+                        <td class="run-indicator-cell">
+                            <span class="run-indicator @(s.IsZohoConnected ? "is-yes" : "is-no")" title="@(s.IsZohoConnected ? "Connected to Zoho" : "Not connected to Zoho")">
+                                <i class="bi bi-person-vcard-fill" aria-hidden="true"></i>
+                            </span>
+                        </td>
                         <td>@(string.IsNullOrWhiteSpace(s.PrimaryCategory) ? "N/A" : s.PrimaryCategory)</td>
                         <td>@(s.AvgClicks?.ToString("N0") ?? "0")</td>
-                        <td>@(s.LastMonthClicks?.ToString("N0") ?? "N/A")</td>
-                        <td>@(s.Rating?.ToString() ?? "N/A")</td>
+                        <td>
+                            @if (s.Rating.HasValue)
+                            {
+                                var clampedRating = Math.Clamp((double)s.Rating.Value, 0d, 5d);
+                                var roundedHalfStars = Math.Clamp((int)Math.Round(clampedRating * 2d, MidpointRounding.AwayFromZero), 0, 10);
+                                var fullStars = roundedHalfStars / 2;
+                                var hasHalfStar = roundedHalfStars % 2 == 1;
+                                var emptyStars = 5 - fullStars - (hasHalfStar ? 1 : 0);
+                                <span class="run-rating-stars" title="@($"{clampedRating:0.0} out of 5")" aria-label="@($"{clampedRating:0.0} out of 5 stars")">
+                                    @for (var i = 0; i < fullStars; i++)
+                                    {
+                                        <i class="bi bi-star-fill" aria-hidden="true"></i>
+                                    }
+                                    @if (hasHalfStar)
+                                    {
+                                        <i class="bi bi-star-half" aria-hidden="true"></i>
+                                    }
+                                    @for (var i = 0; i < emptyStars; i++)
+                                    {
+                                        <i class="bi bi-star" aria-hidden="true"></i>
+                                    }
+                                </span>
+                            }
+                        </td>
                         <td>@(s.UserRatingCount?.ToString() ?? "N/A")</td>
-                        <td>@(s.ReviewsLast90?.ToString() ?? "0")</td>
                         <td>@(s.DaysSinceLastReview?.ToString() ?? "N/A")</td>
                         <td><span class="status-pill @StatusCss(s.StatusLabel, "noreviews")">@(s.StatusLabel ?? "NoReviews")</span></td>
                         <td>@(s.UpdateCount?.ToString() ?? "0")</td>
@@ -150,7 +189,6 @@
                         <td><span class="status-pill @(hasOtherCategories ? "status-healthy" : "status-nodata")">@(hasOtherCategories ? "Yes" : "No")</span></td>
                         <td>@(s.PhotoCount?.ToString() ?? "N/A")</td>
                         <td>@(s.QuestionAnswerCount?.ToString() ?? "0")</td>
-                        <td><a href="/places/@s.PlaceId?runId=@Model.Run.SearchRunId">View</a></td>
                     </tr>
                 }
                 </tbody>
@@ -318,6 +356,32 @@
                     return offsets;
                 }
 
+                function parseRating(value) {
+                    const numeric = Number(value);
+                    if (!Number.isFinite(numeric)) return null;
+                    if (numeric < 0) return 0;
+                    if (numeric > 5) return 5;
+                    return numeric;
+                }
+
+                function buildRatingStarsHtml(value) {
+                    const rating = parseRating(value);
+                    if (rating === null) {
+                        return `<span class="rating-stars"><i class="bi bi-star" aria-hidden="true"></i><i class="bi bi-star" aria-hidden="true"></i><i class="bi bi-star" aria-hidden="true"></i><i class="bi bi-star" aria-hidden="true"></i><i class="bi bi-star" aria-hidden="true"></i></span>`;
+                    }
+
+                    const roundedHalfStars = Math.min(10, Math.max(0, Math.round(rating * 2)));
+                    const fullStars = Math.floor(roundedHalfStars / 2);
+                    const hasHalfStar = roundedHalfStars % 2 === 1;
+                    const emptyStars = 5 - fullStars - (hasHalfStar ? 1 : 0);
+                    let html = `<span class="rating-stars" title="${rating.toFixed(1)} out of 5">`;
+                    for (let i = 0; i < fullStars; i++) html += `<i class="bi bi-star-fill" aria-hidden="true"></i>`;
+                    if (hasHalfStar) html += `<i class="bi bi-star-half" aria-hidden="true"></i>`;
+                    for (let i = 0; i < emptyStars; i++) html += `<i class="bi bi-star" aria-hidden="true"></i>`;
+                    html += `</span>`;
+                    return html;
+                }
+
                 function initRunMap() {
                     const hasCenter = runCenter.lat !== null && runCenter.lng !== null;
                     const map = new google.maps.Map(document.getElementById("run-map"), {
@@ -363,12 +427,21 @@
                     }
 
                     function getInfoHtml(pin) {
+                        const logoHtml = pin.logoUrl
+                            ? `<img class="map-info-logo" src="${escapeHtml(pin.logoUrl)}" alt="" loading="lazy" onerror="this.remove();" />`
+                            : "";
+                        const ratingCount = pin.userRatingCount === null || pin.userRatingCount === undefined
+                            ? "N/A"
+                            : String(pin.userRatingCount);
                         return `
                             <div class="map-info">
+                                ${logoHtml}
                                 <div class="map-info-title">${escapeHtml(pin.displayName || "N/A")}</div>
-                                <div class="map-info-subtitle">
-                                    ${escapeHtml(pin.rating ?? "N/A")} (${escapeHtml(pin.userRatingCount ?? "N/A")}) - ${escapeHtml(pin.primaryCategory || "N/A")}
+                                <div class="map-info-rating">
+                                    ${buildRatingStarsHtml(pin.rating)}
+                                    <span class="map-rating-count">(${escapeHtml(ratingCount)})</span>
                                 </div>
+                                <div class="map-info-subtitle">${escapeHtml(pin.primaryCategory || "N/A")}</div>
                                 <div class="map-info-link"><a href="${escapeHtml(pin.detailsUrl)}">View</a></div>
                             </div>`;
                     }
@@ -437,9 +510,22 @@
                             item.type = "button";
                             item.className = "map-overlap-item";
                             item.dataset.recordId = String(record.id);
+                            const logoHtml = record.pin.logoUrl
+                                ? `<img class="map-overlap-item-logo" src="${escapeHtml(record.pin.logoUrl)}" alt="" loading="lazy" onerror="this.remove();" />`
+                                : "";
+                            const ratingCount = record.pin.userRatingCount === null || record.pin.userRatingCount === undefined
+                                ? "N/A"
+                                : String(record.pin.userRatingCount);
                             item.innerHTML = `
-                                <div class="map-overlap-item-name">${escapeHtml(record.pin.displayName || "N/A")}</div>
-                                <div class="map-overlap-item-meta">${escapeHtml(record.pin.primaryCategory || "N/A")} - ${escapeHtml(record.pin.rating ?? "N/A")} (${escapeHtml(record.pin.userRatingCount ?? "N/A")})</div>
+                                <div class="map-overlap-item-head">
+                                    ${logoHtml}
+                                    <div class="map-overlap-item-name">${escapeHtml(record.pin.displayName || "N/A")}</div>
+                                </div>
+                                <div class="map-overlap-item-rating">
+                                    ${buildRatingStarsHtml(record.pin.rating)}
+                                    <span class="map-rating-count">(${escapeHtml(ratingCount)})</span>
+                                </div>
+                                <div class="map-overlap-item-meta">${escapeHtml(record.pin.primaryCategory || "N/A")}</div>
                             `;
 
                             item.addEventListener("mouseenter", () => {

@@ -1,0 +1,45 @@
+@model AdminZohoLeadDefaultsSettingsModel
+@{
+    ViewData["Title"] = "Zoho Lead Defaults";
+    var statusMessage = TempData["Status"] as string;
+}
+
+<div class="page-stack">
+    @if (!string.IsNullOrWhiteSpace(statusMessage))
+    {
+        <div class="notice">@statusMessage</div>
+    }
+
+    <section class="card">
+        <div class="card-header">
+            <h2 class="card-title">Zoho Lead Defaults</h2>
+            <a class="btn btn-secondary" href="/admin/settings">Back to Settings</a>
+        </div>
+
+        <form method="post" action="/admin/settings/zoho-lead-defaults" class="form-grid">
+            @Html.AntiForgeryToken()
+
+            <div class="form-row">
+                <label for="ZohoLeadOwnerName">Zoho Lead Owner Name</label>
+                <input id="ZohoLeadOwnerName" name="ZohoLeadOwnerName" type="text" maxlength="200" value="@Model.ZohoLeadOwnerName" />
+                @Html.ValidationMessage(nameof(Model.ZohoLeadOwnerName))
+            </div>
+
+            <div class="form-row">
+                <label for="ZohoLeadOwnerId">Zoho Lead Owner ID</label>
+                <input id="ZohoLeadOwnerId" name="ZohoLeadOwnerId" type="text" maxlength="50" value="@Model.ZohoLeadOwnerId" />
+                @Html.ValidationMessage(nameof(Model.ZohoLeadOwnerId))
+            </div>
+
+            <div class="form-row">
+                <label for="ZohoLeadNextAction">Zoho Next Action</label>
+                <input id="ZohoLeadNextAction" name="ZohoLeadNextAction" type="text" maxlength="300" value="@Model.ZohoLeadNextAction" />
+                @Html.ValidationMessage(nameof(Model.ZohoLeadNextAction))
+            </div>
+
+            <div class="toolbar">
+                <button type="submit">Save Settings</button>
+            </div>
+        </form>
+    </section>
+</div>

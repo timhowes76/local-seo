@@ -461,9 +461,13 @@ SELECT s.PlaceSnapshotId, s.SearchRunId, s.PlaceId, s.RankPosition, s.Rating, s.
          WHEN updTrend.Trend90Pct >= 30 AND DATEDIFF(day, upd.LastUpdateDate, CAST(SYSUTCDATETIME() AS date)) <= 30 THEN 'Accelerating'
          ELSE 'Healthy'
        END AS UpdateStatusLabel,
-       v.StatusLabel, v.MomentumScore
+       v.StatusLabel, v.MomentumScore,
+       p.LogoUrl,
+       CAST(CASE WHEN pf.PlaceId IS NULL THEN 0 ELSE 1 END AS bit) AS HasFinancialInfo,
+       CAST(COALESCE(p.ZohoLeadCreated, 0) AS bit) AS IsZohoConnected
 FROM dbo.PlaceSnapshot s
 JOIN dbo.Place p ON p.PlaceId=s.PlaceId
+LEFT JOIN dbo.PlacesFinancial pf ON pf.PlaceId=s.PlaceId
 LEFT JOIN dbo.PlaceReviewVelocityStats v ON v.PlaceId=s.PlaceId
 OUTER APPLY (
   SELECT

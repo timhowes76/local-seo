@@ -44,7 +44,10 @@ public sealed record PlaceSnapshotRow(
     int? DaysSinceLastUpdate,
     string? UpdateStatusLabel,
     string? StatusLabel,
-    int? MomentumScore)
+    int? MomentumScore,
+    string? LogoUrl,
+    bool HasFinancialInfo,
+    bool IsZohoConnected)
 {
     public int? AvgClicks { get; init; }
     public int? LastMonthClicks { get; init; }
@@ -510,6 +513,43 @@ public sealed class AdminSettingsModel
     public string ZohoLeadOwnerId { get; set; } = "1108404000000068001";
     public string ZohoLeadNextAction { get; set; } = "Make first contact";
     public string SiteUrl { get; set; } = "https://briskly-viceless-kayleen.ngrok-free.dev/";
+}
+
+public sealed class AdminSiteSettingsModel
+{
+    public string SiteUrl { get; set; } = "https://briskly-viceless-kayleen.ngrok-free.dev/";
+}
+
+public sealed class AdminDataCollectionWindowsSettingsModel
+{
+    public int EnhancedGoogleDataRefreshHours { get; set; } = 24;
+    public int GoogleReviewsRefreshHours { get; set; } = 24;
+    public int GoogleUpdatesRefreshHours { get; set; } = 24;
+    public int GoogleQuestionsAndAnswersRefreshHours { get; set; } = 24;
+    public int GoogleSocialProfilesRefreshHours { get; set; } = 24;
+    public int SearchVolumeRefreshCooldownDays { get; set; } = 30;
+}
+
+public sealed class AdminMapPackCtrModelSettingsModel
+{
+    public int MapPackClickSharePercent { get; set; } = 50;
+    public int MapPackCtrPosition1Percent { get; set; } = 38;
+    public int MapPackCtrPosition2Percent { get; set; } = 23;
+    public int MapPackCtrPosition3Percent { get; set; } = 16;
+    public int MapPackCtrPosition4Percent { get; set; } = 7;
+    public int MapPackCtrPosition5Percent { get; set; } = 5;
+    public int MapPackCtrPosition6Percent { get; set; } = 4;
+    public int MapPackCtrPosition7Percent { get; set; } = 3;
+    public int MapPackCtrPosition8Percent { get; set; } = 2;
+    public int MapPackCtrPosition9Percent { get; set; } = 1;
+    public int MapPackCtrPosition10Percent { get; set; } = 1;
+}
+
+public sealed class AdminZohoLeadDefaultsSettingsModel
+{
+    public string ZohoLeadOwnerName { get; set; } = "Richard Howes";
+    public string ZohoLeadOwnerId { get; set; } = "1108404000000068001";
+    public string ZohoLeadNextAction { get; set; } = "Make first contact";
 }
 
 public sealed record GooglePlace(
