@@ -215,6 +215,14 @@ public class AdminController(
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> SaveSettingsSecurity(AdminSecuritySettingsModel model, CancellationToken ct)
     {
+        if (Request.HasFormContentType)
+        {
+            var form = Request.Form;
+            model.PasswordRequiresNumber = form.ContainsKey(nameof(model.PasswordRequiresNumber));
+            model.PasswordRequiresCapitalLetter = form.ContainsKey(nameof(model.PasswordRequiresCapitalLetter));
+            model.PasswordRequiresSpecialCharacter = form.ContainsKey(nameof(model.PasswordRequiresSpecialCharacter));
+        }
+
         ValidateMinimum(nameof(model.MinimumPasswordLength), model.MinimumPasswordLength, 8, "characters");
         ValidateMinimum(nameof(model.LoginLockoutThreshold), model.LoginLockoutThreshold, 1, "attempts");
         ValidateMinimum(nameof(model.LoginLockoutMinutes), model.LoginLockoutMinutes, 1, "minutes");
