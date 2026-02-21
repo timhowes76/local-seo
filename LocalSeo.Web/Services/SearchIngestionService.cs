@@ -12,6 +12,9 @@ namespace LocalSeo.Web.Services;
 public interface ISearchIngestionService
 {
     Task<long> RunAsync(SearchFormModel model, CancellationToken ct);
+    Task<long> CreateQueuedRunAsync(SearchFormModel model, CancellationToken ct);
+    Task ExecuteQueuedRunAsync(long runId, CancellationToken ct);
+    Task<SearchRunProgressSnapshot?> GetRunProgressAsync(long runId, CancellationToken ct);
     Task<IReadOnlyList<SearchRun>> GetLatestRunsAsync(int take, CancellationToken ct);
     Task<SearchRun?> GetRunAsync(long runId, CancellationToken ct);
     Task<IReadOnlyList<PlaceSnapshotRow>> GetRunSnapshotsAsync(long runId, CancellationToken ct);
@@ -365,6 +368,628 @@ GROUP BY PlaceId, COALESCE(TaskType, 'reviews');",
         }
 
         return runId;
+    }
+
+    public async Task<long> CreateQueuedRunAsync(SearchFormModel model, CancellationToken ct)
+    {
+        var normalizedCategoryId = (model.CategoryId ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(normalizedCategoryId))
+            throw new InvalidOperationException("Category is required.");
+        if (!model.TownId.HasValue || model.TownId.Value <= 0)
+            throw new InvalidOperationException("Town is required.");
+
+        SearchRunQueueSelectionRow? selection;
+        await using (var lookupConn = (Microsoft.Data.SqlClient.SqlConnection)await connectionFactory.OpenConnectionAsync(ct))
+        {
+            selection = await lookupConn.QuerySingleOrDefaultAsync<SearchRunQueueSelectionRow>(new CommandDefinition(@"
+SELECT TOP 1
+  c.CategoryId,
+  t.TownId,
+  t.CountyId
+FROM dbo.GoogleBusinessProfileCategory c
+JOIN dbo.GbTown t ON t.TownId = @TownId
+JOIN dbo.GbCounty county ON county.CountyId = t.CountyId
+WHERE c.CategoryId = @CategoryId
+  AND c.Status = 'Active'
+  AND t.IsActive = 1
+  AND county.IsActive = 1
+  AND (@CountyId IS NULL OR t.CountyId = @CountyId);", new
+            {
+                CategoryId = normalizedCategoryId,
+                TownId = model.TownId.Value,
+                CountyId = model.CountyId
+            }, cancellationToken: ct));
+        }
+        if (selection is null)
+            throw new InvalidOperationException("Selected category or town is invalid, inactive, or no longer available.");
+
+        var nowUtc = DateTime.UtcNow;
+        await using var conn = (Microsoft.Data.SqlClient.SqlConnection)await connectionFactory.OpenConnectionAsync(ct);
+        var runId = await conn.ExecuteScalarAsync<long>(new CommandDefinition(@"
+INSERT INTO dbo.SearchRun(
+  CategoryId,
+  TownId,
+  RadiusMeters,
+  ResultLimit,
+  FetchDetailedData,
+  FetchGoogleReviews,
+  FetchGoogleUpdates,
+  FetchGoogleQuestionsAndAnswers,
+  FetchGoogleSocialProfiles,
+  [Status],
+  TotalApiCalls,
+  CompletedApiCalls,
+  PercentComplete,
+  StartedUtc,
+  LastUpdatedUtc,
+  CompletedUtc,
+  ErrorMessage,
+  RanAtUtc)
+OUTPUT INSERTED.SearchRunId
+VALUES(
+  @CategoryId,
+  @TownId,
+  @RadiusMeters,
+  @ResultLimit,
+  @FetchDetailedData,
+  @FetchGoogleReviews,
+  @FetchGoogleUpdates,
+  @FetchGoogleQuestionsAndAnswers,
+  @FetchGoogleSocialProfiles,
+  N'Queued',
+  NULL,
+  0,
+  0,
+  @NowUtc,
+  @NowUtc,
+  NULL,
+  NULL,
+  @NowUtc);",
+            new
+            {
+                CategoryId = selection.CategoryId,
+                TownId = selection.TownId,
+                RadiusMeters = model.RadiusMeters,
+                ResultLimit = Math.Clamp(model.ResultLimit, 1, 20),
+                FetchDetailedData = model.FetchEnhancedGoogleData,
+                FetchGoogleReviews = model.FetchGoogleReviews,
+                FetchGoogleUpdates = model.FetchGoogleUpdates,
+                FetchGoogleQuestionsAndAnswers = model.FetchGoogleQuestionsAndAnswers,
+                FetchGoogleSocialProfiles = model.FetchGoogleSocialProfiles,
+                NowUtc = nowUtc
+            }, cancellationToken: ct));
+
+        return runId;
+    }
+
+    public async Task ExecuteQueuedRunAsync(long runId, CancellationToken ct)
+    {
+        if (runId <= 0)
+            return;
+
+        await using var conn = (Microsoft.Data.SqlClient.SqlConnection)await connectionFactory.OpenConnectionAsync(ct);
+        var run = await conn.QuerySingleOrDefaultAsync<QueuedSearchRunConfigRow>(new CommandDefinition(@"
+SELECT TOP 1
+  r.SearchRunId,
+  r.CategoryId,
+  r.TownId,
+  t.CountyId,
+  r.RadiusMeters,
+  r.ResultLimit,
+  r.FetchDetailedData,
+  r.FetchGoogleReviews,
+  r.FetchGoogleUpdates,
+  r.FetchGoogleQuestionsAndAnswers,
+  r.FetchGoogleSocialProfiles
+FROM dbo.SearchRun r
+JOIN dbo.GbTown t ON t.TownId = r.TownId
+WHERE r.SearchRunId = @RunId;", new { RunId = runId }, cancellationToken: ct));
+        if (run is null)
+            return;
+
+        var model = new SearchFormModel
+        {
+            CategoryId = run.CategoryId,
+            CountyId = run.CountyId,
+            TownId = run.TownId,
+            RadiusMeters = run.RadiusMeters ?? placesOptions.Value.DefaultRadiusMeters,
+            ResultLimit = Math.Clamp(run.ResultLimit, 1, 20),
+            FetchEnhancedGoogleData = run.FetchDetailedData,
+            FetchGoogleReviews = run.FetchGoogleReviews,
+            FetchGoogleUpdates = run.FetchGoogleUpdates,
+            FetchGoogleQuestionsAndAnswers = run.FetchGoogleQuestionsAndAnswers,
+            FetchGoogleSocialProfiles = run.FetchGoogleSocialProfiles
+        };
+
+        try
+        {
+            await ExecuteQueuedRunInternalAsync(runId, model, ct);
+        }
+        catch (Exception ex) when (!ct.IsCancellationRequested)
+        {
+            logger.LogError(ex, "Queued search run execution failed. RunId={RunId}", runId);
+            throw;
+        }
+    }
+
+    public async Task<SearchRunProgressSnapshot?> GetRunProgressAsync(long runId, CancellationToken ct)
+    {
+        if (runId <= 0)
+            return null;
+
+        await using var conn = (Microsoft.Data.SqlClient.SqlConnection)await connectionFactory.OpenConnectionAsync(ct);
+        return await conn.QuerySingleOrDefaultAsync<SearchRunProgressSnapshot>(new CommandDefinition(@"
+SELECT TOP 1
+  SearchRunId,
+  COALESCE([Status], N'Queued') AS [Status],
+  TotalApiCalls,
+  CompletedApiCalls,
+  PercentComplete,
+  StartedUtc,
+  LastUpdatedUtc,
+  CompletedUtc,
+  ErrorMessage
+FROM dbo.SearchRun
+WHERE SearchRunId = @RunId;", new { RunId = runId }, cancellationToken: ct));
+    }
+
+    private async Task ExecuteQueuedRunInternalAsync(long runId, SearchFormModel model, CancellationToken ct)
+    {
+        var nowUtc = DateTime.UtcNow;
+        var completedApiCalls = 0;
+        var totalApiCalls = 1; // Google Places search.
+
+        try
+        {
+            var normalizedCategoryId = (model.CategoryId ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(normalizedCategoryId))
+                throw new InvalidOperationException("Category is required.");
+            if (!model.TownId.HasValue || model.TownId.Value <= 0)
+                throw new InvalidOperationException("Town is required.");
+
+            SearchRunSelectionRow? selection;
+            await using (var lookupConn = (Microsoft.Data.SqlClient.SqlConnection)await connectionFactory.OpenConnectionAsync(ct))
+            {
+                selection = await lookupConn.QuerySingleOrDefaultAsync<SearchRunSelectionRow>(new CommandDefinition(@"
+SELECT TOP 1
+  c.CategoryId,
+  c.DisplayName AS CategoryDisplayName,
+  t.TownId,
+  t.CountyId,
+  t.Name AS TownName,
+  county.Name AS CountyName,
+  t.Latitude AS TownLat,
+  t.Longitude AS TownLng
+FROM dbo.GoogleBusinessProfileCategory c
+JOIN dbo.GbTown t ON t.TownId = @TownId
+JOIN dbo.GbCounty county ON county.CountyId = t.CountyId
+WHERE c.CategoryId = @CategoryId
+  AND c.Status = 'Active'
+  AND t.IsActive = 1
+  AND county.IsActive = 1
+  AND (@CountyId IS NULL OR t.CountyId = @CountyId);", new
+                {
+                    CategoryId = normalizedCategoryId,
+                    TownId = model.TownId.Value,
+                    CountyId = model.CountyId
+                }, cancellationToken: ct));
+            }
+            if (selection is null)
+                throw new InvalidOperationException("Selected category or town is invalid, inactive, or no longer available.");
+
+            await UpdateSearchRunProgressAsync(runId, "Running", totalApiCalls, completedApiCalls, 0, null, ct);
+
+            model.CountyId = selection.CountyId;
+            model.TownId = selection.TownId;
+
+            decimal centerLat;
+            decimal centerLng;
+            var locationQuery = $"{selection.TownName}, {selection.CountyName}";
+            string? canonicalLocationName = locationQuery;
+            var shouldPersistTownCoordinates = false;
+
+            if (selection.TownLat.HasValue && selection.TownLng.HasValue)
+            {
+                centerLat = selection.TownLat.Value;
+                centerLng = selection.TownLng.Value;
+            }
+            else
+            {
+                totalApiCalls++;
+                await UpdateSearchRunProgressAsync(runId, "Running", totalApiCalls, completedApiCalls, CalculatePercent(completedApiCalls, totalApiCalls), null, ct);
+
+                var center = await google.GeocodeAsync(locationQuery, placesOptions.Value.GeocodeCountryCode, ct);
+                completedApiCalls++;
+                await UpdateSearchRunProgressAsync(runId, "Running", totalApiCalls, completedApiCalls, CalculatePercent(completedApiCalls, totalApiCalls), null, ct);
+
+                if (center is null)
+                    throw new InvalidOperationException($"Could not determine coordinates for '{locationQuery}'.");
+
+                centerLat = center.Value.Lat;
+                centerLng = center.Value.Lng;
+                canonicalLocationName = center.Value.CanonicalLocationName;
+                shouldPersistTownCoordinates = true;
+            }
+
+            var effectiveLocationName = !string.IsNullOrWhiteSpace(canonicalLocationName)
+                ? canonicalLocationName
+                : locationQuery;
+            var places = await google.SearchAsync(selection.CategoryDisplayName, locationQuery, centerLat, centerLng, model.RadiusMeters, model.ResultLimit, ct);
+            completedApiCalls++;
+            await UpdateSearchRunProgressAsync(runId, "Running", totalApiCalls, completedApiCalls, CalculatePercent(completedApiCalls, totalApiCalls), null, ct);
+
+            var normalizedLocationByPlaceId = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            var reverseGeocodeCandidates = places.Count(x => x.Lat.HasValue && x.Lng.HasValue);
+            totalApiCalls += reverseGeocodeCandidates;
+            await UpdateSearchRunProgressAsync(runId, "Running", totalApiCalls, completedApiCalls, CalculatePercent(completedApiCalls, totalApiCalls), null, ct);
+
+            foreach (var place in places)
+            {
+                var normalizedLocation = effectiveLocationName;
+                if (place.Lat.HasValue && place.Lng.HasValue)
+                {
+                    try
+                    {
+                        var reverseCanonical = await google.ReverseGeocodeCanonicalLocationAsync(
+                            place.Lat.Value,
+                            place.Lng.Value,
+                            placesOptions.Value.GeocodeCountryCode,
+                            ct);
+                        if (!string.IsNullOrWhiteSpace(reverseCanonical))
+                            normalizedLocation = reverseCanonical;
+                    }
+                    catch (Exception ex) when (!ct.IsCancellationRequested)
+                    {
+                        logger.LogWarning(ex, "Reverse geocode canonicalization failed for place {PlaceId}. Using fallback location name.", place.Id);
+                    }
+                    finally
+                    {
+                        completedApiCalls++;
+                        await UpdateSearchRunProgressAsync(runId, "Running", totalApiCalls, completedApiCalls, CalculatePercent(completedApiCalls, totalApiCalls), null, ct);
+                    }
+                }
+
+                normalizedLocationByPlaceId[place.Id] = normalizedLocation;
+            }
+
+            await using var conn = (Microsoft.Data.SqlClient.SqlConnection)await connectionFactory.OpenConnectionAsync(ct);
+            await using var tx = await conn.BeginTransactionAsync(ct);
+
+            await conn.ExecuteAsync(new CommandDefinition(@"
+UPDATE dbo.SearchRun
+SET
+  CategoryId = @CategoryId,
+  TownId = @TownId,
+  RadiusMeters = @RadiusMeters,
+  ResultLimit = @ResultLimit,
+  FetchDetailedData = @FetchDetailedData,
+  FetchGoogleReviews = @FetchGoogleReviews,
+  FetchGoogleUpdates = @FetchGoogleUpdates,
+  FetchGoogleQuestionsAndAnswers = @FetchGoogleQuestionsAndAnswers,
+  FetchGoogleSocialProfiles = @FetchGoogleSocialProfiles
+WHERE SearchRunId = @SearchRunId;", new
+            {
+                SearchRunId = runId,
+                CategoryId = selection.CategoryId,
+                TownId = selection.TownId,
+                model.RadiusMeters,
+                model.ResultLimit,
+                FetchDetailedData = model.FetchEnhancedGoogleData,
+                FetchGoogleReviews = model.FetchGoogleReviews,
+                FetchGoogleUpdates = model.FetchGoogleUpdates,
+                FetchGoogleQuestionsAndAnswers = model.FetchGoogleQuestionsAndAnswers,
+                FetchGoogleSocialProfiles = model.FetchGoogleSocialProfiles
+            }, tx, cancellationToken: ct));
+
+            if (shouldPersistTownCoordinates)
+            {
+                await conn.ExecuteAsync(new CommandDefinition(@"
+UPDATE dbo.GbTown
+SET
+  Latitude = COALESCE(Latitude, @Latitude),
+  Longitude = COALESCE(Longitude, @Longitude),
+  UpdatedUtc = CASE
+    WHEN Latitude IS NULL OR Longitude IS NULL THEN SYSUTCDATETIME()
+    ELSE UpdatedUtc
+  END
+WHERE TownId = @TownId;", new
+                {
+                    Latitude = centerLat,
+                    Longitude = centerLng,
+                    TownId = selection.TownId
+                }, tx, cancellationToken: ct));
+            }
+
+            await conn.ExecuteAsync(new CommandDefinition(
+                "DELETE FROM dbo.PlaceSnapshot WHERE SearchRunId = @SearchRunId;",
+                new { SearchRunId = runId },
+                tx,
+                cancellationToken: ct));
+
+            var requestGoogleReviews = model.FetchGoogleReviews;
+            var requestMyBusinessInfo = model.FetchEnhancedGoogleData;
+            var requestGoogleUpdates = model.FetchGoogleUpdates;
+            var requestGoogleQuestionsAndAnswers = model.FetchGoogleQuestionsAndAnswers;
+            var requestGoogleSocialProfiles = model.FetchGoogleSocialProfiles;
+            var shouldFetchAnyDataForSeo = requestGoogleReviews || requestMyBusinessInfo || requestGoogleUpdates || requestGoogleQuestionsAndAnswers || requestGoogleSocialProfiles;
+
+            IReviewsProvider? provider = null;
+            var providerName = string.Empty;
+            if (shouldFetchAnyDataForSeo)
+            {
+                provider = reviewsProviderResolver.Resolve(out providerName);
+                if (provider is NullReviewsProvider)
+                {
+                    provider = dataForSeoReviewsProvider;
+                    providerName = "DataForSeo";
+                    logger.LogWarning("Data enrichment was requested with provider '{ProviderName}'. Falling back to DataForSeo.", placesOptions.Value.ReviewsProvider);
+                }
+                if (providerName.Equals("SerpApi", StringComparison.OrdinalIgnoreCase))
+                    logger.LogWarning("Reviews provider selected as SerpApi, but implementation is pending.");
+            }
+
+            var reviewRequests = shouldFetchAnyDataForSeo
+                ? new List<ReviewTaskRequest>()
+                : null;
+
+            for (var i = 0; i < places.Count; i++)
+            {
+                var p = places[i];
+                var placeLocationName = normalizedLocationByPlaceId.TryGetValue(p.Id, out var normalizedLocation)
+                    ? normalizedLocation
+                    : effectiveLocationName;
+                await conn.ExecuteAsync(new CommandDefinition(@"
+MERGE dbo.Place AS target
+USING (SELECT @PlaceId AS PlaceId) AS source
+ON target.PlaceId = source.PlaceId
+WHEN MATCHED THEN UPDATE SET
+  DisplayName=@DisplayName,
+  PrimaryType=@PrimaryType,
+  PrimaryCategory=@PrimaryCategory,
+  TypesCsv=@TypesCsv,
+  FormattedAddress=@FormattedAddress,
+  Lat=@Lat,
+  Lng=@Lng,
+  NationalPhoneNumber=@NationalPhoneNumber,
+  WebsiteUri=@WebsiteUri,
+  IsServiceAreaBusiness=@IsServiceAreaBusiness,
+  BusinessStatus=@BusinessStatus,
+  SearchLocationName=@SearchLocationName,
+  RegularOpeningHoursJson=@RegularOpeningHoursJson,
+  LastSeenUtc=SYSUTCDATETIME()
+WHEN NOT MATCHED THEN INSERT(
+  PlaceId,DisplayName,PrimaryType,PrimaryCategory,TypesCsv,FormattedAddress,Lat,Lng,NationalPhoneNumber,WebsiteUri,IsServiceAreaBusiness,BusinessStatus,SearchLocationName,RegularOpeningHoursJson
+)
+VALUES(
+  @PlaceId,@DisplayName,@PrimaryType,@PrimaryCategory,@TypesCsv,@FormattedAddress,@Lat,@Lng,@NationalPhoneNumber,@WebsiteUri,@IsServiceAreaBusiness,@BusinessStatus,@SearchLocationName,@RegularOpeningHoursJson
+);",
+                    new
+                    {
+                        PlaceId = p.Id,
+                        p.DisplayName,
+                        p.PrimaryType,
+                        p.PrimaryCategory,
+                        p.TypesCsv,
+                        p.FormattedAddress,
+                        p.Lat,
+                        p.Lng,
+                        p.NationalPhoneNumber,
+                        p.WebsiteUri,
+                        p.IsServiceAreaBusiness,
+                        p.BusinessStatus,
+                        SearchLocationName = placeLocationName,
+                        RegularOpeningHoursJson = p.RegularOpeningHours.Count == 0 ? null : JsonSerializer.Serialize(p.RegularOpeningHours)
+                    }, tx, cancellationToken: ct));
+
+                await conn.ExecuteAsync(new CommandDefinition(@"
+INSERT INTO dbo.PlaceSnapshot(SearchRunId,PlaceId,RankPosition,Rating,UserRatingCount)
+VALUES(@SearchRunId,@PlaceId,@RankPosition,@Rating,@UserRatingCount)",
+                    new { SearchRunId = runId, PlaceId = p.Id, RankPosition = i + 1, p.Rating, p.UserRatingCount }, tx, cancellationToken: ct));
+
+                if (reviewRequests is not null)
+                    reviewRequests.Add(new ReviewTaskRequest(p.Id, p.UserRatingCount, placeLocationName, p.Lat, p.Lng));
+            }
+
+            await tx.CommitAsync(ct);
+
+            foreach (var place in places)
+            {
+                try
+                {
+                    await reviewVelocityService.RecomputePlaceStatsAsync(place.Id, ct);
+                }
+                catch (Exception ex) when (!ct.IsCancellationRequested)
+                {
+                    logger.LogWarning(ex, "Failed to recompute review velocity stats for place {PlaceId} after capture.", place.Id);
+                }
+            }
+
+            if (reviewRequests is not null && provider is not null)
+            {
+                var settings = await adminSettingsService.GetAsync(ct);
+                var enhancedHours = Math.Max(0, settings.EnhancedGoogleDataRefreshHours);
+                var reviewsHours = Math.Max(0, settings.GoogleReviewsRefreshHours);
+                var updatesHours = Math.Max(0, settings.GoogleUpdatesRefreshHours);
+                var qasHours = Math.Max(0, settings.GoogleQuestionsAndAnswersRefreshHours);
+                var socialProfilesHours = Math.Max(0, settings.GoogleSocialProfilesRefreshHours);
+                var requestNowUtc = DateTime.UtcNow;
+
+                var latestRunsByKey = new Dictionary<string, DateTime>(StringComparer.OrdinalIgnoreCase);
+                if (reviewRequests.Count > 0)
+                {
+                    await using var latestConn = (Microsoft.Data.SqlClient.SqlConnection)await connectionFactory.OpenConnectionAsync(ct);
+                    var placeIds = reviewRequests.Select(x => x.PlaceId).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+                    var taskTypes = new List<string>();
+                    if (requestGoogleReviews) taskTypes.Add("reviews");
+                    if (requestMyBusinessInfo) taskTypes.Add("my_business_info");
+                    if (requestGoogleUpdates) taskTypes.Add("my_business_updates");
+                    if (requestGoogleQuestionsAndAnswers) taskTypes.Add("questions_and_answers");
+                    if (requestGoogleSocialProfiles) taskTypes.Add("social_profiles");
+
+                    if (taskTypes.Count > 0)
+                    {
+                        var latestRows = await latestConn.QueryAsync<LatestTaskRunByPlaceRow>(new CommandDefinition(@"
+SELECT
+  PlaceId,
+  COALESCE(TaskType, 'reviews') AS TaskType,
+  MAX(CreatedAtUtc) AS LastCreatedAtUtc
+FROM dbo.DataForSeoReviewTask
+WHERE PlaceId IN @PlaceIds
+  AND COALESCE(TaskType, 'reviews') IN @TaskTypes
+GROUP BY PlaceId, COALESCE(TaskType, 'reviews');",
+                            new { PlaceIds = placeIds, TaskTypes = taskTypes }, cancellationToken: ct));
+
+                        foreach (var row in latestRows)
+                            latestRunsByKey[$"{row.PlaceId}|{row.TaskType}"] = row.LastCreatedAtUtc;
+                    }
+                }
+
+                var dueRequests = new List<ReviewTaskDueRequest>();
+                foreach (var reviewRequest in reviewRequests)
+                {
+                    var reviewsDue = requestGoogleReviews && IsTaskDue(reviewRequest.PlaceId, "reviews", reviewsHours, requestNowUtc, latestRunsByKey);
+                    var infoDue = requestMyBusinessInfo && IsTaskDue(reviewRequest.PlaceId, "my_business_info", enhancedHours, requestNowUtc, latestRunsByKey);
+                    var updatesDue = requestGoogleUpdates && IsTaskDue(reviewRequest.PlaceId, "my_business_updates", updatesHours, requestNowUtc, latestRunsByKey);
+                    var qasDue = requestGoogleQuestionsAndAnswers && IsTaskDue(reviewRequest.PlaceId, "questions_and_answers", qasHours, requestNowUtc, latestRunsByKey);
+                    var socialDue = requestGoogleSocialProfiles && IsTaskDue(reviewRequest.PlaceId, "social_profiles", socialProfilesHours, requestNowUtc, latestRunsByKey);
+                    if (reviewsDue || infoDue || updatesDue || qasDue || socialDue)
+                    {
+                        dueRequests.Add(new ReviewTaskDueRequest(
+                            reviewRequest.PlaceId,
+                            reviewRequest.ReviewCount,
+                            reviewRequest.LocationName,
+                            reviewRequest.Lat,
+                            reviewRequest.Lng,
+                            reviewsDue,
+                            infoDue,
+                            updatesDue,
+                            qasDue,
+                            socialDue));
+                    }
+                }
+
+                totalApiCalls += dueRequests.Count;
+                await UpdateSearchRunProgressAsync(runId, "Running", totalApiCalls, completedApiCalls, CalculatePercent(completedApiCalls, totalApiCalls), null, ct);
+
+                logger.LogInformation(
+                    "Queued run {RunId} creating DataForSEO tasks for {PlaceCount} places. Reviews={Reviews}, MyBusinessInfo={MyBusinessInfo}, Updates={Updates}, QAs={QAs}, SocialProfiles={SocialProfiles}.",
+                    runId,
+                    dueRequests.Count,
+                    requestGoogleReviews,
+                    requestMyBusinessInfo,
+                    requestGoogleUpdates,
+                    requestGoogleQuestionsAndAnswers,
+                    requestGoogleSocialProfiles);
+
+                foreach (var due in dueRequests)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    try
+                    {
+                        await provider.FetchAndStoreReviewsAsync(
+                            due.PlaceId,
+                            due.ReviewCount,
+                            due.LocationName,
+                            due.Lat ?? centerLat,
+                            due.Lng ?? centerLng,
+                            model.RadiusMeters,
+                            due.FetchReviews,
+                            due.FetchMyBusinessInfo,
+                            due.FetchUpdates,
+                            due.FetchQuestionsAndAnswers,
+                            due.FetchSocialProfiles,
+                            ct);
+                    }
+                    catch (Exception ex) when (!ct.IsCancellationRequested)
+                    {
+                        logger.LogWarning(ex, "Review fetch failed for place {PlaceId} using provider {ProviderName}.", due.PlaceId, providerName);
+                    }
+                    finally
+                    {
+                        completedApiCalls++;
+                        await UpdateSearchRunProgressAsync(runId, "Running", totalApiCalls, completedApiCalls, CalculatePercent(completedApiCalls, totalApiCalls), null, ct);
+                    }
+                }
+            }
+
+            await UpdateSearchRunProgressAsync(runId, "Completed", totalApiCalls, totalApiCalls, 100, null, ct, setCompletedUtc: true);
+        }
+        catch (Exception ex) when (!ct.IsCancellationRequested)
+        {
+            var errorMessage = NormalizeRunErrorMessage(ex.Message);
+            await UpdateSearchRunProgressAsync(runId, "Failed", totalApiCalls, completedApiCalls, CalculatePercent(completedApiCalls, totalApiCalls), errorMessage, ct, setCompletedUtc: true);
+            throw;
+        }
+    }
+
+    private async Task UpdateSearchRunProgressAsync(
+        long runId,
+        string status,
+        int? totalApiCalls,
+        int? completedApiCalls,
+        int? percentComplete,
+        string? errorMessage,
+        CancellationToken ct,
+        bool setCompletedUtc = false)
+    {
+        if (runId <= 0)
+            return;
+
+        var normalizedStatus = NormalizeRunStatus(status);
+        var normalizedError = NormalizeRunErrorMessage(errorMessage);
+        var nowUtc = DateTime.UtcNow;
+
+        await using var conn = (Microsoft.Data.SqlClient.SqlConnection)await connectionFactory.OpenConnectionAsync(ct);
+        await conn.ExecuteAsync(new CommandDefinition(@"
+UPDATE dbo.SearchRun
+SET
+  [Status] = @Status,
+  TotalApiCalls = @TotalApiCalls,
+  CompletedApiCalls = @CompletedApiCalls,
+  PercentComplete = @PercentComplete,
+  LastUpdatedUtc = @NowUtc,
+  StartedUtc = COALESCE(StartedUtc, @NowUtc),
+  CompletedUtc = CASE WHEN @SetCompletedUtc = 1 THEN @NowUtc ELSE NULL END,
+  ErrorMessage = @ErrorMessage
+WHERE SearchRunId = @RunId;",
+            new
+            {
+                RunId = runId,
+                Status = normalizedStatus,
+                TotalApiCalls = totalApiCalls,
+                CompletedApiCalls = completedApiCalls,
+                PercentComplete = percentComplete,
+                NowUtc = nowUtc,
+                SetCompletedUtc = setCompletedUtc ? 1 : 0,
+                ErrorMessage = normalizedError
+            }, cancellationToken: ct));
+    }
+
+    private static int CalculatePercent(int completedApiCalls, int totalApiCalls)
+    {
+        if (totalApiCalls <= 0)
+            return completedApiCalls > 0 ? 50 : 0;
+        if (completedApiCalls >= totalApiCalls)
+            return 100;
+        var raw = (int)Math.Floor((completedApiCalls * 100d) / totalApiCalls);
+        return Math.Clamp(raw, 0, 100);
+    }
+
+    private static string NormalizeRunStatus(string status)
+    {
+        var normalized = (status ?? string.Empty).Trim();
+        if (normalized.Length == 0)
+            return "Queued";
+        if (normalized.Length <= 20)
+            return normalized;
+        return normalized[..20];
+    }
+
+    private static string? NormalizeRunErrorMessage(string? message)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+            return null;
+        return message.Length <= 4000 ? message : message[..4000];
     }
 
     private static bool IsTaskDue(
@@ -2589,6 +3214,19 @@ ORDER BY m.[Year] DESC, m.[Month] DESC;", new
         string CountyName,
         decimal? TownLat,
         decimal? TownLng);
+    private sealed record SearchRunQueueSelectionRow(string CategoryId, long TownId, long CountyId);
+    private sealed record QueuedSearchRunConfigRow(
+        long SearchRunId,
+        string CategoryId,
+        long TownId,
+        long CountyId,
+        int? RadiusMeters,
+        int ResultLimit,
+        bool FetchDetailedData,
+        bool FetchGoogleReviews,
+        bool FetchGoogleUpdates,
+        bool FetchGoogleQuestionsAndAnswers,
+        bool FetchGoogleSocialProfiles);
 
     private sealed record RunKeywordTrafficContextRow(string CategoryId, long TownId);
     private sealed record WeightedMonthRow(int Year, int Month, decimal WeightedSearchVolume);
@@ -2623,6 +3261,17 @@ ORDER BY m.[Year] DESC, m.[Month] DESC;", new
     private sealed record RunReviewMonthlyCountRow(string PlaceId, string DisplayName, int Year, int Month, int ReviewCount);
 
     private sealed record ReviewTaskRequest(string PlaceId, int? ReviewCount, string? LocationName, decimal? Lat, decimal? Lng);
+    private sealed record ReviewTaskDueRequest(
+        string PlaceId,
+        int? ReviewCount,
+        string? LocationName,
+        decimal? Lat,
+        decimal? Lng,
+        bool FetchReviews,
+        bool FetchMyBusinessInfo,
+        bool FetchUpdates,
+        bool FetchQuestionsAndAnswers,
+        bool FetchSocialProfiles);
 
     private sealed record PlaceUpdateDataRow(
         string UpdateKey,

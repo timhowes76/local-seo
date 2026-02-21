@@ -2,14 +2,17 @@ using LocalSeo.Web.Models;
 using LocalSeo.Web.Options;
 using LocalSeo.Web.Services;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
+using System.Text.Json;
 
 namespace LocalSeo.Web.Controllers;
 
 [Authorize(Policy = "StaffOnly")]
 public class SearchController(
     ISearchIngestionService ingestionService,
+    ISearchRunExecutor searchRunExecutor,
     IGoogleBusinessProfileCategoryService googleBusinessProfileCategoryService,
     IGbLocationDataListService gbLocationDataListService,
     ICategoryLocationKeywordService categoryLocationKeywordService,
@@ -88,8 +91,9 @@ public class SearchController(
 
         try
         {
-            var runId = await ingestionService.RunAsync(model, ct);
-            return RedirectToAction("Details", "Runs", new { id = runId });
+            var runId = await ingestionService.CreateQueuedRunAsync(model, ct);
+            searchRunExecutor.EnsureRunning(runId);
+            return RedirectToAction(nameof(Progress), new { runId });
         }
         catch (InvalidOperationException ex)
         {
@@ -101,6 +105,148 @@ public class SearchController(
             ModelState.AddModelError(string.Empty, $"Google request failed: {ex.Message}");
             return View("Index", model);
         }
+    }
+
+    [HttpGet("/search/progress/{runId:long}")]
+    public async Task<IActionResult> Progress(long runId, CancellationToken ct)
+    {
+        var snapshot = await ingestionService.GetRunProgressAsync(runId, ct);
+        if (snapshot is null)
+            return NotFound();
+
+        if (!IsTerminalStatus(snapshot.Status))
+            searchRunExecutor.EnsureRunning(runId);
+
+        var progressStreamUrl = Url.Action(nameof(ProgressStream), "Search", new { runId }) ?? $"/search/progress-stream/{runId}";
+        var completedRedirectUrl = Url.Action("Details", "Runs", new { id = runId }) ?? $"/runs/{runId}";
+        var retryUrl = Url.Action(nameof(Retry), "Search", new { runId }) ?? $"/search/retry/{runId}";
+        return View("Progress", new SearchProgressPageModel
+        {
+            RunId = runId,
+            ProgressStreamUrl = progressStreamUrl,
+            CompletedRedirectUrl = completedRedirectUrl,
+            RetryUrl = retryUrl,
+            Initial = snapshot
+        });
+    }
+
+    [HttpGet("/search/progress-stream/{runId:long}")]
+    public async Task ProgressStream(long runId, CancellationToken ct)
+    {
+        var snapshot = await ingestionService.GetRunProgressAsync(runId, ct);
+        if (snapshot is null)
+        {
+            Response.StatusCode = StatusCodes.Status404NotFound;
+            return;
+        }
+
+        if (!IsTerminalStatus(snapshot.Status))
+            searchRunExecutor.EnsureRunning(runId);
+
+        Response.StatusCode = StatusCodes.Status200OK;
+        Response.ContentType = "text/event-stream";
+        Response.Headers.CacheControl = "no-cache, no-transform";
+        Response.Headers.Connection = "keep-alive";
+        Response.Headers["X-Accel-Buffering"] = "no";
+        HttpContext.Features.Get<IHttpResponseBodyFeature>()?.DisableBuffering();
+
+        static string BuildPayload(SearchRunProgressSnapshot progress)
+        {
+            var percent = progress.PercentComplete;
+            var total = progress.TotalApiCalls.GetValueOrDefault();
+            if (!percent.HasValue && total > 0)
+            {
+                var completed = progress.CompletedApiCalls.GetValueOrDefault();
+                percent = Math.Clamp((int)Math.Floor((completed * 100d) / total), 0, 100);
+            }
+
+            return JsonSerializer.Serialize(new
+            {
+                runId = progress.SearchRunId,
+                status = progress.Status,
+                totalApiCalls = progress.TotalApiCalls,
+                completedApiCalls = progress.CompletedApiCalls,
+                percentComplete = percent,
+                startedUtc = progress.StartedUtc,
+                lastUpdatedUtc = progress.LastUpdatedUtc,
+                completedUtc = progress.CompletedUtc,
+                errorMessage = progress.ErrorMessage
+            });
+        }
+
+        static async Task WriteSseDataAsync(HttpResponse response, string payload, CancellationToken cancellationToken)
+        {
+            await response.WriteAsync($"data: {payload}\n\n", cancellationToken);
+            await response.Body.FlushAsync(cancellationToken);
+        }
+
+        var lastPayload = string.Empty;
+        var lastEventUtc = DateTime.UtcNow - TimeSpan.FromSeconds(30);
+        var lastKeepAliveUtc = DateTime.UtcNow;
+
+        while (!ct.IsCancellationRequested)
+        {
+            var current = await ingestionService.GetRunProgressAsync(runId, ct);
+            if (current is null)
+            {
+                await WriteSseDataAsync(Response, JsonSerializer.Serialize(new
+                {
+                    runId,
+                    status = "Failed",
+                    errorMessage = "Run not found."
+                }), ct);
+                break;
+            }
+
+            var payload = BuildPayload(current);
+            var nowUtc = DateTime.UtcNow;
+            var shouldEmitEvent = !string.Equals(lastPayload, payload, StringComparison.Ordinal)
+                                  || (nowUtc - lastEventUtc) >= TimeSpan.FromSeconds(5);
+            if (shouldEmitEvent)
+            {
+                await WriteSseDataAsync(Response, payload, ct);
+                lastPayload = payload;
+                lastEventUtc = nowUtc;
+            }
+
+            if ((nowUtc - lastKeepAliveUtc) >= TimeSpan.FromSeconds(12))
+            {
+                await Response.WriteAsync(": ping\n\n", ct);
+                await Response.Body.FlushAsync(ct);
+                lastKeepAliveUtc = nowUtc;
+            }
+
+            if (IsTerminalStatus(current.Status))
+                break;
+
+            await Task.Delay(TimeSpan.FromSeconds(1), ct);
+        }
+    }
+
+    [HttpPost("/search/retry/{runId:long}")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> Retry(long runId, CancellationToken ct)
+    {
+        var existingRun = await ingestionService.GetRunAsync(runId, ct);
+        if (existingRun is null)
+            return NotFound();
+
+        var queuedRunId = await ingestionService.CreateQueuedRunAsync(new SearchFormModel
+        {
+            CategoryId = existingRun.CategoryId,
+            CountyId = existingRun.CountyId,
+            TownId = existingRun.TownId,
+            RadiusMeters = existingRun.RadiusMeters ?? placesOptions.Value.DefaultRadiusMeters,
+            ResultLimit = existingRun.ResultLimit,
+            FetchEnhancedGoogleData = existingRun.FetchDetailedData,
+            FetchGoogleReviews = existingRun.FetchGoogleReviews,
+            FetchGoogleUpdates = existingRun.FetchGoogleUpdates,
+            FetchGoogleQuestionsAndAnswers = existingRun.FetchGoogleQuestionsAndAnswers,
+            FetchGoogleSocialProfiles = existingRun.FetchGoogleSocialProfiles
+        }, ct);
+
+        searchRunExecutor.EnsureRunning(queuedRunId);
+        return RedirectToAction(nameof(Progress), new { runId = queuedRunId });
     }
 
     [HttpPost("/search/keyphrases/add")]
@@ -275,5 +421,13 @@ public class SearchController(
         {
             model.KeyphrasesError = ex.Message;
         }
+    }
+
+    private static bool IsTerminalStatus(string? status)
+    {
+        if (string.IsNullOrWhiteSpace(status))
+            return false;
+        return status.Equals("Completed", StringComparison.OrdinalIgnoreCase)
+               || status.Equals("Failed", StringComparison.OrdinalIgnoreCase);
     }
 }

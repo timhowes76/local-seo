@@ -1,0 +1,190 @@
+@model SearchProgressPageModel
+@{
+    ViewData["Title"] = $"Search Run #{Model.RunId}";
+    var initial = Model.Initial;
+}
+
+<div class="page-stack">
+    <section class="card">
+        <div class="card-header">
+            <h2 class="card-title">Search In Progress</h2>
+            <a class="btn btn-secondary" href="/search">Back to Search</a>
+        </div>
+
+        <p class="muted">Run #@Model.RunId</p>
+        <div class="form-row">
+            <label>Status</label>
+            <div id="run-status">@initial.Status</div>
+        </div>
+        <div class="form-row">
+            <label>Progress</label>
+            <div class="progress-wrap" aria-live="polite">
+                <div class="progress-bar">
+                    <div id="run-progress-fill" class="progress-bar-fill" style="width:@(Math.Clamp(initial.PercentComplete ?? 0, 0, 100))%"></div>
+                </div>
+                <div id="run-progress-text" class="muted">@(Math.Clamp(initial.PercentComplete ?? 0, 0, 100))%</div>
+            </div>
+        </div>
+        <div class="form-row">
+            <label>API Calls</label>
+            <div id="run-counts">@(initial.CompletedApiCalls?.ToString() ?? "0") / @(initial.TotalApiCalls?.ToString() ?? "?")</div>
+        </div>
+        <div class="form-row">
+            <label>Elapsed</label>
+            <div id="run-elapsed">0s</div>
+        </div>
+        <div id="run-error" class="notice is-hidden"></div>
+        <div id="run-connection" class="muted"></div>
+
+        <div class="toolbar">
+            <a class="btn btn-secondary" href="@Model.CompletedRedirectUrl">Open Run Details</a>
+            <form id="retry-form" method="post" action="@Model.RetryUrl" class="is-hidden">
+                @Html.AntiForgeryToken()
+                <button type="submit">Retry Search</button>
+            </form>
+        </div>
+    </section>
+</div>
+
+<style>
+    .progress-wrap {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+
+    .progress-bar {
+        position: relative;
+        width: min(680px, 100%);
+        height: 14px;
+        border-radius: 999px;
+        background: #e5e7eb;
+        overflow: hidden;
+    }
+
+    .progress-bar-fill {
+        height: 100%;
+        border-radius: 999px;
+        background: linear-gradient(90deg, #0f766e 0%, #22c55e 100%);
+        transition: width .3s ease;
+    }
+
+    .is-hidden {
+        display: none;
+    }
+</style>
+
+<script>
+    (() => {
+        const runId = @Model.RunId;
+        const streamUrl = "@Model.ProgressStreamUrl";
+        const completedUrl = "@Model.CompletedRedirectUrl";
+        const statusEl = document.getElementById("run-status");
+        const progressFillEl = document.getElementById("run-progress-fill");
+        const progressTextEl = document.getElementById("run-progress-text");
+        const countsEl = document.getElementById("run-counts");
+        const elapsedEl = document.getElementById("run-elapsed");
+        const errorEl = document.getElementById("run-error");
+        const retryForm = document.getElementById("retry-form");
+        const connectionEl = document.getElementById("run-connection");
+
+        let startedUtc = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(initial.StartedUtc));
+        let done = false;
+
+        const updateElapsed = () => {
+            if (!elapsedEl) return;
+            if (!startedUtc) {
+                elapsedEl.textContent = "0s";
+                return;
+            }
+            const start = new Date(startedUtc);
+            if (Number.isNaN(start.getTime())) {
+                elapsedEl.textContent = "0s";
+                return;
+            }
+            const seconds = Math.max(0, Math.floor((Date.now() - start.getTime()) / 1000));
+            const minutes = Math.floor(seconds / 60);
+            const remainder = seconds % 60;
+            elapsedEl.textContent = minutes > 0 ? `${minutes}m ${remainder}s` : `${remainder}s`;
+        };
+
+        const setProgress = (snapshot) => {
+            if (statusEl) statusEl.textContent = snapshot.status ?? "Queued";
+            const percent = Math.max(0, Math.min(100, Number(snapshot.percentComplete ?? 0)));
+            if (progressFillEl) progressFillEl.style.width = `${percent}%`;
+            if (progressTextEl) progressTextEl.textContent = `${percent}%`;
+            const completed = snapshot.completedApiCalls ?? 0;
+            const total = snapshot.totalApiCalls ?? "?";
+            if (countsEl) countsEl.textContent = `${completed} / ${total}`;
+            if (snapshot.startedUtc) startedUtc = snapshot.startedUtc;
+            updateElapsed();
+        };
+
+        const showFailure = (message) => {
+            done = true;
+            if (errorEl) {
+                errorEl.textContent = message || "Search failed.";
+                errorEl.classList.remove("is-hidden");
+            }
+            if (retryForm) retryForm.classList.remove("is-hidden");
+        };
+
+        const initialSnapshot = {
+            runId: @initial.SearchRunId,
+            status: "@(initial.Status ?? "Queued")",
+            totalApiCalls: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(initial.TotalApiCalls)),
+            completedApiCalls: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(initial.CompletedApiCalls)),
+            percentComplete: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(initial.PercentComplete)),
+            startedUtc: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(initial.StartedUtc)),
+            completedUtc: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(initial.CompletedUtc)),
+            errorMessage: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(initial.ErrorMessage))
+        };
+        setProgress(initialSnapshot);
+
+        const status = (initialSnapshot.status || "").toLowerCase();
+        if (status === "completed") {
+            window.setTimeout(() => window.location.href = completedUrl, 250);
+            return;
+        }
+        if (status === "failed") {
+            showFailure(initialSnapshot.errorMessage);
+            return;
+        }
+
+        updateElapsed();
+        window.setInterval(updateElapsed, 1000);
+
+        const es = new EventSource(streamUrl);
+        es.onopen = () => {
+            if (connectionEl) connectionEl.textContent = "Connected";
+        };
+        es.onmessage = (event) => {
+            if (done) return;
+            let snapshot;
+            try {
+                snapshot = JSON.parse(event.data);
+            } catch {
+                return;
+            }
+            if (!snapshot || Number(snapshot.runId) !== runId) return;
+            setProgress(snapshot);
+
+            const normalizedStatus = (snapshot.status || "").toLowerCase();
+            if (normalizedStatus === "completed") {
+                done = true;
+                es.close();
+                window.location.href = completedUrl;
+                return;
+            }
+
+            if (normalizedStatus === "failed") {
+                es.close();
+                showFailure(snapshot.errorMessage);
+            }
+        };
+        es.onerror = () => {
+            if (done) return;
+            if (connectionEl) connectionEl.textContent = "Connection lost. Reconnecting...";
+        };
+    })();
+</script>

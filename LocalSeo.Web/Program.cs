@@ -142,6 +142,7 @@ builder.Services.AddScoped<IInviteService, InviteService>();
 builder.Services.AddScoped<IPasswordChangeService, PasswordChangeService>();
 builder.Services.AddScoped<IGooglePlacesClient, GooglePlacesClient>();
 builder.Services.AddScoped<ISearchIngestionService, SearchIngestionService>();
+builder.Services.AddSingleton<ISearchRunExecutor, SearchRunExecutor>();
 builder.Services.AddScoped<IAdminSettingsService, AdminSettingsService>();
 builder.Services.AddScoped<ISecuritySettingsProvider, SecuritySettingsProvider>();
 builder.Services.AddScoped<IGbLocationDataListService, GbLocationDataListService>();

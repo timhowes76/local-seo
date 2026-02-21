@@ -23,6 +23,14 @@ BEGIN
     FetchGoogleUpdates bit NOT NULL CONSTRAINT DF_SearchRun_FetchGoogleUpdates DEFAULT(0),
     FetchGoogleQuestionsAndAnswers bit NOT NULL CONSTRAINT DF_SearchRun_FetchGoogleQuestionsAndAnswers DEFAULT(0),
     FetchGoogleSocialProfiles bit NOT NULL CONSTRAINT DF_SearchRun_FetchGoogleSocialProfiles DEFAULT(0),
+    [Status] nvarchar(20) NOT NULL CONSTRAINT DF_SearchRun_Status DEFAULT(N'Completed'),
+    TotalApiCalls int NULL,
+    CompletedApiCalls int NULL,
+    PercentComplete int NULL,
+    StartedUtc datetime2(0) NULL,
+    LastUpdatedUtc datetime2(0) NULL,
+    CompletedUtc datetime2(0) NULL,
+    ErrorMessage nvarchar(max) NULL,
     RanAtUtc datetime2(0) NOT NULL CONSTRAINT DF_SearchRun_RanAtUtc DEFAULT SYSUTCDATETIME()
   );
 END;
@@ -36,6 +44,51 @@ IF COL_LENGTH('dbo.SearchRun', 'FetchGoogleQuestionsAndAnswers') IS NULL
   ALTER TABLE dbo.SearchRun ADD FetchGoogleQuestionsAndAnswers bit NOT NULL CONSTRAINT DF_SearchRun_FetchGoogleQuestionsAndAnswers_Alt DEFAULT(0);
 IF COL_LENGTH('dbo.SearchRun', 'FetchGoogleSocialProfiles') IS NULL
   ALTER TABLE dbo.SearchRun ADD FetchGoogleSocialProfiles bit NOT NULL CONSTRAINT DF_SearchRun_FetchGoogleSocialProfiles_Alt DEFAULT(0);
+IF COL_LENGTH('dbo.SearchRun', 'Status') IS NULL
+  ALTER TABLE dbo.SearchRun ADD [Status] nvarchar(20) NOT NULL CONSTRAINT DF_SearchRun_Status_Alt DEFAULT(N'Completed');
+IF COL_LENGTH('dbo.SearchRun', 'TotalApiCalls') IS NULL
+  ALTER TABLE dbo.SearchRun ADD TotalApiCalls int NULL;
+IF COL_LENGTH('dbo.SearchRun', 'CompletedApiCalls') IS NULL
+  ALTER TABLE dbo.SearchRun ADD CompletedApiCalls int NULL;
+IF COL_LENGTH('dbo.SearchRun', 'PercentComplete') IS NULL
+  ALTER TABLE dbo.SearchRun ADD PercentComplete int NULL;
+IF COL_LENGTH('dbo.SearchRun', 'StartedUtc') IS NULL
+  ALTER TABLE dbo.SearchRun ADD StartedUtc datetime2(0) NULL;
+IF COL_LENGTH('dbo.SearchRun', 'LastUpdatedUtc') IS NULL
+  ALTER TABLE dbo.SearchRun ADD LastUpdatedUtc datetime2(0) NULL;
+IF COL_LENGTH('dbo.SearchRun', 'CompletedUtc') IS NULL
+  ALTER TABLE dbo.SearchRun ADD CompletedUtc datetime2(0) NULL;
+IF COL_LENGTH('dbo.SearchRun', 'ErrorMessage') IS NULL
+  ALTER TABLE dbo.SearchRun ADD ErrorMessage nvarchar(max) NULL;
+IF COL_LENGTH('dbo.SearchRun', 'Status') IS NOT NULL
+BEGIN
+  EXEC(N'
+  UPDATE dbo.SearchRun
+  SET [Status] = N''Completed''
+  WHERE [Status] IS NULL OR LTRIM(RTRIM([Status])) = N'''';');
+END;
+IF COL_LENGTH('dbo.SearchRun', 'LastUpdatedUtc') IS NOT NULL
+BEGIN
+  EXEC(N'
+  UPDATE dbo.SearchRun
+  SET LastUpdatedUtc = COALESCE(LastUpdatedUtc, RanAtUtc)
+  WHERE LastUpdatedUtc IS NULL;');
+END;
+IF COL_LENGTH('dbo.SearchRun', 'StartedUtc') IS NOT NULL
+BEGIN
+  EXEC(N'
+  UPDATE dbo.SearchRun
+  SET StartedUtc = COALESCE(StartedUtc, RanAtUtc)
+  WHERE StartedUtc IS NULL;');
+END;
+IF COL_LENGTH('dbo.SearchRun', 'CompletedUtc') IS NOT NULL
+BEGIN
+  EXEC(N'
+  UPDATE dbo.SearchRun
+  SET CompletedUtc = COALESCE(CompletedUtc, RanAtUtc)
+  WHERE CompletedUtc IS NULL
+    AND [Status] IN (N''Completed'', N''Failed'');');
+END;
 IF OBJECT_ID('dbo.Place','U') IS NULL
 BEGIN
   CREATE TABLE dbo.Place(
@@ -1480,6 +1533,10 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_SearchRun_CategoryId' AN
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_SearchRun_TownId' AND object_id=OBJECT_ID('dbo.SearchRun'))
    AND COL_LENGTH('dbo.SearchRun', 'TownId') IS NOT NULL
   EXEC(N'CREATE INDEX IX_SearchRun_TownId ON dbo.SearchRun(TownId);');
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_SearchRun_Status_LastUpdatedUtc' AND object_id=OBJECT_ID('dbo.SearchRun'))
+   AND COL_LENGTH('dbo.SearchRun', 'Status') IS NOT NULL
+   AND COL_LENGTH('dbo.SearchRun', 'LastUpdatedUtc') IS NOT NULL
+  EXEC(N'CREATE INDEX IX_SearchRun_Status_LastUpdatedUtc ON dbo.SearchRun([Status], LastUpdatedUtc DESC);');
 
 IF COL_LENGTH('dbo.SearchRun', 'SeedKeyword') IS NOT NULL
   ALTER TABLE dbo.SearchRun DROP COLUMN SeedKeyword;

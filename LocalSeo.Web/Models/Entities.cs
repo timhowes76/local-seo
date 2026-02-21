@@ -17,6 +17,35 @@ public sealed record SearchRun(
     bool FetchGoogleQuestionsAndAnswers,
     bool FetchGoogleSocialProfiles,
     DateTime RanAtUtc);
+
+public sealed record SearchRunProgressSnapshot(
+    long SearchRunId,
+    string Status,
+    int? TotalApiCalls,
+    int? CompletedApiCalls,
+    int? PercentComplete,
+    DateTime? StartedUtc,
+    DateTime? LastUpdatedUtc,
+    DateTime? CompletedUtc,
+    string? ErrorMessage);
+
+public sealed class SearchProgressPageModel
+{
+    public long RunId { get; init; }
+    public string ProgressStreamUrl { get; init; } = string.Empty;
+    public string CompletedRedirectUrl { get; init; } = string.Empty;
+    public string RetryUrl { get; init; } = string.Empty;
+    public SearchRunProgressSnapshot Initial { get; init; } = new(
+        0,
+        "Queued",
+        null,
+        0,
+        0,
+        null,
+        null,
+        null,
+        null);
+}
 public sealed record PlaceSnapshotRow(
     long PlaceSnapshotId,
     long SearchRunId,
