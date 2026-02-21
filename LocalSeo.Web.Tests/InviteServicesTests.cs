@@ -53,6 +53,7 @@ public class InviteServicesTests
                 FailedPasswordAttempts: 0,
                 LockedoutUntilUtc: null,
                 InviteStatus: UserLifecycleStatus.Pending,
+                SessionVersion: 0,
                 UseGravatar: false));
 
         var crypto = new CryptoService(Microsoft.Extensions.Options.Options.Create(new InviteOptions
@@ -136,6 +137,9 @@ public class InviteServicesTests
             LastInviteOtpCode = code;
             return Task.CompletedTask;
         }
+
+        public Task SendChangePasswordOtpAsync(string email, string code, DateTime expiresAtUtc, CancellationToken ct)
+            => Task.CompletedTask;
     }
 
     private sealed class InMemoryUserRepository(UserRecord user) : IUserRepository
@@ -207,6 +211,21 @@ public class InviteServicesTests
                 };
             }
             return Task.CompletedTask;
+        }
+
+        public Task<bool> UpdatePasswordAndBumpSessionVersionAsync(int userId, byte[] passwordHash, byte passwordHashVersion, DateTime nowUtc, CancellationToken ct)
+        {
+            if (current.Id != userId)
+                return Task.FromResult(false);
+
+            current = current with
+            {
+                PasswordHash = passwordHash,
+                PasswordHashVersion = passwordHashVersion,
+                DatePasswordLastSetUtc = nowUtc,
+                SessionVersion = current.SessionVersion + 1
+            };
+            return Task.FromResult(true);
         }
     }
 

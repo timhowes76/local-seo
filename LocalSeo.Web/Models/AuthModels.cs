@@ -72,6 +72,7 @@ public sealed record UserRecord(
     int FailedPasswordAttempts,
     DateTime? LockedoutUntilUtc,
     UserLifecycleStatus InviteStatus,
+    int SessionVersion,
     bool UseGravatar);
 
 public sealed record EmailCodeRecord(

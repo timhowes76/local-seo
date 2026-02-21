@@ -150,7 +150,8 @@ public class LoginController(IAuthService authService) : Controller
             new(ClaimTypes.NameIdentifier, user.Id.ToString()),
             new(ClaimTypes.Email, user.EmailAddress),
             new(ClaimTypes.Name, $"{user.FirstName} {user.LastName}".Trim()),
-            new(AuthClaimTypes.IsAdmin, user.IsAdmin ? "true" : "false")
+            new(AuthClaimTypes.IsAdmin, user.IsAdmin ? "true" : "false"),
+            new(AuthClaimTypes.SessionVersion, user.SessionVersion.ToString())
         };
 
         if (user.IsAdmin)

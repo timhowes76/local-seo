@@ -35,6 +35,7 @@ public class AvatarResolverTests
             FailedPasswordAttempts: 0,
             LockedoutUntilUtc: null,
             InviteStatus: UserLifecycleStatus.Active,
+            SessionVersion: 0,
             UseGravatar: true);
 
         var avatar = resolver.Resolve(user, 64);
@@ -65,6 +66,7 @@ public class AvatarResolverTests
             FailedPasswordAttempts: 0,
             LockedoutUntilUtc: null,
             InviteStatus: UserLifecycleStatus.Active,
+            SessionVersion: 0,
             UseGravatar: false);
 
         var avatar = resolver.Resolve(user, 64);

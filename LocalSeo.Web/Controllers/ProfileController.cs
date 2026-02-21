@@ -1,6 +1,8 @@
 using System.Security.Claims;
+using System.Diagnostics;
 using LocalSeo.Web.Models;
 using LocalSeo.Web.Services;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -9,6 +11,7 @@ namespace LocalSeo.Web.Controllers;
 [Authorize(Policy = "StaffOnly")]
 public sealed class ProfileController(
     IUserRepository userRepository,
+    IPasswordChangeService passwordChangeService,
     TimeProvider timeProvider,
     ILogger<ProfileController> logger) : Controller
 {
@@ -88,6 +91,135 @@ public sealed class ProfileController(
 
         TempData["Status"] = "Profile updated.";
         return RedirectToAction(nameof(Edit));
+    }
+
+    [HttpGet("/profile/change-password")]
+    public IActionResult ChangePassword()
+    {
+        return View(new ChangePasswordStartViewModel
+        {
+            Message = TempData["Status"] as string
+        });
+    }
+
+    [HttpPost("/profile/change-password/start")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ChangePasswordStart([FromForm] ChangePasswordStartRequestModel model, CancellationToken ct)
+    {
+        var user = await GetCurrentUserAsync(ct);
+        if (user is null)
+            return Redirect("/login");
+
+        var result = await passwordChangeService.StartAsync(
+            user.Id,
+            model.CurrentPassword,
+            HttpContext.Connection.RemoteIpAddress?.ToString(),
+            Request.Headers.UserAgent.ToString(),
+            Activity.Current?.Id ?? HttpContext.TraceIdentifier,
+            ct);
+
+        if (!result.Success || string.IsNullOrWhiteSpace(result.CorrelationId))
+        {
+            return View("ChangePassword", new ChangePasswordStartViewModel
+            {
+                Message = result.Message,
+                Form = model
+            });
+        }
+
+        TempData["Status"] = result.Message;
+        return RedirectToAction(nameof(ChangePasswordVerify), new { c = result.CorrelationId });
+    }
+
+    [HttpGet("/profile/change-password/verify")]
+    public async Task<IActionResult> ChangePasswordVerify([FromQuery(Name = "c")] string? correlationId, CancellationToken ct)
+    {
+        var user = await GetCurrentUserAsync(ct);
+        if (user is null)
+            return Redirect("/login");
+
+        var challenge = await passwordChangeService.GetChallengeAsync(user.Id, correlationId, ct);
+        if (!challenge.Success || challenge.Challenge is null)
+        {
+            return View(new ChangePasswordVerifyViewModel
+            {
+                Message = challenge.Message,
+                IsInvalidOrExpired = true
+            });
+        }
+
+        return View(new ChangePasswordVerifyViewModel
+        {
+            Message = TempData["Status"] as string,
+            CorrelationId = challenge.Challenge.CorrelationId ?? string.Empty,
+            ExpiresAtUtc = challenge.Challenge.ExpiresAtUtc,
+            LockedUntilUtc = challenge.Challenge.LockedUntilUtc,
+            Form = new ChangePasswordVerifyRequestModel
+            {
+                CorrelationId = challenge.Challenge.CorrelationId ?? string.Empty
+            }
+        });
+    }
+
+    [HttpPost("/profile/change-password/resend")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ChangePasswordResend([FromForm] ChangePasswordResendRequestModel model, CancellationToken ct)
+    {
+        var user = await GetCurrentUserAsync(ct);
+        if (user is null)
+            return Redirect("/login");
+
+        var result = await passwordChangeService.ResendAsync(
+            user.Id,
+            model.CorrelationId,
+            HttpContext.Connection.RemoteIpAddress?.ToString(),
+            Request.Headers.UserAgent.ToString(),
+            Activity.Current?.Id ?? HttpContext.TraceIdentifier,
+            ct);
+
+        TempData["Status"] = result.Message;
+        return RedirectToAction(nameof(ChangePasswordVerify), new { c = model.CorrelationId });
+    }
+
+    [HttpPost("/profile/change-password/verify")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ChangePasswordVerifyPost([FromForm] ChangePasswordVerifyRequestModel model, CancellationToken ct)
+    {
+        var user = await GetCurrentUserAsync(ct);
+        if (user is null)
+            return Redirect("/login");
+
+        var result = await passwordChangeService.VerifyAndChangePasswordAsync(
+            user.Id,
+            model.CorrelationId,
+            model.OtpCode,
+            model.NewPassword,
+            model.ConfirmNewPassword,
+            HttpContext.Connection.RemoteIpAddress?.ToString(),
+            Request.Headers.UserAgent.ToString(),
+            Activity.Current?.Id ?? HttpContext.TraceIdentifier,
+            ct);
+
+        if (result.Success)
+        {
+            await HttpContext.SignOutAsync("LocalCookie");
+            TempData["Status"] = "Password changed successfully. Please sign in again.";
+            return Redirect("/login");
+        }
+
+        var challenge = await passwordChangeService.GetChallengeAsync(user.Id, model.CorrelationId, ct);
+        return View("ChangePasswordVerify", new ChangePasswordVerifyViewModel
+        {
+            Message = result.Message,
+            IsInvalidOrExpired = !challenge.Success || challenge.Challenge is null,
+            CorrelationId = challenge.Challenge?.CorrelationId ?? model.CorrelationId,
+            ExpiresAtUtc = challenge.Challenge?.ExpiresAtUtc,
+            LockedUntilUtc = challenge.Challenge?.LockedUntilUtc,
+            Form = new ChangePasswordVerifyRequestModel
+            {
+                CorrelationId = challenge.Challenge?.CorrelationId ?? model.CorrelationId
+            }
+        });
     }
 
     private async Task<UserRecord?> GetCurrentUserAsync(CancellationToken ct)

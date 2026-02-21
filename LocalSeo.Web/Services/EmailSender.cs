@@ -10,6 +10,7 @@ public interface ISendGridEmailService
     Task SendForgotPasswordCodeAsync(string email, string code, string resetUrl, CancellationToken ct);
     Task SendUserInviteAsync(string email, string recipientName, string inviteUrl, DateTime expiresAtUtc, CancellationToken ct);
     Task SendInviteOtpAsync(string email, string code, DateTime expiresAtUtc, CancellationToken ct);
+    Task SendChangePasswordOtpAsync(string email, string code, DateTime expiresAtUtc, CancellationToken ct);
 }
 
 public sealed class SendGridEmailService(
@@ -51,6 +52,15 @@ public sealed class SendGridEmailService(
             email,
             "Your Local SEO invite verification code",
             $"Your invite verification code is {code}. It expires at {expiresAtUtc:u}.",
+            ct);
+    }
+
+    public Task SendChangePasswordOtpAsync(string email, string code, DateTime expiresAtUtc, CancellationToken ct)
+    {
+        return SendAsync(
+            email,
+            "Your Local SEO change password verification code",
+            $"Your change password verification code is {code}. It expires at {expiresAtUtc:u}.",
             ct);
     }
 

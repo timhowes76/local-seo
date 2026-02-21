@@ -25,6 +25,7 @@ builder.Services.Configure<DataForSeoOptions>(builder.Configuration.GetSection("
 builder.Services.Configure<ZohoOAuthOptions>(builder.Configuration.GetSection("ZohoOAuth"));
 builder.Services.Configure<CompaniesHouseOptions>(builder.Configuration.GetSection("CompaniesHouse"));
 builder.Services.Configure<InviteOptions>(builder.Configuration.GetSection("Invites"));
+builder.Services.Configure<ChangePasswordOptions>(builder.Configuration.GetSection("ChangePassword"));
 
 builder.Services.AddControllersWithViews();
 builder.Services.AddHttpClient();
@@ -56,11 +57,26 @@ builder.Services.AddAuthentication("LocalCookie")
                     return;
                 }
 
+                var sessionVersionValue = context.Principal.FindFirst(AuthClaimTypes.SessionVersion)?.Value;
+                if (!int.TryParse(sessionVersionValue, out var sessionVersionClaim) || sessionVersionClaim < 0)
+                {
+                    context.RejectPrincipal();
+                    await context.HttpContext.SignOutAsync("LocalCookie");
+                    return;
+                }
+
                 try
                 {
                     var userRepository = context.HttpContext.RequestServices.GetRequiredService<IUserRepository>();
                     var user = await userRepository.GetByIdAsync(userId, context.HttpContext.RequestAborted);
                     if (user is null || !user.IsActive || user.InviteStatus != UserLifecycleStatus.Active)
+                    {
+                        context.RejectPrincipal();
+                        await context.HttpContext.SignOutAsync("LocalCookie");
+                        return;
+                    }
+
+                    if (user.SessionVersion != sessionVersionClaim)
                     {
                         context.RejectPrincipal();
                         await context.HttpContext.SignOutAsync("LocalCookie");
@@ -91,6 +107,7 @@ builder.Services.AddScoped<IAvatarResolver, AvatarResolver>();
 builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<IUserLoginLogRepository, UserLoginLogRepository>();
 builder.Services.AddScoped<IUserInviteRepository, UserInviteRepository>();
+builder.Services.AddScoped<IUserOtpRepository, UserOtpRepository>();
 builder.Services.AddScoped<IEmailCodeRepository, EmailCodeRepository>();
 builder.Services.AddScoped<ICryptoService, CryptoService>();
 builder.Services.AddScoped<IPasswordHasherService, PasswordHasherService>();
@@ -98,6 +115,7 @@ builder.Services.AddScoped<IRateLimiterService, RateLimiterService>();
 builder.Services.AddScoped<IEmailCodeService, EmailCodeService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IInviteService, InviteService>();
+builder.Services.AddScoped<IPasswordChangeService, PasswordChangeService>();
 builder.Services.AddScoped<IGooglePlacesClient, GooglePlacesClient>();
 builder.Services.AddScoped<ISearchIngestionService, SearchIngestionService>();
 builder.Services.AddScoped<IAdminSettingsService, AdminSettingsService>();

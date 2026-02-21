@@ -16,6 +16,7 @@ public interface IUserRepository
     Task ClearFailedPasswordAttemptsAsync(int userId, CancellationToken ct);
     Task UpdateLastLoginAsync(int userId, DateTime nowUtc, CancellationToken ct);
     Task UpdatePasswordAsync(int userId, byte[] passwordHash, byte passwordHashVersion, DateTime nowUtc, CancellationToken ct);
+    Task<bool> UpdatePasswordAndBumpSessionVersionAsync(int userId, byte[] passwordHash, byte passwordHashVersion, DateTime nowUtc, CancellationToken ct);
 }
 
 public sealed class UserRepository(ISqlConnectionFactory connectionFactory) : IUserRepository
@@ -40,6 +41,7 @@ SELECT TOP 1
   FailedPasswordAttempts,
   LockedoutUntilUtc,
   CAST(InviteStatus AS tinyint) AS InviteStatus,
+  SessionVersion,
   UseGravatar
 FROM dbo.[User]
 WHERE EmailAddressNormalized = @EmailAddressNormalized;",
@@ -67,6 +69,7 @@ SELECT TOP 1
   FailedPasswordAttempts,
   LockedoutUntilUtc,
   CAST(InviteStatus AS tinyint) AS InviteStatus,
+  SessionVersion,
   UseGravatar
 FROM dbo.[User]
 WHERE Id = @Id;",
@@ -329,6 +332,30 @@ WHERE Id = @Id;",
                 NowUtc = nowUtc
             },
             cancellationToken: ct));
+    }
+
+    public async Task<bool> UpdatePasswordAndBumpSessionVersionAsync(int userId, byte[] passwordHash, byte passwordHashVersion, DateTime nowUtc, CancellationToken ct)
+    {
+        await using var conn = (Microsoft.Data.SqlClient.SqlConnection)await connectionFactory.OpenConnectionAsync(ct);
+        var updated = await conn.ExecuteAsync(new CommandDefinition(@"
+UPDATE dbo.[User]
+SET PasswordHash = @PasswordHash,
+    Salt = NULL,
+    PasswordHashVersion = @PasswordHashVersion,
+    DatePasswordLastSetUtc = @NowUtc,
+    FailedPasswordAttempts = 0,
+    LockedoutUntilUtc = NULL,
+    SessionVersion = SessionVersion + 1
+WHERE Id = @Id;",
+            new
+            {
+                Id = userId,
+                PasswordHash = passwordHash,
+                PasswordHashVersion = passwordHashVersion,
+                NowUtc = nowUtc
+            },
+            cancellationToken: ct));
+        return updated == 1;
     }
 
     private static string? Truncate(string? value, int maxLength)

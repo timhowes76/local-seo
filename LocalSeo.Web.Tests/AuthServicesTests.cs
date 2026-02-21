@@ -45,6 +45,7 @@ public class AuthServicesTests
                 FailedPasswordAttempts: 0,
                 LockedoutUntilUtc: null,
                 InviteStatus: UserLifecycleStatus.Active,
+                SessionVersion: 0,
                 UseGravatar: false));
 
         var service = new AuthService(
@@ -150,6 +151,7 @@ public class AuthServicesTests
                 FailedPasswordAttempts: 0,
                 LockedoutUntilUtc: null,
                 InviteStatus: UserLifecycleStatus.Active,
+                SessionVersion: 0,
                 UseGravatar: false));
 
         var sendGrid = new NoopSendGridEmailService();
@@ -204,6 +206,9 @@ public class AuthServicesTests
             => Task.CompletedTask;
 
         public Task SendInviteOtpAsync(string email, string code, DateTime expiresAtUtc, CancellationToken ct)
+            => Task.CompletedTask;
+
+        public Task SendChangePasswordOtpAsync(string email, string code, DateTime expiresAtUtc, CancellationToken ct)
             => Task.CompletedTask;
     }
 
@@ -334,6 +339,23 @@ public class AuthServicesTests
             }
 
             return Task.CompletedTask;
+        }
+
+        public Task<bool> UpdatePasswordAndBumpSessionVersionAsync(int userId, byte[] passwordHash, byte passwordHashVersion, DateTime nowUtc, CancellationToken ct)
+        {
+            if (current.Id != userId)
+                return Task.FromResult(false);
+
+            current = current with
+            {
+                PasswordHash = passwordHash,
+                PasswordHashVersion = passwordHashVersion,
+                DatePasswordLastSetUtc = nowUtc,
+                FailedPasswordAttempts = 0,
+                LockedoutUntilUtc = null,
+                SessionVersion = current.SessionVersion + 1
+            };
+            return Task.FromResult(true);
         }
     }
 

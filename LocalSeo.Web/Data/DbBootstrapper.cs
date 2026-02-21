@@ -1419,6 +1419,7 @@ BEGIN
     IsActive bit NOT NULL CONSTRAINT DF_User_IsActive DEFAULT(1),
     IsAdmin bit NOT NULL CONSTRAINT DF_User_IsAdmin DEFAULT(0),
     UseGravatar bit NOT NULL CONSTRAINT DF_User_UseGravatar DEFAULT(0),
+    SessionVersion int NOT NULL CONSTRAINT DF_User_SessionVersion DEFAULT(0),
     InviteStatus tinyint NOT NULL CONSTRAINT DF_User_InviteStatus DEFAULT(1),
     DateCreatedAtUtc datetime2(0) NOT NULL CONSTRAINT DF_User_DateCreatedAtUtc DEFAULT SYSUTCDATETIME(),
     DatePasswordLastSetUtc datetime2(0) NULL,
@@ -1439,6 +1440,8 @@ IF COL_LENGTH('dbo.[User]', 'IsAdmin') IS NULL
   ALTER TABLE dbo.[User] ADD IsAdmin bit NOT NULL CONSTRAINT DF_User_IsAdmin_Alt DEFAULT(0);
 IF COL_LENGTH('dbo.[User]', 'UseGravatar') IS NULL
   ALTER TABLE dbo.[User] ADD UseGravatar bit NOT NULL CONSTRAINT DF_User_UseGravatar_Alt DEFAULT(0);
+IF COL_LENGTH('dbo.[User]', 'SessionVersion') IS NULL
+  ALTER TABLE dbo.[User] ADD SessionVersion int NOT NULL CONSTRAINT DF_User_SessionVersion_Alt DEFAULT(0);
 IF COL_LENGTH('dbo.[User]', 'InviteStatus') IS NULL
   ALTER TABLE dbo.[User] ADD InviteStatus tinyint NOT NULL CONSTRAINT DF_User_InviteStatus_Alt DEFAULT(1);
 IF COL_LENGTH('dbo.[User]', 'DateCreatedAtUtc') IS NULL
@@ -1591,6 +1594,64 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_InviteOtp_UserInviteId_S
   CREATE INDEX IX_InviteOtp_UserInviteId_SentAtUtc ON dbo.InviteOtp(UserInviteId, SentAtUtc DESC);
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_InviteOtp_RequestedFromIp_SentAtUtc' AND object_id = OBJECT_ID('dbo.InviteOtp'))
   CREATE INDEX IX_InviteOtp_RequestedFromIp_SentAtUtc ON dbo.InviteOtp(RequestedFromIp, SentAtUtc DESC) WHERE RequestedFromIp IS NOT NULL;
+
+IF OBJECT_ID('dbo.UserOtp','U') IS NULL
+BEGIN
+  CREATE TABLE dbo.UserOtp(
+    UserOtpId bigint IDENTITY(1,1) NOT NULL PRIMARY KEY,
+    UserId int NOT NULL,
+    Purpose nvarchar(30) NOT NULL,
+    CodeHash varbinary(32) NOT NULL,
+    ExpiresAtUtc datetime2(3) NOT NULL,
+    UsedAtUtc datetime2(3) NULL,
+    SentAtUtc datetime2(3) NOT NULL CONSTRAINT DF_UserOtp_SentAtUtc DEFAULT SYSUTCDATETIME(),
+    AttemptCount int NOT NULL CONSTRAINT DF_UserOtp_AttemptCount DEFAULT(0),
+    LockedUntilUtc datetime2(3) NULL,
+    CorrelationId nvarchar(64) NULL,
+    RequestedFromIp varchar(45) NULL
+  );
+END;
+IF COL_LENGTH('dbo.UserOtp', 'UserId') IS NULL
+  ALTER TABLE dbo.UserOtp ADD UserId int NOT NULL CONSTRAINT DF_UserOtp_UserId_Alt DEFAULT(0);
+IF COL_LENGTH('dbo.UserOtp', 'Purpose') IS NULL
+  ALTER TABLE dbo.UserOtp ADD Purpose nvarchar(30) NOT NULL CONSTRAINT DF_UserOtp_Purpose_Alt DEFAULT N'';
+IF COL_LENGTH('dbo.UserOtp', 'CodeHash') IS NULL
+  ALTER TABLE dbo.UserOtp ADD CodeHash varbinary(32) NOT NULL CONSTRAINT DF_UserOtp_CodeHash_Alt DEFAULT(0x00);
+IF COL_LENGTH('dbo.UserOtp', 'ExpiresAtUtc') IS NULL
+  ALTER TABLE dbo.UserOtp ADD ExpiresAtUtc datetime2(3) NOT NULL CONSTRAINT DF_UserOtp_ExpiresAtUtc_Alt DEFAULT SYSUTCDATETIME();
+IF COL_LENGTH('dbo.UserOtp', 'UsedAtUtc') IS NULL
+  ALTER TABLE dbo.UserOtp ADD UsedAtUtc datetime2(3) NULL;
+IF COL_LENGTH('dbo.UserOtp', 'SentAtUtc') IS NULL
+  ALTER TABLE dbo.UserOtp ADD SentAtUtc datetime2(3) NOT NULL CONSTRAINT DF_UserOtp_SentAtUtc_Alt DEFAULT SYSUTCDATETIME();
+IF COL_LENGTH('dbo.UserOtp', 'AttemptCount') IS NULL
+  ALTER TABLE dbo.UserOtp ADD AttemptCount int NOT NULL CONSTRAINT DF_UserOtp_AttemptCount_Alt DEFAULT(0);
+IF COL_LENGTH('dbo.UserOtp', 'LockedUntilUtc') IS NULL
+  ALTER TABLE dbo.UserOtp ADD LockedUntilUtc datetime2(3) NULL;
+IF COL_LENGTH('dbo.UserOtp', 'CorrelationId') IS NULL
+  ALTER TABLE dbo.UserOtp ADD CorrelationId nvarchar(64) NULL;
+IF COL_LENGTH('dbo.UserOtp', 'RequestedFromIp') IS NULL
+  ALTER TABLE dbo.UserOtp ADD RequestedFromIp varchar(45) NULL;
+
+IF NOT EXISTS (
+  SELECT 1
+  FROM sys.foreign_key_columns fkc
+  JOIN sys.columns pc ON pc.object_id = fkc.parent_object_id AND pc.column_id = fkc.parent_column_id
+  JOIN sys.columns rc ON rc.object_id = fkc.referenced_object_id AND rc.column_id = fkc.referenced_column_id
+  WHERE fkc.parent_object_id = OBJECT_ID('dbo.UserOtp')
+    AND fkc.referenced_object_id = OBJECT_ID('dbo.[User]')
+    AND pc.name = 'UserId'
+    AND rc.name = 'Id'
+)
+  ALTER TABLE dbo.UserOtp WITH CHECK ADD CONSTRAINT FK_UserOtp_User FOREIGN KEY (UserId) REFERENCES dbo.[User](Id) ON DELETE CASCADE;
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_UserOtp_User_Purpose_ExpiresAtUtc' AND object_id = OBJECT_ID('dbo.UserOtp'))
+  CREATE INDEX IX_UserOtp_User_Purpose_ExpiresAtUtc ON dbo.UserOtp(UserId, Purpose, ExpiresAtUtc DESC);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_UserOtp_User_Purpose_UsedAtUtc' AND object_id = OBJECT_ID('dbo.UserOtp'))
+  CREATE INDEX IX_UserOtp_User_Purpose_UsedAtUtc ON dbo.UserOtp(UserId, Purpose, UsedAtUtc);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_UserOtp_User_Purpose_Correlation_SentAtUtc' AND object_id = OBJECT_ID('dbo.UserOtp'))
+  CREATE INDEX IX_UserOtp_User_Purpose_Correlation_SentAtUtc ON dbo.UserOtp(UserId, Purpose, CorrelationId, SentAtUtc DESC);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_UserOtp_RequestedFromIp_Purpose_SentAtUtc' AND object_id = OBJECT_ID('dbo.UserOtp'))
+  CREATE INDEX IX_UserOtp_RequestedFromIp_Purpose_SentAtUtc ON dbo.UserOtp(RequestedFromIp, Purpose, SentAtUtc DESC) WHERE RequestedFromIp IS NOT NULL;
 
 IF OBJECT_ID('dbo.EmailCodes','U') IS NULL
 BEGIN
