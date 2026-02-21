@@ -1418,6 +1418,7 @@ BEGIN
     PasswordHashVersion tinyint NOT NULL CONSTRAINT DF_User_PasswordHashVersion DEFAULT(1),
     IsActive bit NOT NULL CONSTRAINT DF_User_IsActive DEFAULT(1),
     IsAdmin bit NOT NULL CONSTRAINT DF_User_IsAdmin DEFAULT(0),
+    InviteStatus tinyint NOT NULL CONSTRAINT DF_User_InviteStatus DEFAULT(1),
     DateCreatedAtUtc datetime2(0) NOT NULL CONSTRAINT DF_User_DateCreatedAtUtc DEFAULT SYSUTCDATETIME(),
     DatePasswordLastSetUtc datetime2(0) NULL,
     LastLoginAtUtc datetime2(0) NULL,
@@ -1435,6 +1436,8 @@ IF COL_LENGTH('dbo.[User]', 'IsActive') IS NULL
   ALTER TABLE dbo.[User] ADD IsActive bit NOT NULL CONSTRAINT DF_User_IsActive_Alt DEFAULT(1);
 IF COL_LENGTH('dbo.[User]', 'IsAdmin') IS NULL
   ALTER TABLE dbo.[User] ADD IsAdmin bit NOT NULL CONSTRAINT DF_User_IsAdmin_Alt DEFAULT(0);
+IF COL_LENGTH('dbo.[User]', 'InviteStatus') IS NULL
+  ALTER TABLE dbo.[User] ADD InviteStatus tinyint NOT NULL CONSTRAINT DF_User_InviteStatus_Alt DEFAULT(1);
 IF COL_LENGTH('dbo.[User]', 'DateCreatedAtUtc') IS NULL
   ALTER TABLE dbo.[User] ADD DateCreatedAtUtc datetime2(0) NOT NULL CONSTRAINT DF_User_DateCreatedAtUtc_Alt DEFAULT SYSUTCDATETIME();
 IF COL_LENGTH('dbo.[User]', 'DatePasswordLastSetUtc') IS NULL
@@ -1445,22 +1448,146 @@ IF COL_LENGTH('dbo.[User]', 'FailedPasswordAttempts') IS NULL
   ALTER TABLE dbo.[User] ADD FailedPasswordAttempts int NOT NULL CONSTRAINT DF_User_FailedPasswordAttempts_Alt DEFAULT(0);
 IF COL_LENGTH('dbo.[User]', 'LockedoutUntilUtc') IS NULL
   ALTER TABLE dbo.[User] ADD LockedoutUntilUtc datetime2(0) NULL;
+IF COL_LENGTH('dbo.[User]', 'InviteStatus') IS NOT NULL
+BEGIN
+  EXEC(N'
+UPDATE dbo.[User]
+SET InviteStatus = CASE WHEN IsActive = 1 THEN 1 ELSE 2 END
+WHERE InviteStatus IS NULL
+   OR InviteStatus NOT IN (0, 1, 2);');
+END;
 
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'UX_User_EmailAddressNormalized' AND object_id = OBJECT_ID('dbo.[User]'))
   CREATE UNIQUE INDEX UX_User_EmailAddressNormalized ON dbo.[User](EmailAddressNormalized);
 
-IF NOT EXISTS (SELECT 1 FROM dbo.[User] WHERE EmailAddressNormalized = 'tim.howes@kontrolit.net')
+EXEC(N'
+IF NOT EXISTS (SELECT 1 FROM dbo.[User] WHERE EmailAddressNormalized = ''tim.howes@kontrolit.net'')
 BEGIN
-  INSERT INTO dbo.[User](FirstName, LastName, EmailAddress, EmailAddressNormalized, IsActive, IsAdmin)
-  VALUES('Tim', 'Howes', 'tim.howes@kontrolit.net', 'tim.howes@kontrolit.net', 1, 1);
+  INSERT INTO dbo.[User](FirstName, LastName, EmailAddress, EmailAddressNormalized, IsActive, IsAdmin, InviteStatus)
+  VALUES(''Tim'', ''Howes'', ''tim.howes@kontrolit.net'', ''tim.howes@kontrolit.net'', 1, 1, 1);
 END
 ELSE
 BEGIN
   UPDATE dbo.[User]
   SET IsAdmin = 1,
-      IsActive = 1
-  WHERE EmailAddressNormalized = 'tim.howes@kontrolit.net';
+      IsActive = 1,
+      InviteStatus = 1
+  WHERE EmailAddressNormalized = ''tim.howes@kontrolit.net'';
+END;');
+
+IF OBJECT_ID('dbo.UserInvite','U') IS NULL
+BEGIN
+  CREATE TABLE dbo.UserInvite(
+    UserInviteId bigint IDENTITY(1,1) NOT NULL PRIMARY KEY,
+    UserId int NOT NULL,
+    EmailNormalized varchar(320) NOT NULL,
+    TokenHash varbinary(32) NOT NULL,
+    ExpiresAtUtc datetime2(0) NOT NULL,
+    UsedAtUtc datetime2(0) NULL,
+    CreatedAtUtc datetime2(0) NOT NULL CONSTRAINT DF_UserInvite_CreatedAtUtc DEFAULT SYSUTCDATETIME(),
+    CreatedByUserId int NULL,
+    ResentAtUtc datetime2(0) NULL,
+    Status tinyint NOT NULL CONSTRAINT DF_UserInvite_Status DEFAULT(1),
+    AttemptCount int NOT NULL CONSTRAINT DF_UserInvite_AttemptCount DEFAULT(0),
+    LastAttemptAtUtc datetime2(0) NULL,
+    LockedUntilUtc datetime2(0) NULL,
+    OtpVerifiedAtUtc datetime2(0) NULL,
+    LastOtpSentAtUtc datetime2(0) NULL
+  );
 END;
+IF COL_LENGTH('dbo.UserInvite', 'UserId') IS NULL
+  ALTER TABLE dbo.UserInvite ADD UserId int NOT NULL CONSTRAINT DF_UserInvite_UserId_Alt DEFAULT(0);
+IF COL_LENGTH('dbo.UserInvite', 'EmailNormalized') IS NULL
+  ALTER TABLE dbo.UserInvite ADD EmailNormalized varchar(320) NOT NULL CONSTRAINT DF_UserInvite_EmailNormalized_Alt DEFAULT('');
+IF COL_LENGTH('dbo.UserInvite', 'TokenHash') IS NULL
+  ALTER TABLE dbo.UserInvite ADD TokenHash varbinary(32) NOT NULL CONSTRAINT DF_UserInvite_TokenHash_Alt DEFAULT(0x00);
+IF COL_LENGTH('dbo.UserInvite', 'ExpiresAtUtc') IS NULL
+  ALTER TABLE dbo.UserInvite ADD ExpiresAtUtc datetime2(0) NOT NULL CONSTRAINT DF_UserInvite_ExpiresAtUtc_Alt DEFAULT SYSUTCDATETIME();
+IF COL_LENGTH('dbo.UserInvite', 'UsedAtUtc') IS NULL
+  ALTER TABLE dbo.UserInvite ADD UsedAtUtc datetime2(0) NULL;
+IF COL_LENGTH('dbo.UserInvite', 'CreatedAtUtc') IS NULL
+  ALTER TABLE dbo.UserInvite ADD CreatedAtUtc datetime2(0) NOT NULL CONSTRAINT DF_UserInvite_CreatedAtUtc_Alt DEFAULT SYSUTCDATETIME();
+IF COL_LENGTH('dbo.UserInvite', 'CreatedByUserId') IS NULL
+  ALTER TABLE dbo.UserInvite ADD CreatedByUserId int NULL;
+IF COL_LENGTH('dbo.UserInvite', 'ResentAtUtc') IS NULL
+  ALTER TABLE dbo.UserInvite ADD ResentAtUtc datetime2(0) NULL;
+IF COL_LENGTH('dbo.UserInvite', 'Status') IS NULL
+  ALTER TABLE dbo.UserInvite ADD Status tinyint NOT NULL CONSTRAINT DF_UserInvite_Status_Alt DEFAULT(1);
+IF COL_LENGTH('dbo.UserInvite', 'AttemptCount') IS NULL
+  ALTER TABLE dbo.UserInvite ADD AttemptCount int NOT NULL CONSTRAINT DF_UserInvite_AttemptCount_Alt DEFAULT(0);
+IF COL_LENGTH('dbo.UserInvite', 'LastAttemptAtUtc') IS NULL
+  ALTER TABLE dbo.UserInvite ADD LastAttemptAtUtc datetime2(0) NULL;
+IF COL_LENGTH('dbo.UserInvite', 'LockedUntilUtc') IS NULL
+  ALTER TABLE dbo.UserInvite ADD LockedUntilUtc datetime2(0) NULL;
+IF COL_LENGTH('dbo.UserInvite', 'OtpVerifiedAtUtc') IS NULL
+  ALTER TABLE dbo.UserInvite ADD OtpVerifiedAtUtc datetime2(0) NULL;
+IF COL_LENGTH('dbo.UserInvite', 'LastOtpSentAtUtc') IS NULL
+  ALTER TABLE dbo.UserInvite ADD LastOtpSentAtUtc datetime2(0) NULL;
+
+IF NOT EXISTS (
+  SELECT 1
+  FROM sys.foreign_key_columns fkc
+  JOIN sys.columns pc ON pc.object_id = fkc.parent_object_id AND pc.column_id = fkc.parent_column_id
+  JOIN sys.columns rc ON rc.object_id = fkc.referenced_object_id AND rc.column_id = fkc.referenced_column_id
+  WHERE fkc.parent_object_id = OBJECT_ID('dbo.UserInvite')
+    AND fkc.referenced_object_id = OBJECT_ID('dbo.[User]')
+    AND pc.name = 'UserId'
+    AND rc.name = 'Id'
+)
+  ALTER TABLE dbo.UserInvite WITH CHECK ADD CONSTRAINT FK_UserInvite_User FOREIGN KEY (UserId) REFERENCES dbo.[User](Id);
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='UX_UserInvite_TokenHash' AND object_id = OBJECT_ID('dbo.UserInvite'))
+  CREATE UNIQUE INDEX UX_UserInvite_TokenHash ON dbo.UserInvite(TokenHash);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_UserInvite_UserId_Status_ExpiresAtUtc' AND object_id = OBJECT_ID('dbo.UserInvite'))
+  CREATE INDEX IX_UserInvite_UserId_Status_ExpiresAtUtc ON dbo.UserInvite(UserId, Status, ExpiresAtUtc DESC);
+
+IF OBJECT_ID('dbo.InviteOtp','U') IS NULL
+BEGIN
+  CREATE TABLE dbo.InviteOtp(
+    InviteOtpId bigint IDENTITY(1,1) NOT NULL PRIMARY KEY,
+    UserInviteId bigint NOT NULL,
+    CodeHash varbinary(32) NOT NULL,
+    ExpiresAtUtc datetime2(0) NOT NULL,
+    SentAtUtc datetime2(0) NOT NULL CONSTRAINT DF_InviteOtp_SentAtUtc DEFAULT SYSUTCDATETIME(),
+    AttemptCount int NOT NULL CONSTRAINT DF_InviteOtp_AttemptCount DEFAULT(0),
+    LockedUntilUtc datetime2(0) NULL,
+    UsedAtUtc datetime2(0) NULL,
+    RequestedFromIp varchar(45) NULL
+  );
+END;
+IF COL_LENGTH('dbo.InviteOtp', 'UserInviteId') IS NULL
+  ALTER TABLE dbo.InviteOtp ADD UserInviteId bigint NOT NULL CONSTRAINT DF_InviteOtp_UserInviteId_Alt DEFAULT(0);
+IF COL_LENGTH('dbo.InviteOtp', 'CodeHash') IS NULL
+  ALTER TABLE dbo.InviteOtp ADD CodeHash varbinary(32) NOT NULL CONSTRAINT DF_InviteOtp_CodeHash_Alt DEFAULT(0x00);
+IF COL_LENGTH('dbo.InviteOtp', 'ExpiresAtUtc') IS NULL
+  ALTER TABLE dbo.InviteOtp ADD ExpiresAtUtc datetime2(0) NOT NULL CONSTRAINT DF_InviteOtp_ExpiresAtUtc_Alt DEFAULT SYSUTCDATETIME();
+IF COL_LENGTH('dbo.InviteOtp', 'SentAtUtc') IS NULL
+  ALTER TABLE dbo.InviteOtp ADD SentAtUtc datetime2(0) NOT NULL CONSTRAINT DF_InviteOtp_SentAtUtc_Alt DEFAULT SYSUTCDATETIME();
+IF COL_LENGTH('dbo.InviteOtp', 'AttemptCount') IS NULL
+  ALTER TABLE dbo.InviteOtp ADD AttemptCount int NOT NULL CONSTRAINT DF_InviteOtp_AttemptCount_Alt DEFAULT(0);
+IF COL_LENGTH('dbo.InviteOtp', 'LockedUntilUtc') IS NULL
+  ALTER TABLE dbo.InviteOtp ADD LockedUntilUtc datetime2(0) NULL;
+IF COL_LENGTH('dbo.InviteOtp', 'UsedAtUtc') IS NULL
+  ALTER TABLE dbo.InviteOtp ADD UsedAtUtc datetime2(0) NULL;
+IF COL_LENGTH('dbo.InviteOtp', 'RequestedFromIp') IS NULL
+  ALTER TABLE dbo.InviteOtp ADD RequestedFromIp varchar(45) NULL;
+
+IF NOT EXISTS (
+  SELECT 1
+  FROM sys.foreign_key_columns fkc
+  JOIN sys.columns pc ON pc.object_id = fkc.parent_object_id AND pc.column_id = fkc.parent_column_id
+  JOIN sys.columns rc ON rc.object_id = fkc.referenced_object_id AND rc.column_id = fkc.referenced_column_id
+  WHERE fkc.parent_object_id = OBJECT_ID('dbo.InviteOtp')
+    AND fkc.referenced_object_id = OBJECT_ID('dbo.UserInvite')
+    AND pc.name = 'UserInviteId'
+    AND rc.name = 'UserInviteId'
+)
+  ALTER TABLE dbo.InviteOtp WITH CHECK ADD CONSTRAINT FK_InviteOtp_UserInvite FOREIGN KEY (UserInviteId) REFERENCES dbo.UserInvite(UserInviteId) ON DELETE CASCADE;
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_InviteOtp_UserInviteId_SentAtUtc' AND object_id = OBJECT_ID('dbo.InviteOtp'))
+  CREATE INDEX IX_InviteOtp_UserInviteId_SentAtUtc ON dbo.InviteOtp(UserInviteId, SentAtUtc DESC);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_InviteOtp_RequestedFromIp_SentAtUtc' AND object_id = OBJECT_ID('dbo.InviteOtp'))
+  CREATE INDEX IX_InviteOtp_RequestedFromIp_SentAtUtc ON dbo.InviteOtp(RequestedFromIp, SentAtUtc DESC) WHERE RequestedFromIp IS NOT NULL;
 
 IF OBJECT_ID('dbo.EmailCodes','U') IS NULL
 BEGIN

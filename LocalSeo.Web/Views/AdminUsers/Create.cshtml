@@ -1,0 +1,43 @@
+@model AdminCreateUserViewModel
+@{
+    ViewData["Title"] = "Create User";
+    var backFilter = Uri.EscapeDataString((Model.Filter ?? "active").Trim().ToLowerInvariant());
+    var searchTerm = (Model.SearchTerm ?? string.Empty).Trim();
+    var escapedQ = Uri.EscapeDataString(searchTerm);
+    var message = (string?)ViewBag.Message;
+}
+
+<div class="page-stack">
+    @if (!string.IsNullOrWhiteSpace(message))
+    {
+        <div class="notice">@message</div>
+    }
+
+    <section class="card">
+        <div class="toolbar">
+            <a href="/admin/users?status=@backFilter&q=@escapedQ" class="btn btn-secondary">Back to Users</a>
+        </div>
+    </section>
+
+    <section class="card">
+        <h2 class="card-title">Create User</h2>
+        <form method="post" action="/admin/users/create?status=@backFilter&q=@escapedQ" class="form-grid">
+            @Html.AntiForgeryToken()
+            <div class="form-row">
+                <label for="create-user-first-name">First Name</label>
+                <input id="create-user-first-name" name="FirstName" type="text" maxlength="100" value="@Model.CreateUser.FirstName" required />
+            </div>
+            <div class="form-row">
+                <label for="create-user-last-name">Last Name</label>
+                <input id="create-user-last-name" name="LastName" type="text" maxlength="100" value="@Model.CreateUser.LastName" required />
+            </div>
+            <div class="form-row">
+                <label for="create-user-email">Email Address</label>
+                <input id="create-user-email" name="EmailAddress" type="email" maxlength="320" value="@Model.CreateUser.EmailAddress" required />
+            </div>
+            <div class="toolbar">
+                <button type="submit">Create User &amp; Send Invite</button>
+            </div>
+        </form>
+    </section>
+</div>

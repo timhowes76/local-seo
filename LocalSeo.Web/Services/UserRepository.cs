@@ -8,7 +8,9 @@ public interface IUserRepository
 {
     Task<UserRecord?> GetByNormalizedEmailAsync(string emailNormalized, CancellationToken ct);
     Task<UserRecord?> GetByIdAsync(int id, CancellationToken ct);
-    Task<IReadOnlyList<AdminUserListRow>> ListByStatusAsync(UserStatusFilter filter, CancellationToken ct);
+    Task<IReadOnlyList<AdminUserListRow>> ListByStatusAsync(UserStatusFilter filter, string? searchTerm, CancellationToken ct);
+    Task<bool> UpdateUserAsync(int userId, string firstName, string lastName, string emailAddress, string emailAddressNormalized, bool isAdmin, UserLifecycleStatus inviteStatus, CancellationToken ct);
+    Task<bool> DeleteUserAsync(int userId, CancellationToken ct);
     Task RecordFailedPasswordAttemptAsync(int userId, int lockoutThreshold, int lockoutMinutes, DateTime nowUtc, CancellationToken ct);
     Task ClearFailedPasswordAttemptsAsync(int userId, CancellationToken ct);
     Task UpdateLastLoginAsync(int userId, DateTime nowUtc, CancellationToken ct);
@@ -35,7 +37,8 @@ SELECT TOP 1
   DatePasswordLastSetUtc,
   LastLoginAtUtc,
   FailedPasswordAttempts,
-  LockedoutUntilUtc
+  LockedoutUntilUtc,
+  CAST(InviteStatus AS tinyint) AS InviteStatus
 FROM dbo.[User]
 WHERE EmailAddressNormalized = @EmailAddressNormalized;",
             new { EmailAddressNormalized = emailNormalized },
@@ -60,36 +63,176 @@ SELECT TOP 1
   DatePasswordLastSetUtc,
   LastLoginAtUtc,
   FailedPasswordAttempts,
-  LockedoutUntilUtc
+  LockedoutUntilUtc,
+  CAST(InviteStatus AS tinyint) AS InviteStatus
 FROM dbo.[User]
 WHERE Id = @Id;",
             new { Id = id },
             cancellationToken: ct));
     }
 
-    public async Task<IReadOnlyList<AdminUserListRow>> ListByStatusAsync(UserStatusFilter filter, CancellationToken ct)
+    public async Task<IReadOnlyList<AdminUserListRow>> ListByStatusAsync(UserStatusFilter filter, string? searchTerm, CancellationToken ct)
     {
-        var where = filter switch
+        var whereParts = new List<string>();
+        switch (filter)
         {
-            UserStatusFilter.Inactive => "WHERE IsActive = 0",
-            UserStatusFilter.All => string.Empty,
-            _ => "WHERE IsActive = 1"
-        };
+            case UserStatusFilter.Pending:
+                whereParts.Add("u.InviteStatus = @PendingStatus");
+                break;
+            case UserStatusFilter.Disabled:
+                whereParts.Add("u.InviteStatus = @DisabledStatus");
+                break;
+            case UserStatusFilter.All:
+                break;
+            default:
+                whereParts.Add("u.InviteStatus = @ActiveStatus");
+                break;
+        }
+
+        var searchPattern = BuildLikePattern(searchTerm);
+        if (!string.IsNullOrWhiteSpace(searchPattern))
+        {
+            whereParts.Add(@"(
+  u.FirstName LIKE @SearchPattern ESCAPE '\'
+  OR u.LastName LIKE @SearchPattern ESCAPE '\'
+  OR CONCAT(u.FirstName, ' ', u.LastName) LIKE @SearchPattern ESCAPE '\'
+  OR u.EmailAddress LIKE @SearchPattern ESCAPE '\'
+)");
+        }
+
+        var where = whereParts.Count == 0
+            ? string.Empty
+            : $"WHERE {string.Join(" AND ", whereParts)}";
 
         var sql = $@"
 SELECT
-  Id,
-  CONCAT(FirstName, ' ', LastName) AS Name,
-  EmailAddress,
-  DateCreatedAtUtc,
-  IsActive
-FROM dbo.[User]
+  u.Id,
+  CONCAT(u.FirstName, ' ', u.LastName) AS Name,
+  u.EmailAddress,
+  u.DateCreatedAtUtc,
+  u.IsActive,
+  CAST(u.InviteStatus AS tinyint) AS InviteStatus,
+  latestInvite.LastInviteCreatedAtUtc,
+  COALESCE(latestInvite.HasActiveInvite, CAST(0 AS bit)) AS HasActiveInvite
+FROM dbo.[User] u
+OUTER APPLY (
+  SELECT TOP 1
+    ui.CreatedAtUtc AS LastInviteCreatedAtUtc,
+    CASE
+      WHEN ui.Status = @UserInviteActiveStatus
+        AND ui.UsedAtUtc IS NULL
+        AND ui.ExpiresAtUtc >= SYSUTCDATETIME()
+      THEN CAST(1 AS bit)
+      ELSE CAST(0 AS bit)
+    END AS HasActiveInvite
+  FROM dbo.UserInvite ui
+  WHERE ui.UserId = u.Id
+  ORDER BY ui.CreatedAtUtc DESC, ui.UserInviteId DESC
+) latestInvite
 {where}
-ORDER BY DateCreatedAtUtc DESC, Id DESC;";
+ORDER BY u.DateCreatedAtUtc DESC, u.Id DESC;";
 
         await using var conn = (Microsoft.Data.SqlClient.SqlConnection)await connectionFactory.OpenConnectionAsync(ct);
-        var rows = await conn.QueryAsync<AdminUserListRow>(new CommandDefinition(sql, cancellationToken: ct));
+        var rows = await conn.QueryAsync<AdminUserListRow>(new CommandDefinition(sql,
+            new
+            {
+                ActiveStatus = (byte)UserLifecycleStatus.Active,
+                PendingStatus = (byte)UserLifecycleStatus.Pending,
+                DisabledStatus = (byte)UserLifecycleStatus.Disabled,
+                UserInviteActiveStatus = (byte)UserInviteStatus.Active,
+                SearchPattern = searchPattern
+            },
+            cancellationToken: ct));
         return rows.ToList();
+    }
+
+    public async Task<bool> DeleteUserAsync(int userId, CancellationToken ct)
+    {
+        await using var conn = (Microsoft.Data.SqlClient.SqlConnection)await connectionFactory.OpenConnectionAsync(ct);
+        await using var tx = await conn.BeginTransactionAsync(ct);
+
+        var emailNormalized = await conn.QuerySingleOrDefaultAsync<string?>(new CommandDefinition(@"
+SELECT EmailAddressNormalized
+FROM dbo.[User]
+WHERE Id = @Id;",
+            new { Id = userId },
+            tx,
+            cancellationToken: ct));
+
+        if (emailNormalized is null)
+        {
+            await tx.RollbackAsync(ct);
+            return false;
+        }
+
+        await conn.ExecuteAsync(new CommandDefinition(@"
+DELETE FROM dbo.UserInvite
+WHERE UserId = @UserId;",
+            new { UserId = userId },
+            tx,
+            cancellationToken: ct));
+
+        await conn.ExecuteAsync(new CommandDefinition(@"
+DELETE FROM dbo.EmailCodes
+WHERE EmailNormalized = @EmailNormalized;",
+            new { EmailNormalized = emailNormalized },
+            tx,
+            cancellationToken: ct));
+
+        var deleted = await conn.ExecuteAsync(new CommandDefinition(@"
+DELETE FROM dbo.[User]
+WHERE Id = @Id;",
+            new { Id = userId },
+            tx,
+            cancellationToken: ct));
+
+        if (deleted != 1)
+        {
+            await tx.RollbackAsync(ct);
+            return false;
+        }
+
+        await tx.CommitAsync(ct);
+        return true;
+    }
+
+    public async Task<bool> UpdateUserAsync(int userId, string firstName, string lastName, string emailAddress, string emailAddressNormalized, bool isAdmin, UserLifecycleStatus inviteStatus, CancellationToken ct)
+    {
+        var normalizedFirstName = Truncate(firstName, 100);
+        var normalizedLastName = Truncate(lastName, 100);
+        var normalizedEmail = Truncate(emailAddress, 320);
+        var normalizedEmailLookup = Truncate(emailAddressNormalized, 320);
+        if (string.IsNullOrWhiteSpace(normalizedFirstName)
+            || string.IsNullOrWhiteSpace(normalizedLastName)
+            || string.IsNullOrWhiteSpace(normalizedEmail)
+            || string.IsNullOrWhiteSpace(normalizedEmailLookup))
+            return false;
+
+        await using var conn = (Microsoft.Data.SqlClient.SqlConnection)await connectionFactory.OpenConnectionAsync(ct);
+        var updated = await conn.ExecuteAsync(new CommandDefinition(@"
+UPDATE dbo.[User]
+SET
+  FirstName = @FirstName,
+  LastName = @LastName,
+  EmailAddress = @EmailAddress,
+  EmailAddressNormalized = @EmailAddressNormalized,
+  IsAdmin = @IsAdmin,
+  InviteStatus = @InviteStatus,
+  IsActive = @IsActive
+WHERE Id = @Id;",
+            new
+            {
+                Id = userId,
+                FirstName = normalizedFirstName,
+                LastName = normalizedLastName,
+                EmailAddress = normalizedEmail,
+                EmailAddressNormalized = normalizedEmailLookup,
+                IsAdmin = isAdmin,
+                InviteStatus = (byte)inviteStatus,
+                IsActive = inviteStatus == UserLifecycleStatus.Active
+            },
+            cancellationToken: ct));
+        return updated == 1;
     }
 
     public async Task RecordFailedPasswordAttemptAsync(int userId, int lockoutThreshold, int lockoutMinutes, DateTime nowUtc, CancellationToken ct)
@@ -157,5 +300,35 @@ WHERE Id = @Id;",
                 NowUtc = nowUtc
             },
             cancellationToken: ct));
+    }
+
+    private static string? Truncate(string? value, int maxLength)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        var trimmed = value.Trim();
+        return trimmed.Length <= maxLength ? trimmed : trimmed[..maxLength];
+    }
+
+    private static string? BuildLikePattern(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+            return null;
+
+        var trimmed = raw.Trim();
+        if (trimmed.Length == 0)
+            return null;
+
+        if (trimmed.Length > 200)
+            trimmed = trimmed[..200];
+
+        var escaped = trimmed
+            .Replace(@"\", @"\\", StringComparison.Ordinal)
+            .Replace("%", @"\%", StringComparison.Ordinal)
+            .Replace("_", @"\_", StringComparison.Ordinal)
+            .Replace("[", @"\[", StringComparison.Ordinal);
+
+        return $"%{escaped}%";
     }
 }

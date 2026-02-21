@@ -2,18 +2,50 @@
 @{
     ViewData["Title"] = "Users";
     var filter = (Model.Filter ?? "active").Trim().ToLowerInvariant();
+    var searchTerm = (Model.SearchTerm ?? string.Empty).Trim();
+    var escapedQ = Uri.EscapeDataString(searchTerm);
+    var currentUserId = Model.CurrentUserId;
+    var statusMessage = TempData["Status"] as string;
+
+    string LifecycleLabel(AdminUserListRow row)
+    {
+        return row.InviteStatus switch
+        {
+            UserLifecycleStatus.Pending => row.HasActiveInvite ? "Pending Invite Sent" : "Pending",
+            UserLifecycleStatus.Disabled => "Disabled",
+            _ => "Active"
+        };
+    }
+
+    string LifecycleCss(AdminUserListRow row)
+    {
+        return row.InviteStatus switch
+        {
+            UserLifecycleStatus.Pending => "status-pending",
+            UserLifecycleStatus.Disabled => "status-inactive",
+            _ => "status-active"
+        };
+    }
 }
 
 <div class="page-stack">
+    @if (!string.IsNullOrWhiteSpace(statusMessage))
+    {
+        <div class="notice">@statusMessage</div>
+    }
+
     <section class="card">
         <div class="toolbar">
             <a href="/admin" class="btn btn-secondary">Back to Admin</a>
+            <a href="/admin/users/create?status=@Uri.EscapeDataString(filter)&q=@escapedQ" class="btn btn-secondary">Create User</a>
         </div>
     </section>
 
     <section class="card">
         <h2 class="card-title">Filters</h2>
         <form method="get" action="/admin/users" class="places-filter-line">
+            <label for="users-search-filter">Search</label>
+            <input id="users-search-filter" name="q" type="text" value="@searchTerm" maxlength="200" placeholder="Name or email address" />
             <label for="status-filter">Status</label>
             <select id="status-filter" name="status">
                 @if (filter == "active")
@@ -24,13 +56,21 @@
                 {
                     <option value="active">Active</option>
                 }
-                @if (filter == "inactive")
+                @if (filter == "pending")
                 {
-                    <option value="inactive" selected>Inactive</option>
+                    <option value="pending" selected>Pending</option>
                 }
                 else
                 {
-                    <option value="inactive">Inactive</option>
+                    <option value="pending">Pending</option>
+                }
+                @if (filter == "disabled" || filter == "inactive")
+                {
+                    <option value="disabled" selected>Disabled</option>
+                }
+                else
+                {
+                    <option value="disabled">Disabled</option>
                 }
                 @if (filter == "all")
                 {
@@ -61,16 +101,47 @@
                             <th>Name</th>
                             <th>Email Address</th>
                             <th>Date Created</th>
+                            <th>Status</th>
+                            <th class="users-actions-col">Actions</th>
                         </tr>
                     </thead>
                     <tbody>
                     @foreach (var row in Model.Rows)
                     {
                         <tr>
-                            <td><a href="/admin/users/@row.Id?status=@Uri.EscapeDataString(filter)">@row.Id</a></td>
+                            <td><a href="/admin/users/@row.Id?status=@Uri.EscapeDataString(filter)&q=@escapedQ">@row.Id</a></td>
                             <td>@row.Name</td>
                             <td>@row.EmailAddress</td>
                             <td>@row.DateCreatedAtUtc.ToString("u")</td>
+                            <td>
+                                <span class="status-pill @LifecycleCss(row)">@LifecycleLabel(row)</span>
+                                @if (row.LastInviteCreatedAtUtc.HasValue)
+                                {
+                                    <div class="muted">Invite: @row.LastInviteCreatedAtUtc.Value.ToString("u")</div>
+                                }
+                            </td>
+                            <td class="users-actions-cell">
+                                <div class="users-actions">
+                                    <a class="btn btn-secondary" href="/admin/users/@row.Id/edit?status=@Uri.EscapeDataString(filter)&q=@escapedQ">Edit</a>
+                                    @if (row.InviteStatus == UserLifecycleStatus.Pending)
+                                    {
+                                        <form method="post" action="/admin/users/@row.Id/resend-invite?status=@Uri.EscapeDataString(filter)&q=@escapedQ" class="users-actions-form">
+                                            @Html.AntiForgeryToken()
+                                            <button type="submit" class="btn btn-secondary">Resend Invite</button>
+                                        </form>
+                                    }
+                                    @if (!currentUserId.HasValue || currentUserId.Value != row.Id)
+                                    {
+                                        <form method="post"
+                                              class="users-actions-form"
+                                              action="/admin/users/@row.Id/delete?status=@Uri.EscapeDataString(filter)&q=@escapedQ"
+                                              onsubmit="return confirm('Delete this user? This cannot be undone.');">
+                                            @Html.AntiForgeryToken()
+                                            <button type="submit" class="btn btn-secondary">Delete User</button>
+                                        </form>
+                                    }
+                                </div>
+                            </td>
                         </tr>
                     }
                     </tbody>

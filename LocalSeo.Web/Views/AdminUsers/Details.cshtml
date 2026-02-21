@@ -2,18 +2,53 @@
 @{
     ViewData["Title"] = $"User #{Model.User.Id}";
     var backFilter = Uri.EscapeDataString((Model.Filter ?? "active").Trim().ToLowerInvariant());
+    var searchTerm = (Model.SearchTerm ?? string.Empty).Trim();
+    var escapedQ = Uri.EscapeDataString(searchTerm);
     var user = Model.User;
-    var status = user.IsActive
-        ? (user.LockedoutUntilUtc.HasValue && user.LockedoutUntilUtc.Value > DateTime.UtcNow
-            ? $"Locked until {user.LockedoutUntilUtc.Value:u}"
-            : "Active")
-        : "Inactive";
+    var canDelete = !Model.CurrentUserId.HasValue || Model.CurrentUserId.Value != user.Id;
+    var status = user.InviteStatus switch
+    {
+        UserLifecycleStatus.Pending => "Pending Invite",
+        UserLifecycleStatus.Disabled => "Disabled",
+        _ => user.LockedoutUntilUtc.HasValue && user.LockedoutUntilUtc.Value > DateTime.UtcNow
+            ? $"Active (Locked until {user.LockedoutUntilUtc.Value:u})"
+            : "Active"
+    };
+    var statusBadgeClass = user.InviteStatus switch
+    {
+        UserLifecycleStatus.Pending => "status-pending",
+        UserLifecycleStatus.Disabled => "status-inactive",
+        _ => "status-active"
+    };
+    var statusMessage = TempData["Status"] as string;
 }
 
 <div class="page-stack">
+    @if (!string.IsNullOrWhiteSpace(statusMessage))
+    {
+        <div class="notice">@statusMessage</div>
+    }
+
     <section class="card">
         <div class="toolbar">
-            <a href="/admin/users?status=@backFilter" class="btn btn-secondary">Back to Users</a>
+            <a href="/admin/users?status=@backFilter&q=@escapedQ" class="btn btn-secondary">Back to Users</a>
+            <a href="/admin/users/@user.Id/edit?status=@backFilter&q=@escapedQ" class="btn btn-secondary">Edit User</a>
+            @if (user.InviteStatus == UserLifecycleStatus.Pending)
+            {
+                <form method="post" action="/admin/users/@user.Id/resend-invite?status=@backFilter&q=@escapedQ">
+                    @Html.AntiForgeryToken()
+                    <button type="submit" class="btn btn-secondary">Resend Invite</button>
+                </form>
+            }
+            @if (canDelete)
+            {
+                <form method="post"
+                      action="/admin/users/@user.Id/delete?status=@backFilter&q=@escapedQ"
+                      onsubmit="return confirm('Delete this user? This cannot be undone.');">
+                    @Html.AntiForgeryToken()
+                    <button type="submit" class="btn btn-secondary">Delete User</button>
+                </form>
+            }
         </div>
     </section>
 
@@ -42,7 +77,11 @@
             </div>
             <div class="form-row">
                 <label>Status</label>
-                <span>@status</span>
+                <span class="status-pill @statusBadgeClass">@status</span>
+                @if (Model.LastInviteCreatedAtUtc.HasValue)
+                {
+                    <div class="muted">Last invite: @Model.LastInviteCreatedAtUtc.Value.ToString("u")</div>
+                }
             </div>
         </div>
     </section>

@@ -1,0 +1,80 @@
+@model AdminEditUserViewModel
+@{
+    ViewData["Title"] = $"Edit User #{Model.User.Id}";
+    var backFilter = Uri.EscapeDataString((Model.Filter ?? "active").Trim().ToLowerInvariant());
+    var searchTerm = (Model.SearchTerm ?? string.Empty).Trim();
+    var escapedQ = Uri.EscapeDataString(searchTerm);
+    var message = (string?)ViewBag.Message;
+}
+
+<div class="page-stack">
+    @if (!string.IsNullOrWhiteSpace(message))
+    {
+        <div class="notice">@message</div>
+    }
+
+    <section class="card">
+        <div class="toolbar">
+            <a href="/admin/users/@Model.User.Id?status=@backFilter&q=@escapedQ" class="btn btn-secondary">Back to User</a>
+            <a href="/admin/users?status=@backFilter&q=@escapedQ" class="btn btn-secondary">Back to Users</a>
+        </div>
+    </section>
+
+    <section class="card">
+        <h2 class="card-title">Edit User</h2>
+        <form method="post" action="/admin/users/@Model.User.Id/edit?status=@backFilter&q=@escapedQ" class="form-grid">
+            @Html.AntiForgeryToken()
+            <div class="form-row">
+                <label for="edit-user-first-name">First Name</label>
+                <input id="edit-user-first-name" name="FirstName" type="text" maxlength="100" value="@Model.User.FirstName" required />
+            </div>
+            <div class="form-row">
+                <label for="edit-user-last-name">Last Name</label>
+                <input id="edit-user-last-name" name="LastName" type="text" maxlength="100" value="@Model.User.LastName" required />
+            </div>
+            <div class="form-row">
+                <label for="edit-user-email">Email Address</label>
+                <input id="edit-user-email" name="EmailAddress" type="email" maxlength="320" value="@Model.User.EmailAddress" required />
+            </div>
+            <div class="form-row">
+                <label for="edit-user-status">Status</label>
+                <select id="edit-user-status" name="InviteStatus">
+                    @if (Model.User.InviteStatus == UserLifecycleStatus.Pending)
+                    {
+                        <option value="@((byte)UserLifecycleStatus.Pending)" selected>Pending</option>
+                    }
+                    else
+                    {
+                        <option value="@((byte)UserLifecycleStatus.Pending)">Pending</option>
+                    }
+                    @if (Model.User.InviteStatus == UserLifecycleStatus.Active)
+                    {
+                        <option value="@((byte)UserLifecycleStatus.Active)" selected>Active</option>
+                    }
+                    else
+                    {
+                        <option value="@((byte)UserLifecycleStatus.Active)">Active</option>
+                    }
+                    @if (Model.User.InviteStatus == UserLifecycleStatus.Disabled)
+                    {
+                        <option value="@((byte)UserLifecycleStatus.Disabled)" selected>Disabled</option>
+                    }
+                    else
+                    {
+                        <option value="@((byte)UserLifecycleStatus.Disabled)">Disabled</option>
+                    }
+                </select>
+            </div>
+            <div class="form-row">
+                <label for="edit-user-is-admin">Admin Access</label>
+                <div>
+                    <input id="edit-user-is-admin" name="IsAdmin" type="checkbox" value="true" @(Model.User.IsAdmin ? "checked" : null) />
+                    <span class="muted">Allow this user to access admin pages.</span>
+                </div>
+            </div>
+            <div class="toolbar">
+                <button type="submit">Save Changes</button>
+            </div>
+        </form>
+    </section>
+</div>

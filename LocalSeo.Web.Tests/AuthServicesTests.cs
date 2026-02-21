@@ -43,7 +43,8 @@ public class AuthServicesTests
                 DatePasswordLastSetUtc: null,
                 LastLoginAtUtc: null,
                 FailedPasswordAttempts: 0,
-                LockedoutUntilUtc: null));
+                LockedoutUntilUtc: null,
+                InviteStatus: UserLifecycleStatus.Active));
 
         var service = new AuthService(
             userRepository,
@@ -145,7 +146,8 @@ public class AuthServicesTests
                 DatePasswordLastSetUtc: null,
                 LastLoginAtUtc: null,
                 FailedPasswordAttempts: 0,
-                LockedoutUntilUtc: null));
+                LockedoutUntilUtc: null,
+                InviteStatus: UserLifecycleStatus.Active));
 
         var sendGrid = new NoopSendGridEmailService();
         var service = new AuthService(
@@ -193,6 +195,12 @@ public class AuthServicesTests
             ForgotPasswordEmails.Add((email, code, resetUrl));
             return Task.CompletedTask;
         }
+
+        public Task SendUserInviteAsync(string email, string recipientName, string inviteUrl, DateTime expiresAtUtc, CancellationToken ct)
+            => Task.CompletedTask;
+
+        public Task SendInviteOtpAsync(string email, string code, DateTime expiresAtUtc, CancellationToken ct)
+            => Task.CompletedTask;
     }
 
     private sealed class InMemoryUserRepository(UserRecord user) : IUserRepository
@@ -212,10 +220,52 @@ public class AuthServicesTests
             return Task.FromResult(current.Id == id ? current : null);
         }
 
-        public Task<IReadOnlyList<AdminUserListRow>> ListByStatusAsync(UserStatusFilter filter, CancellationToken ct)
+        public Task<IReadOnlyList<AdminUserListRow>> ListByStatusAsync(UserStatusFilter filter, string? searchTerm, CancellationToken ct)
         {
-            IReadOnlyList<AdminUserListRow> rows = [new AdminUserListRow(current.Id, $"{current.FirstName} {current.LastName}", current.EmailAddress, current.DateCreatedAtUtc, current.IsActive)];
+            IReadOnlyList<AdminUserListRow> rows =
+            [
+                new AdminUserListRow(
+                    current.Id,
+                    $"{current.FirstName} {current.LastName}",
+                    current.EmailAddress,
+                    current.DateCreatedAtUtc,
+                    current.IsActive,
+                    current.InviteStatus,
+                    LastInviteCreatedAtUtc: null,
+                    HasActiveInvite: false)
+            ];
             return Task.FromResult(rows);
+        }
+
+        public Task<bool> UpdateUserAsync(int userId, string firstName, string lastName, string emailAddress, string emailAddressNormalized, bool isAdmin, UserLifecycleStatus inviteStatus, CancellationToken ct)
+        {
+            if (current.Id != userId)
+                return Task.FromResult(false);
+
+            current = current with
+            {
+                FirstName = firstName,
+                LastName = lastName,
+                EmailAddress = emailAddress,
+                EmailAddressNormalized = emailAddressNormalized,
+                IsAdmin = isAdmin,
+                InviteStatus = inviteStatus,
+                IsActive = inviteStatus == UserLifecycleStatus.Active
+            };
+            return Task.FromResult(true);
+        }
+
+        public Task<bool> DeleteUserAsync(int userId, CancellationToken ct)
+        {
+            if (current.Id != userId)
+                return Task.FromResult(false);
+
+            current = current with
+            {
+                IsActive = false,
+                InviteStatus = UserLifecycleStatus.Disabled
+            };
+            return Task.FromResult(true);
         }
 
         public Task RecordFailedPasswordAttemptAsync(int userId, int lockoutThreshold, int lockoutMinutes, DateTime nowUtc, CancellationToken ct)

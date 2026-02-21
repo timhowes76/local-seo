@@ -11,7 +11,13 @@ public class LoginController(IAuthService authService) : Controller
 {
     [AllowAnonymous]
     [HttpGet("/login")]
-    public IActionResult Index() => View(new LoginRequestModel());
+    public IActionResult Index()
+    {
+        var statusMessage = TempData["Status"] as string;
+        if (!string.IsNullOrWhiteSpace(statusMessage))
+            ViewBag.Message = statusMessage;
+        return View(new LoginRequestModel());
+    }
 
     [AllowAnonymous]
     [HttpPost("/login")]

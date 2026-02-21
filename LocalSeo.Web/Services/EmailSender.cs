@@ -8,6 +8,8 @@ public interface ISendGridEmailService
 {
     Task SendLoginTwoFactorCodeAsync(string email, string code, CancellationToken ct);
     Task SendForgotPasswordCodeAsync(string email, string code, string resetUrl, CancellationToken ct);
+    Task SendUserInviteAsync(string email, string recipientName, string inviteUrl, DateTime expiresAtUtc, CancellationToken ct);
+    Task SendInviteOtpAsync(string email, string code, DateTime expiresAtUtc, CancellationToken ct);
 }
 
 public sealed class SendGridEmailService(
@@ -33,13 +35,36 @@ public sealed class SendGridEmailService(
             ct);
     }
 
+    public Task SendUserInviteAsync(string email, string recipientName, string inviteUrl, DateTime expiresAtUtc, CancellationToken ct)
+    {
+        var friendlyName = string.IsNullOrWhiteSpace(recipientName) ? "there" : recipientName.Trim();
+        return SendAsync(
+            email,
+            "You have been invited to Local SEO",
+            $"Hi {friendlyName}, you have been invited to Local SEO. Open this invite link to start onboarding: {inviteUrl}. This link expires at {expiresAtUtc:u}.",
+            ct);
+    }
+
+    public Task SendInviteOtpAsync(string email, string code, DateTime expiresAtUtc, CancellationToken ct)
+    {
+        return SendAsync(
+            email,
+            "Your Local SEO invite verification code",
+            $"Your invite verification code is {code}. It expires at {expiresAtUtc:u}.",
+            ct);
+    }
+
     private async Task SendAsync(string email, string subject, string plainTextBody, CancellationToken ct)
     {
         var cfg = options.Value;
         if (string.IsNullOrWhiteSpace(cfg.ApiKey))
         {
-            logger.LogWarning("SendGrid API key not configured; skipping outbound email for {Email}", email);
-            return;
+            throw new InvalidOperationException("SendGrid API key is not configured.");
+        }
+
+        if (string.IsNullOrWhiteSpace(cfg.FromEmail))
+        {
+            throw new InvalidOperationException("SendGrid FromEmail is not configured.");
         }
 
         var client = factory.CreateClient();
@@ -53,7 +78,19 @@ public sealed class SendGridEmailService(
             content = new[] { new { type = "text/plain", value = plainTextBody } }
         });
 
-        var resp = await client.SendAsync(req, ct);
-        resp.EnsureSuccessStatusCode();
+        using var resp = await client.SendAsync(req, ct);
+        if (resp.IsSuccessStatusCode)
+            return;
+
+        var responseBody = await resp.Content.ReadAsStringAsync(ct);
+        logger.LogError(
+            "SendGrid email send failed. StatusCode={StatusCode} Recipient={Recipient} Body={Body}",
+            (int)resp.StatusCode,
+            email,
+            responseBody);
+        throw new HttpRequestException(
+            $"SendGrid email send failed with HTTP {(int)resp.StatusCode}.",
+            null,
+            resp.StatusCode);
     }
 }

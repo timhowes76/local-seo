@@ -1,7 +1,12 @@
 using System.Net.Http.Headers;
+using System.Security.Claims;
 using LocalSeo.Web.Data;
+using LocalSeo.Web.Models;
 using LocalSeo.Web.Options;
 using LocalSeo.Web.Services;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.Extensions.DependencyInjection;
 using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -19,6 +24,7 @@ builder.Services.Configure<PlacesOptions>(builder.Configuration.GetSection("Plac
 builder.Services.Configure<DataForSeoOptions>(builder.Configuration.GetSection("DataForSeo"));
 builder.Services.Configure<ZohoOAuthOptions>(builder.Configuration.GetSection("ZohoOAuth"));
 builder.Services.Configure<CompaniesHouseOptions>(builder.Configuration.GetSection("CompaniesHouse"));
+builder.Services.Configure<InviteOptions>(builder.Configuration.GetSection("Invites"));
 
 builder.Services.AddControllersWithViews();
 builder.Services.AddHttpClient();
@@ -35,6 +41,37 @@ builder.Services.AddAuthentication("LocalCookie")
         options.Cookie.SameSite = SameSiteMode.Lax;
         options.SlidingExpiration = true;
         options.ExpireTimeSpan = TimeSpan.FromHours(8);
+        options.Events = new CookieAuthenticationEvents
+        {
+            OnValidatePrincipal = async context =>
+            {
+                if (context.Principal?.Identity?.IsAuthenticated != true)
+                    return;
+
+                var idValue = context.Principal.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (!int.TryParse(idValue, out var userId) || userId <= 0)
+                {
+                    context.RejectPrincipal();
+                    await context.HttpContext.SignOutAsync("LocalCookie");
+                    return;
+                }
+
+                try
+                {
+                    var userRepository = context.HttpContext.RequestServices.GetRequiredService<IUserRepository>();
+                    var user = await userRepository.GetByIdAsync(userId, context.HttpContext.RequestAborted);
+                    if (user is null || !user.IsActive || user.InviteStatus != UserLifecycleStatus.Active)
+                    {
+                        context.RejectPrincipal();
+                        await context.HttpContext.SignOutAsync("LocalCookie");
+                    }
+                }
+                catch
+                {
+                    // Keep current principal if DB validation is temporarily unavailable.
+                }
+            }
+        };
     });
 
 builder.Services.AddAuthorization(options =>
@@ -48,11 +85,14 @@ builder.Services.AddScoped<DbBootstrapper>();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<IEmailAddressNormalizer, EmailAddressNormalizer>();
 builder.Services.AddScoped<IUserRepository, UserRepository>();
+builder.Services.AddScoped<IUserInviteRepository, UserInviteRepository>();
 builder.Services.AddScoped<IEmailCodeRepository, EmailCodeRepository>();
+builder.Services.AddScoped<ICryptoService, CryptoService>();
 builder.Services.AddScoped<IPasswordHasherService, PasswordHasherService>();
 builder.Services.AddScoped<IRateLimiterService, RateLimiterService>();
 builder.Services.AddScoped<IEmailCodeService, EmailCodeService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddScoped<IInviteService, InviteService>();
 builder.Services.AddScoped<IGooglePlacesClient, GooglePlacesClient>();
 builder.Services.AddScoped<ISearchIngestionService, SearchIngestionService>();
 builder.Services.AddScoped<IAdminSettingsService, AdminSettingsService>();

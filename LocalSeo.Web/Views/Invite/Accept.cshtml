@@ -1,0 +1,48 @@
+@model InviteAcceptViewModel
+@{
+    ViewData["Title"] = "Accept Invitation";
+}
+
+<div class="login-card card">
+    <div class="login-brand">
+        <img class="login-brand-logo" src="/assets/images/logo.svg" alt="Kontrolit" />
+        <h2 class="card-title">Accept Invitation</h2>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(Model.Message))
+    {
+        <div class="notice">@Model.Message</div>
+    }
+
+    <p class="muted">We will verify ownership of <strong>@Model.EmailAddressMasked</strong> before you set your password.</p>
+
+    @if (Model.OtpVerified)
+    {
+        <p class="muted">Email verified. Continue to set your password.</p>
+        <div class="toolbar">
+            <a class="btn btn-secondary" href="/invite/set-password?token=@Uri.EscapeDataString(Model.Token)">Continue</a>
+        </div>
+    }
+    else
+    {
+        <form method="post" action="/invite/send-otp" class="form-grid">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="Token" value="@Model.Token" />
+            <div class="toolbar">
+                <button type="submit">Send Verification Code</button>
+            </div>
+        </form>
+
+        <form method="post" action="/invite/verify-otp" class="form-grid">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="Token" value="@Model.Token" />
+            <div class="form-row">
+                <label for="invite-otp-code">Verification code</label>
+                <input id="invite-otp-code" name="Code" type="text" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" required />
+            </div>
+            <div class="login-actions">
+                <button type="submit">Verify Code</button>
+            </div>
+        </form>
+    }
+</div>

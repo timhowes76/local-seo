@@ -903,6 +903,27 @@ tbody tr:hover {
     overflow-x: auto;
 }
 
+.users-actions-col,
+.users-actions-cell {
+    min-width: 320px;
+    width: 320px;
+}
+
+.users-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+}
+
+.users-actions-form {
+    margin: 0;
+}
+
+.users-actions .btn {
+    white-space: nowrap;
+}
+
 .run-logo-col {
     width: 52px;
 }
