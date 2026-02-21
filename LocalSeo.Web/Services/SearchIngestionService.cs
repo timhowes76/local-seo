@@ -560,7 +560,7 @@ ORDER BY s.RankPosition", new { RunId = runId }, cancellationToken: ct))).ToList
         if (run.FetchGoogleQuestionsAndAnswers)
             selectedTaskTypes.Add(("questions_and_answers", "Google Question & Answers"));
         if (run.FetchGoogleSocialProfiles)
-            selectedTaskTypes.Add(("social_profiles", "Google Social Profiles"));
+            selectedTaskTypes.Add(("social_profiles", "Social Profiles"));
 
         if (selectedTaskTypes.Count == 0)
             return [];
@@ -1931,7 +1931,7 @@ ORDER BY m.[Year] DESC, m.[Month] DESC;", new
             Build("reviews", "Google Review collection", settings.GoogleReviewsRefreshHours),
             Build("my_business_updates", "Google Updates collection", settings.GoogleUpdatesRefreshHours),
             Build("questions_and_answers", "Google Question & Answers collection", settings.GoogleQuestionsAndAnswersRefreshHours),
-            Build("social_profiles", "Google Social Profile collection", settings.GoogleSocialProfilesRefreshHours)
+            Build("social_profiles", "Social Profile collection", settings.GoogleSocialProfilesRefreshHours)
         };
     }
 

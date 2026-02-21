@@ -813,6 +813,32 @@ BEGIN
     ZohoLeadOwnerId nvarchar(50) NOT NULL CONSTRAINT DF_AppSettings_ZohoLeadOwnerId DEFAULT(N'1108404000000068001'),
     ZohoLeadNextAction nvarchar(300) NOT NULL CONSTRAINT DF_AppSettings_ZohoLeadNextAction DEFAULT(N'Make first contact'),
     SiteUrl nvarchar(500) NOT NULL CONSTRAINT DF_AppSettings_SiteUrl DEFAULT(N'https://briskly-viceless-kayleen.ngrok-free.dev/'),
+    MinimumPasswordLength int NOT NULL CONSTRAINT DF_AppSettings_MinimumPasswordLength DEFAULT(12),
+    PasswordRequiresNumber bit NOT NULL CONSTRAINT DF_AppSettings_PasswordRequiresNumber DEFAULT(1),
+    PasswordRequiresCapitalLetter bit NOT NULL CONSTRAINT DF_AppSettings_PasswordRequiresCapitalLetter DEFAULT(1),
+    PasswordRequiresSpecialCharacter bit NOT NULL CONSTRAINT DF_AppSettings_PasswordRequiresSpecialCharacter DEFAULT(1),
+    LoginLockoutThreshold int NOT NULL CONSTRAINT DF_AppSettings_LoginLockoutThreshold DEFAULT(5),
+    LoginLockoutMinutes int NOT NULL CONSTRAINT DF_AppSettings_LoginLockoutMinutes DEFAULT(15),
+    EmailCodeCooldownSeconds int NOT NULL CONSTRAINT DF_AppSettings_EmailCodeCooldownSeconds DEFAULT(60),
+    EmailCodeMaxPerHourPerEmail int NOT NULL CONSTRAINT DF_AppSettings_EmailCodeMaxPerHourPerEmail DEFAULT(10),
+    EmailCodeMaxPerHourPerIp int NOT NULL CONSTRAINT DF_AppSettings_EmailCodeMaxPerHourPerIp DEFAULT(50),
+    EmailCodeExpiryMinutes int NOT NULL CONSTRAINT DF_AppSettings_EmailCodeExpiryMinutes DEFAULT(10),
+    EmailCodeMaxFailedAttemptsPerCode int NOT NULL CONSTRAINT DF_AppSettings_EmailCodeMaxFailedAttemptsPerCode DEFAULT(5),
+    InviteExpiryHours int NOT NULL CONSTRAINT DF_AppSettings_InviteExpiryHours DEFAULT(24),
+    InviteOtpExpiryMinutes int NOT NULL CONSTRAINT DF_AppSettings_InviteOtpExpiryMinutes DEFAULT(10),
+    InviteOtpCooldownSeconds int NOT NULL CONSTRAINT DF_AppSettings_InviteOtpCooldownSeconds DEFAULT(60),
+    InviteOtpMaxPerHourPerInvite int NOT NULL CONSTRAINT DF_AppSettings_InviteOtpMaxPerHourPerInvite DEFAULT(3),
+    InviteOtpMaxPerHourPerIp int NOT NULL CONSTRAINT DF_AppSettings_InviteOtpMaxPerHourPerIp DEFAULT(25),
+    InviteOtpMaxAttempts int NOT NULL CONSTRAINT DF_AppSettings_InviteOtpMaxAttempts DEFAULT(5),
+    InviteOtpLockMinutes int NOT NULL CONSTRAINT DF_AppSettings_InviteOtpLockMinutes DEFAULT(15),
+    InviteMaxAttempts int NOT NULL CONSTRAINT DF_AppSettings_InviteMaxAttempts DEFAULT(10),
+    InviteLockMinutes int NOT NULL CONSTRAINT DF_AppSettings_InviteLockMinutes DEFAULT(15),
+    ChangePasswordOtpExpiryMinutes int NOT NULL CONSTRAINT DF_AppSettings_ChangePasswordOtpExpiryMinutes DEFAULT(10),
+    ChangePasswordOtpCooldownSeconds int NOT NULL CONSTRAINT DF_AppSettings_ChangePasswordOtpCooldownSeconds DEFAULT(60),
+    ChangePasswordOtpMaxPerHourPerUser int NOT NULL CONSTRAINT DF_AppSettings_ChangePasswordOtpMaxPerHourPerUser DEFAULT(3),
+    ChangePasswordOtpMaxPerHourPerIp int NOT NULL CONSTRAINT DF_AppSettings_ChangePasswordOtpMaxPerHourPerIp DEFAULT(25),
+    ChangePasswordOtpMaxAttempts int NOT NULL CONSTRAINT DF_AppSettings_ChangePasswordOtpMaxAttempts DEFAULT(5),
+    ChangePasswordOtpLockMinutes int NOT NULL CONSTRAINT DF_AppSettings_ChangePasswordOtpLockMinutes DEFAULT(15),
     UpdatedAtUtc datetime2(0) NOT NULL CONSTRAINT DF_AppSettings_UpdatedAtUtc DEFAULT SYSUTCDATETIME()
   );
 END;
@@ -858,6 +884,58 @@ IF COL_LENGTH('dbo.AppSettings', 'ZohoLeadNextAction') IS NULL
   ALTER TABLE dbo.AppSettings ADD ZohoLeadNextAction nvarchar(300) NOT NULL CONSTRAINT DF_AppSettings_ZohoLeadNextAction_Alt DEFAULT(N'Make first contact');
 IF COL_LENGTH('dbo.AppSettings', 'SiteUrl') IS NULL
   ALTER TABLE dbo.AppSettings ADD SiteUrl nvarchar(500) NOT NULL CONSTRAINT DF_AppSettings_SiteUrl_Alt DEFAULT(N'https://briskly-viceless-kayleen.ngrok-free.dev/');
+IF COL_LENGTH('dbo.AppSettings', 'MinimumPasswordLength') IS NULL
+  ALTER TABLE dbo.AppSettings ADD MinimumPasswordLength int NOT NULL CONSTRAINT DF_AppSettings_MinimumPasswordLength_Alt DEFAULT(12);
+IF COL_LENGTH('dbo.AppSettings', 'PasswordRequiresNumber') IS NULL
+  ALTER TABLE dbo.AppSettings ADD PasswordRequiresNumber bit NOT NULL CONSTRAINT DF_AppSettings_PasswordRequiresNumber_Alt DEFAULT(1);
+IF COL_LENGTH('dbo.AppSettings', 'PasswordRequiresCapitalLetter') IS NULL
+  ALTER TABLE dbo.AppSettings ADD PasswordRequiresCapitalLetter bit NOT NULL CONSTRAINT DF_AppSettings_PasswordRequiresCapitalLetter_Alt DEFAULT(1);
+IF COL_LENGTH('dbo.AppSettings', 'PasswordRequiresSpecialCharacter') IS NULL
+  ALTER TABLE dbo.AppSettings ADD PasswordRequiresSpecialCharacter bit NOT NULL CONSTRAINT DF_AppSettings_PasswordRequiresSpecialCharacter_Alt DEFAULT(1);
+IF COL_LENGTH('dbo.AppSettings', 'LoginLockoutThreshold') IS NULL
+  ALTER TABLE dbo.AppSettings ADD LoginLockoutThreshold int NOT NULL CONSTRAINT DF_AppSettings_LoginLockoutThreshold_Alt DEFAULT(5);
+IF COL_LENGTH('dbo.AppSettings', 'LoginLockoutMinutes') IS NULL
+  ALTER TABLE dbo.AppSettings ADD LoginLockoutMinutes int NOT NULL CONSTRAINT DF_AppSettings_LoginLockoutMinutes_Alt DEFAULT(15);
+IF COL_LENGTH('dbo.AppSettings', 'EmailCodeCooldownSeconds') IS NULL
+  ALTER TABLE dbo.AppSettings ADD EmailCodeCooldownSeconds int NOT NULL CONSTRAINT DF_AppSettings_EmailCodeCooldownSeconds_Alt DEFAULT(60);
+IF COL_LENGTH('dbo.AppSettings', 'EmailCodeMaxPerHourPerEmail') IS NULL
+  ALTER TABLE dbo.AppSettings ADD EmailCodeMaxPerHourPerEmail int NOT NULL CONSTRAINT DF_AppSettings_EmailCodeMaxPerHourPerEmail_Alt DEFAULT(10);
+IF COL_LENGTH('dbo.AppSettings', 'EmailCodeMaxPerHourPerIp') IS NULL
+  ALTER TABLE dbo.AppSettings ADD EmailCodeMaxPerHourPerIp int NOT NULL CONSTRAINT DF_AppSettings_EmailCodeMaxPerHourPerIp_Alt DEFAULT(50);
+IF COL_LENGTH('dbo.AppSettings', 'EmailCodeExpiryMinutes') IS NULL
+  ALTER TABLE dbo.AppSettings ADD EmailCodeExpiryMinutes int NOT NULL CONSTRAINT DF_AppSettings_EmailCodeExpiryMinutes_Alt DEFAULT(10);
+IF COL_LENGTH('dbo.AppSettings', 'EmailCodeMaxFailedAttemptsPerCode') IS NULL
+  ALTER TABLE dbo.AppSettings ADD EmailCodeMaxFailedAttemptsPerCode int NOT NULL CONSTRAINT DF_AppSettings_EmailCodeMaxFailedAttemptsPerCode_Alt DEFAULT(5);
+IF COL_LENGTH('dbo.AppSettings', 'InviteExpiryHours') IS NULL
+  ALTER TABLE dbo.AppSettings ADD InviteExpiryHours int NOT NULL CONSTRAINT DF_AppSettings_InviteExpiryHours_Alt DEFAULT(24);
+IF COL_LENGTH('dbo.AppSettings', 'InviteOtpExpiryMinutes') IS NULL
+  ALTER TABLE dbo.AppSettings ADD InviteOtpExpiryMinutes int NOT NULL CONSTRAINT DF_AppSettings_InviteOtpExpiryMinutes_Alt DEFAULT(10);
+IF COL_LENGTH('dbo.AppSettings', 'InviteOtpCooldownSeconds') IS NULL
+  ALTER TABLE dbo.AppSettings ADD InviteOtpCooldownSeconds int NOT NULL CONSTRAINT DF_AppSettings_InviteOtpCooldownSeconds_Alt DEFAULT(60);
+IF COL_LENGTH('dbo.AppSettings', 'InviteOtpMaxPerHourPerInvite') IS NULL
+  ALTER TABLE dbo.AppSettings ADD InviteOtpMaxPerHourPerInvite int NOT NULL CONSTRAINT DF_AppSettings_InviteOtpMaxPerHourPerInvite_Alt DEFAULT(3);
+IF COL_LENGTH('dbo.AppSettings', 'InviteOtpMaxPerHourPerIp') IS NULL
+  ALTER TABLE dbo.AppSettings ADD InviteOtpMaxPerHourPerIp int NOT NULL CONSTRAINT DF_AppSettings_InviteOtpMaxPerHourPerIp_Alt DEFAULT(25);
+IF COL_LENGTH('dbo.AppSettings', 'InviteOtpMaxAttempts') IS NULL
+  ALTER TABLE dbo.AppSettings ADD InviteOtpMaxAttempts int NOT NULL CONSTRAINT DF_AppSettings_InviteOtpMaxAttempts_Alt DEFAULT(5);
+IF COL_LENGTH('dbo.AppSettings', 'InviteOtpLockMinutes') IS NULL
+  ALTER TABLE dbo.AppSettings ADD InviteOtpLockMinutes int NOT NULL CONSTRAINT DF_AppSettings_InviteOtpLockMinutes_Alt DEFAULT(15);
+IF COL_LENGTH('dbo.AppSettings', 'InviteMaxAttempts') IS NULL
+  ALTER TABLE dbo.AppSettings ADD InviteMaxAttempts int NOT NULL CONSTRAINT DF_AppSettings_InviteMaxAttempts_Alt DEFAULT(10);
+IF COL_LENGTH('dbo.AppSettings', 'InviteLockMinutes') IS NULL
+  ALTER TABLE dbo.AppSettings ADD InviteLockMinutes int NOT NULL CONSTRAINT DF_AppSettings_InviteLockMinutes_Alt DEFAULT(15);
+IF COL_LENGTH('dbo.AppSettings', 'ChangePasswordOtpExpiryMinutes') IS NULL
+  ALTER TABLE dbo.AppSettings ADD ChangePasswordOtpExpiryMinutes int NOT NULL CONSTRAINT DF_AppSettings_ChangePasswordOtpExpiryMinutes_Alt DEFAULT(10);
+IF COL_LENGTH('dbo.AppSettings', 'ChangePasswordOtpCooldownSeconds') IS NULL
+  ALTER TABLE dbo.AppSettings ADD ChangePasswordOtpCooldownSeconds int NOT NULL CONSTRAINT DF_AppSettings_ChangePasswordOtpCooldownSeconds_Alt DEFAULT(60);
+IF COL_LENGTH('dbo.AppSettings', 'ChangePasswordOtpMaxPerHourPerUser') IS NULL
+  ALTER TABLE dbo.AppSettings ADD ChangePasswordOtpMaxPerHourPerUser int NOT NULL CONSTRAINT DF_AppSettings_ChangePasswordOtpMaxPerHourPerUser_Alt DEFAULT(3);
+IF COL_LENGTH('dbo.AppSettings', 'ChangePasswordOtpMaxPerHourPerIp') IS NULL
+  ALTER TABLE dbo.AppSettings ADD ChangePasswordOtpMaxPerHourPerIp int NOT NULL CONSTRAINT DF_AppSettings_ChangePasswordOtpMaxPerHourPerIp_Alt DEFAULT(25);
+IF COL_LENGTH('dbo.AppSettings', 'ChangePasswordOtpMaxAttempts') IS NULL
+  ALTER TABLE dbo.AppSettings ADD ChangePasswordOtpMaxAttempts int NOT NULL CONSTRAINT DF_AppSettings_ChangePasswordOtpMaxAttempts_Alt DEFAULT(5);
+IF COL_LENGTH('dbo.AppSettings', 'ChangePasswordOtpLockMinutes') IS NULL
+  ALTER TABLE dbo.AppSettings ADD ChangePasswordOtpLockMinutes int NOT NULL CONSTRAINT DF_AppSettings_ChangePasswordOtpLockMinutes_Alt DEFAULT(15);
 IF COL_LENGTH('dbo.AppSettings', 'UpdatedAtUtc') IS NULL
   ALTER TABLE dbo.AppSettings ADD UpdatedAtUtc datetime2(0) NOT NULL CONSTRAINT DF_AppSettings_UpdatedAtUtc_Alt DEFAULT SYSUTCDATETIME();
 EXEC(N'
@@ -885,10 +963,36 @@ WHEN MATCHED THEN UPDATE SET
   ZohoLeadOwnerName = CASE WHEN target.ZohoLeadOwnerName IS NULL OR LEN(LTRIM(RTRIM(target.ZohoLeadOwnerName))) = 0 THEN N''Richard Howes'' ELSE LEFT(target.ZohoLeadOwnerName, 200) END,
   ZohoLeadOwnerId = CASE WHEN target.ZohoLeadOwnerId IS NULL OR LEN(LTRIM(RTRIM(target.ZohoLeadOwnerId))) = 0 THEN N''1108404000000068001'' ELSE LEFT(target.ZohoLeadOwnerId, 50) END,
   ZohoLeadNextAction = CASE WHEN target.ZohoLeadNextAction IS NULL OR LEN(LTRIM(RTRIM(target.ZohoLeadNextAction))) = 0 THEN N''Make first contact'' ELSE LEFT(target.ZohoLeadNextAction, 300) END,
-  SiteUrl = CASE WHEN target.SiteUrl IS NULL OR LEN(LTRIM(RTRIM(target.SiteUrl))) = 0 THEN N''https://briskly-viceless-kayleen.ngrok-free.dev/'' ELSE LEFT(target.SiteUrl, 500) END
+  SiteUrl = CASE WHEN target.SiteUrl IS NULL OR LEN(LTRIM(RTRIM(target.SiteUrl))) = 0 THEN N''https://briskly-viceless-kayleen.ngrok-free.dev/'' ELSE LEFT(target.SiteUrl, 500) END,
+  MinimumPasswordLength = CASE WHEN target.MinimumPasswordLength IS NULL OR target.MinimumPasswordLength < 8 THEN 12 WHEN target.MinimumPasswordLength > 128 THEN 128 ELSE target.MinimumPasswordLength END,
+  PasswordRequiresNumber = ISNULL(target.PasswordRequiresNumber, 1),
+  PasswordRequiresCapitalLetter = ISNULL(target.PasswordRequiresCapitalLetter, 1),
+  PasswordRequiresSpecialCharacter = ISNULL(target.PasswordRequiresSpecialCharacter, 1),
+  LoginLockoutThreshold = CASE WHEN target.LoginLockoutThreshold IS NULL OR target.LoginLockoutThreshold < 1 THEN 5 ELSE target.LoginLockoutThreshold END,
+  LoginLockoutMinutes = CASE WHEN target.LoginLockoutMinutes IS NULL OR target.LoginLockoutMinutes < 1 THEN 15 ELSE target.LoginLockoutMinutes END,
+  EmailCodeCooldownSeconds = CASE WHEN target.EmailCodeCooldownSeconds IS NULL OR target.EmailCodeCooldownSeconds < 1 THEN 60 ELSE target.EmailCodeCooldownSeconds END,
+  EmailCodeMaxPerHourPerEmail = CASE WHEN target.EmailCodeMaxPerHourPerEmail IS NULL OR target.EmailCodeMaxPerHourPerEmail < 1 THEN 10 ELSE target.EmailCodeMaxPerHourPerEmail END,
+  EmailCodeMaxPerHourPerIp = CASE WHEN target.EmailCodeMaxPerHourPerIp IS NULL OR target.EmailCodeMaxPerHourPerIp < 1 THEN 50 ELSE target.EmailCodeMaxPerHourPerIp END,
+  EmailCodeExpiryMinutes = CASE WHEN target.EmailCodeExpiryMinutes IS NULL OR target.EmailCodeExpiryMinutes < 1 THEN 10 ELSE target.EmailCodeExpiryMinutes END,
+  EmailCodeMaxFailedAttemptsPerCode = CASE WHEN target.EmailCodeMaxFailedAttemptsPerCode IS NULL OR target.EmailCodeMaxFailedAttemptsPerCode < 1 THEN 5 ELSE target.EmailCodeMaxFailedAttemptsPerCode END,
+  InviteExpiryHours = CASE WHEN target.InviteExpiryHours IS NULL OR target.InviteExpiryHours < 1 THEN 24 ELSE target.InviteExpiryHours END,
+  InviteOtpExpiryMinutes = CASE WHEN target.InviteOtpExpiryMinutes IS NULL OR target.InviteOtpExpiryMinutes < 1 THEN 10 ELSE target.InviteOtpExpiryMinutes END,
+  InviteOtpCooldownSeconds = CASE WHEN target.InviteOtpCooldownSeconds IS NULL OR target.InviteOtpCooldownSeconds < 1 THEN 60 ELSE target.InviteOtpCooldownSeconds END,
+  InviteOtpMaxPerHourPerInvite = CASE WHEN target.InviteOtpMaxPerHourPerInvite IS NULL OR target.InviteOtpMaxPerHourPerInvite < 1 THEN 3 ELSE target.InviteOtpMaxPerHourPerInvite END,
+  InviteOtpMaxPerHourPerIp = CASE WHEN target.InviteOtpMaxPerHourPerIp IS NULL OR target.InviteOtpMaxPerHourPerIp < 1 THEN 25 ELSE target.InviteOtpMaxPerHourPerIp END,
+  InviteOtpMaxAttempts = CASE WHEN target.InviteOtpMaxAttempts IS NULL OR target.InviteOtpMaxAttempts < 1 THEN 5 ELSE target.InviteOtpMaxAttempts END,
+  InviteOtpLockMinutes = CASE WHEN target.InviteOtpLockMinutes IS NULL OR target.InviteOtpLockMinutes < 1 THEN 15 ELSE target.InviteOtpLockMinutes END,
+  InviteMaxAttempts = CASE WHEN target.InviteMaxAttempts IS NULL OR target.InviteMaxAttempts < 1 THEN 10 ELSE target.InviteMaxAttempts END,
+  InviteLockMinutes = CASE WHEN target.InviteLockMinutes IS NULL OR target.InviteLockMinutes < 1 THEN 15 ELSE target.InviteLockMinutes END,
+  ChangePasswordOtpExpiryMinutes = CASE WHEN target.ChangePasswordOtpExpiryMinutes IS NULL OR target.ChangePasswordOtpExpiryMinutes < 1 THEN 10 ELSE target.ChangePasswordOtpExpiryMinutes END,
+  ChangePasswordOtpCooldownSeconds = CASE WHEN target.ChangePasswordOtpCooldownSeconds IS NULL OR target.ChangePasswordOtpCooldownSeconds < 1 THEN 60 ELSE target.ChangePasswordOtpCooldownSeconds END,
+  ChangePasswordOtpMaxPerHourPerUser = CASE WHEN target.ChangePasswordOtpMaxPerHourPerUser IS NULL OR target.ChangePasswordOtpMaxPerHourPerUser < 1 THEN 3 ELSE target.ChangePasswordOtpMaxPerHourPerUser END,
+  ChangePasswordOtpMaxPerHourPerIp = CASE WHEN target.ChangePasswordOtpMaxPerHourPerIp IS NULL OR target.ChangePasswordOtpMaxPerHourPerIp < 1 THEN 25 ELSE target.ChangePasswordOtpMaxPerHourPerIp END,
+  ChangePasswordOtpMaxAttempts = CASE WHEN target.ChangePasswordOtpMaxAttempts IS NULL OR target.ChangePasswordOtpMaxAttempts < 1 THEN 5 ELSE target.ChangePasswordOtpMaxAttempts END,
+  ChangePasswordOtpLockMinutes = CASE WHEN target.ChangePasswordOtpLockMinutes IS NULL OR target.ChangePasswordOtpLockMinutes < 1 THEN 15 ELSE target.ChangePasswordOtpLockMinutes END
 WHEN NOT MATCHED THEN
-  INSERT(AppSettingsId, EnhancedGoogleDataRefreshHours, GoogleReviewsRefreshHours, GoogleUpdatesRefreshHours, GoogleQuestionsAndAnswersRefreshHours, GoogleSocialProfilesRefreshHours, SearchVolumeRefreshCooldownDays, MapPackClickSharePercent, MapPackCtrPosition1Percent, MapPackCtrPosition2Percent, MapPackCtrPosition3Percent, MapPackCtrPosition4Percent, MapPackCtrPosition5Percent, MapPackCtrPosition6Percent, MapPackCtrPosition7Percent, MapPackCtrPosition8Percent, MapPackCtrPosition9Percent, MapPackCtrPosition10Percent, ZohoLeadOwnerName, ZohoLeadOwnerId, ZohoLeadNextAction, SiteUrl, UpdatedAtUtc)
-  VALUES(1, 24, 24, 24, 24, 24, 30, 50, 38, 23, 16, 7, 5, 4, 3, 2, 1, 1, N''Richard Howes'', N''1108404000000068001'', N''Make first contact'', N''https://briskly-viceless-kayleen.ngrok-free.dev/'', SYSUTCDATETIME());
+  INSERT(AppSettingsId, EnhancedGoogleDataRefreshHours, GoogleReviewsRefreshHours, GoogleUpdatesRefreshHours, GoogleQuestionsAndAnswersRefreshHours, GoogleSocialProfilesRefreshHours, SearchVolumeRefreshCooldownDays, MapPackClickSharePercent, MapPackCtrPosition1Percent, MapPackCtrPosition2Percent, MapPackCtrPosition3Percent, MapPackCtrPosition4Percent, MapPackCtrPosition5Percent, MapPackCtrPosition6Percent, MapPackCtrPosition7Percent, MapPackCtrPosition8Percent, MapPackCtrPosition9Percent, MapPackCtrPosition10Percent, ZohoLeadOwnerName, ZohoLeadOwnerId, ZohoLeadNextAction, SiteUrl, MinimumPasswordLength, PasswordRequiresNumber, PasswordRequiresCapitalLetter, PasswordRequiresSpecialCharacter, LoginLockoutThreshold, LoginLockoutMinutes, EmailCodeCooldownSeconds, EmailCodeMaxPerHourPerEmail, EmailCodeMaxPerHourPerIp, EmailCodeExpiryMinutes, EmailCodeMaxFailedAttemptsPerCode, InviteExpiryHours, InviteOtpExpiryMinutes, InviteOtpCooldownSeconds, InviteOtpMaxPerHourPerInvite, InviteOtpMaxPerHourPerIp, InviteOtpMaxAttempts, InviteOtpLockMinutes, InviteMaxAttempts, InviteLockMinutes, ChangePasswordOtpExpiryMinutes, ChangePasswordOtpCooldownSeconds, ChangePasswordOtpMaxPerHourPerUser, ChangePasswordOtpMaxPerHourPerIp, ChangePasswordOtpMaxAttempts, ChangePasswordOtpLockMinutes, UpdatedAtUtc)
+  VALUES(1, 24, 24, 24, 24, 24, 30, 50, 38, 23, 16, 7, 5, 4, 3, 2, 1, 1, N''Richard Howes'', N''1108404000000068001'', N''Make first contact'', N''https://briskly-viceless-kayleen.ngrok-free.dev/'', 12, 1, 1, 1, 5, 15, 60, 10, 50, 10, 5, 24, 10, 60, 3, 25, 5, 15, 10, 15, 10, 60, 3, 25, 5, 15, SYSUTCDATETIME());
 ');
 IF OBJECT_ID('dbo.GoogleBusinessProfileCategory','U') IS NULL
 BEGIN

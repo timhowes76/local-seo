@@ -47,17 +47,7 @@ public class PasswordChangeServiceTests
             passwordHasher,
             crypto,
             email,
-            Microsoft.Extensions.Options.Options.Create(new AuthOptions { LockoutThreshold = 5, LockoutMinutes = 15 }),
-            Microsoft.Extensions.Options.Options.Create(new ChangePasswordOptions
-            {
-                OtpExpiryMinutes = 10,
-                OtpCooldownSeconds = 1,
-                OtpMaxPerHourPerUser = 10,
-                OtpMaxPerHourPerIp = 50,
-                OtpMaxAttempts = 5,
-                OtpLockMinutes = 15,
-                PasswordMinLength = 10
-            }),
+            new FixedSecuritySettingsProvider(BuildSecuritySettings()),
             timeProvider,
             NullLogger<PasswordChangeService>.Instance);
 
@@ -121,17 +111,7 @@ public class PasswordChangeServiceTests
             passwordHasher,
             crypto,
             email,
-            Microsoft.Extensions.Options.Options.Create(new AuthOptions { LockoutThreshold = 5, LockoutMinutes = 15 }),
-            Microsoft.Extensions.Options.Options.Create(new ChangePasswordOptions
-            {
-                OtpExpiryMinutes = 10,
-                OtpCooldownSeconds = 1,
-                OtpMaxPerHourPerUser = 10,
-                OtpMaxPerHourPerIp = 50,
-                OtpMaxAttempts = 5,
-                OtpLockMinutes = 15,
-                PasswordMinLength = 10
-            }),
+            new FixedSecuritySettingsProvider(BuildSecuritySettings()),
             timeProvider,
             NullLogger<PasswordChangeService>.Instance);
 
@@ -346,5 +326,38 @@ public class PasswordChangeServiceTests
     {
         private DateTimeOffset current = nowUtc;
         public override DateTimeOffset GetUtcNow() => current;
+    }
+
+    private sealed class FixedSecuritySettingsProvider(SecuritySettingsSnapshot settings) : ISecuritySettingsProvider
+    {
+        public Task<SecuritySettingsSnapshot> GetAsync(CancellationToken ct) => Task.FromResult(settings);
+    }
+
+    private static SecuritySettingsSnapshot BuildSecuritySettings()
+    {
+        return new SecuritySettingsSnapshot(
+            PasswordPolicy: new PasswordPolicyRules(10, true, true, true),
+            LoginLockoutThreshold: 5,
+            LoginLockoutMinutes: 15,
+            EmailCodeCooldownSeconds: 60,
+            EmailCodeMaxPerHourPerEmail: 10,
+            EmailCodeMaxPerHourPerIp: 50,
+            EmailCodeExpiryMinutes: 10,
+            EmailCodeMaxFailedAttemptsPerCode: 5,
+            InviteExpiryHours: 24,
+            InviteOtpExpiryMinutes: 10,
+            InviteOtpCooldownSeconds: 60,
+            InviteOtpMaxPerHourPerInvite: 3,
+            InviteOtpMaxPerHourPerIp: 25,
+            InviteOtpMaxAttempts: 5,
+            InviteOtpLockMinutes: 15,
+            InviteMaxAttempts: 10,
+            InviteLockMinutes: 15,
+            ChangePasswordOtpExpiryMinutes: 10,
+            ChangePasswordOtpCooldownSeconds: 1,
+            ChangePasswordOtpMaxPerHourPerUser: 10,
+            ChangePasswordOtpMaxPerHourPerIp: 50,
+            ChangePasswordOtpMaxAttempts: 5,
+            ChangePasswordOtpLockMinutes: 15);
     }
 }

@@ -1,0 +1,170 @@
+@model AdminSecuritySettingsModel
+@{
+    ViewData["Title"] = "Security Settings";
+    var statusMessage = TempData["Status"] as string;
+}
+
+<div class="page-stack">
+    @if (!string.IsNullOrWhiteSpace(statusMessage))
+    {
+        <div class="notice">@statusMessage</div>
+    }
+
+    <section class="card">
+        <div class="card-header">
+            <h2 class="card-title">Security</h2>
+            <a class="btn btn-secondary" href="/admin/settings">Back to Settings</a>
+        </div>
+
+        <form method="post" action="/admin/settings/security" class="form-grid">
+            @Html.AntiForgeryToken()
+
+            <h3>Password Complexity</h3>
+            <div class="form-row">
+                <label for="MinimumPasswordLength">Minimum Password Length</label>
+                <input id="MinimumPasswordLength" name="MinimumPasswordLength" type="number" min="8" step="1" value="@Model.MinimumPasswordLength" />
+                @Html.ValidationMessage(nameof(Model.MinimumPasswordLength))
+            </div>
+            <div class="form-row">
+                <label class="inline-group" for="PasswordRequiresNumber">
+                    <input id="PasswordRequiresNumber" name="PasswordRequiresNumber" type="checkbox" value="true" @(Model.PasswordRequiresNumber ? "checked" : null) />
+                    <span>Requires a number</span>
+                </label>
+            </div>
+            <div class="form-row">
+                <label class="inline-group" for="PasswordRequiresCapitalLetter">
+                    <input id="PasswordRequiresCapitalLetter" name="PasswordRequiresCapitalLetter" type="checkbox" value="true" @(Model.PasswordRequiresCapitalLetter ? "checked" : null) />
+                    <span>Requires a capital letter</span>
+                </label>
+            </div>
+            <div class="form-row">
+                <label class="inline-group" for="PasswordRequiresSpecialCharacter">
+                    <input id="PasswordRequiresSpecialCharacter" name="PasswordRequiresSpecialCharacter" type="checkbox" value="true" @(Model.PasswordRequiresSpecialCharacter ? "checked" : null) />
+                    <span>Requires a special character</span>
+                </label>
+            </div>
+
+            <h3>Login Lockout</h3>
+            <div class="form-row">
+                <label for="LoginLockoutThreshold">Failed password attempts before lockout</label>
+                <input id="LoginLockoutThreshold" name="LoginLockoutThreshold" type="number" min="1" step="1" value="@Model.LoginLockoutThreshold" />
+                @Html.ValidationMessage(nameof(Model.LoginLockoutThreshold))
+            </div>
+            <div class="form-row">
+                <label for="LoginLockoutMinutes">Lockout duration (minutes)</label>
+                <input id="LoginLockoutMinutes" name="LoginLockoutMinutes" type="number" min="1" step="1" value="@Model.LoginLockoutMinutes" />
+                @Html.ValidationMessage(nameof(Model.LoginLockoutMinutes))
+            </div>
+
+            <h3>Email Codes (Login / Forgot Password)</h3>
+            <div class="form-row">
+                <label for="EmailCodeCooldownSeconds">Cooldown between code sends (seconds)</label>
+                <input id="EmailCodeCooldownSeconds" name="EmailCodeCooldownSeconds" type="number" min="1" step="1" value="@Model.EmailCodeCooldownSeconds" />
+                @Html.ValidationMessage(nameof(Model.EmailCodeCooldownSeconds))
+            </div>
+            <div class="form-row">
+                <label for="EmailCodeMaxPerHourPerEmail">Maximum sends per hour per email</label>
+                <input id="EmailCodeMaxPerHourPerEmail" name="EmailCodeMaxPerHourPerEmail" type="number" min="1" step="1" value="@Model.EmailCodeMaxPerHourPerEmail" />
+                @Html.ValidationMessage(nameof(Model.EmailCodeMaxPerHourPerEmail))
+            </div>
+            <div class="form-row">
+                <label for="EmailCodeMaxPerHourPerIp">Maximum sends per hour per IP</label>
+                <input id="EmailCodeMaxPerHourPerIp" name="EmailCodeMaxPerHourPerIp" type="number" min="1" step="1" value="@Model.EmailCodeMaxPerHourPerIp" />
+                @Html.ValidationMessage(nameof(Model.EmailCodeMaxPerHourPerIp))
+            </div>
+            <div class="form-row">
+                <label for="EmailCodeExpiryMinutes">Code expiry (minutes)</label>
+                <input id="EmailCodeExpiryMinutes" name="EmailCodeExpiryMinutes" type="number" min="1" step="1" value="@Model.EmailCodeExpiryMinutes" />
+                @Html.ValidationMessage(nameof(Model.EmailCodeExpiryMinutes))
+            </div>
+            <div class="form-row">
+                <label for="EmailCodeMaxFailedAttemptsPerCode">Max failed attempts per code</label>
+                <input id="EmailCodeMaxFailedAttemptsPerCode" name="EmailCodeMaxFailedAttemptsPerCode" type="number" min="1" step="1" value="@Model.EmailCodeMaxFailedAttemptsPerCode" />
+                @Html.ValidationMessage(nameof(Model.EmailCodeMaxFailedAttemptsPerCode))
+            </div>
+
+            <h3>Invite Onboarding</h3>
+            <div class="form-row">
+                <label for="InviteExpiryHours">Invite link expiry (hours)</label>
+                <input id="InviteExpiryHours" name="InviteExpiryHours" type="number" min="1" step="1" value="@Model.InviteExpiryHours" />
+                @Html.ValidationMessage(nameof(Model.InviteExpiryHours))
+            </div>
+            <div class="form-row">
+                <label for="InviteOtpExpiryMinutes">Invite OTP expiry (minutes)</label>
+                <input id="InviteOtpExpiryMinutes" name="InviteOtpExpiryMinutes" type="number" min="1" step="1" value="@Model.InviteOtpExpiryMinutes" />
+                @Html.ValidationMessage(nameof(Model.InviteOtpExpiryMinutes))
+            </div>
+            <div class="form-row">
+                <label for="InviteOtpCooldownSeconds">Invite OTP resend cooldown (seconds)</label>
+                <input id="InviteOtpCooldownSeconds" name="InviteOtpCooldownSeconds" type="number" min="1" step="1" value="@Model.InviteOtpCooldownSeconds" />
+                @Html.ValidationMessage(nameof(Model.InviteOtpCooldownSeconds))
+            </div>
+            <div class="form-row">
+                <label for="InviteOtpMaxPerHourPerInvite">Invite OTP max sends per hour per invite</label>
+                <input id="InviteOtpMaxPerHourPerInvite" name="InviteOtpMaxPerHourPerInvite" type="number" min="1" step="1" value="@Model.InviteOtpMaxPerHourPerInvite" />
+                @Html.ValidationMessage(nameof(Model.InviteOtpMaxPerHourPerInvite))
+            </div>
+            <div class="form-row">
+                <label for="InviteOtpMaxPerHourPerIp">Invite OTP max sends per hour per IP</label>
+                <input id="InviteOtpMaxPerHourPerIp" name="InviteOtpMaxPerHourPerIp" type="number" min="1" step="1" value="@Model.InviteOtpMaxPerHourPerIp" />
+                @Html.ValidationMessage(nameof(Model.InviteOtpMaxPerHourPerIp))
+            </div>
+            <div class="form-row">
+                <label for="InviteOtpMaxAttempts">Invite OTP max verification attempts</label>
+                <input id="InviteOtpMaxAttempts" name="InviteOtpMaxAttempts" type="number" min="1" step="1" value="@Model.InviteOtpMaxAttempts" />
+                @Html.ValidationMessage(nameof(Model.InviteOtpMaxAttempts))
+            </div>
+            <div class="form-row">
+                <label for="InviteOtpLockMinutes">Invite OTP lockout duration (minutes)</label>
+                <input id="InviteOtpLockMinutes" name="InviteOtpLockMinutes" type="number" min="1" step="1" value="@Model.InviteOtpLockMinutes" />
+                @Html.ValidationMessage(nameof(Model.InviteOtpLockMinutes))
+            </div>
+            <div class="form-row">
+                <label for="InviteMaxAttempts">Invite token max failed attempts</label>
+                <input id="InviteMaxAttempts" name="InviteMaxAttempts" type="number" min="1" step="1" value="@Model.InviteMaxAttempts" />
+                @Html.ValidationMessage(nameof(Model.InviteMaxAttempts))
+            </div>
+            <div class="form-row">
+                <label for="InviteLockMinutes">Invite token lockout duration (minutes)</label>
+                <input id="InviteLockMinutes" name="InviteLockMinutes" type="number" min="1" step="1" value="@Model.InviteLockMinutes" />
+                @Html.ValidationMessage(nameof(Model.InviteLockMinutes))
+            </div>
+
+            <h3>Change Password OTP</h3>
+            <div class="form-row">
+                <label for="ChangePasswordOtpExpiryMinutes">Change password OTP expiry (minutes)</label>
+                <input id="ChangePasswordOtpExpiryMinutes" name="ChangePasswordOtpExpiryMinutes" type="number" min="1" step="1" value="@Model.ChangePasswordOtpExpiryMinutes" />
+                @Html.ValidationMessage(nameof(Model.ChangePasswordOtpExpiryMinutes))
+            </div>
+            <div class="form-row">
+                <label for="ChangePasswordOtpCooldownSeconds">Change password OTP resend cooldown (seconds)</label>
+                <input id="ChangePasswordOtpCooldownSeconds" name="ChangePasswordOtpCooldownSeconds" type="number" min="1" step="1" value="@Model.ChangePasswordOtpCooldownSeconds" />
+                @Html.ValidationMessage(nameof(Model.ChangePasswordOtpCooldownSeconds))
+            </div>
+            <div class="form-row">
+                <label for="ChangePasswordOtpMaxPerHourPerUser">Change password OTP max sends per hour per user</label>
+                <input id="ChangePasswordOtpMaxPerHourPerUser" name="ChangePasswordOtpMaxPerHourPerUser" type="number" min="1" step="1" value="@Model.ChangePasswordOtpMaxPerHourPerUser" />
+                @Html.ValidationMessage(nameof(Model.ChangePasswordOtpMaxPerHourPerUser))
+            </div>
+            <div class="form-row">
+                <label for="ChangePasswordOtpMaxPerHourPerIp">Change password OTP max sends per hour per IP</label>
+                <input id="ChangePasswordOtpMaxPerHourPerIp" name="ChangePasswordOtpMaxPerHourPerIp" type="number" min="1" step="1" value="@Model.ChangePasswordOtpMaxPerHourPerIp" />
+                @Html.ValidationMessage(nameof(Model.ChangePasswordOtpMaxPerHourPerIp))
+            </div>
+            <div class="form-row">
+                <label for="ChangePasswordOtpMaxAttempts">Change password OTP max verification attempts</label>
+                <input id="ChangePasswordOtpMaxAttempts" name="ChangePasswordOtpMaxAttempts" type="number" min="1" step="1" value="@Model.ChangePasswordOtpMaxAttempts" />
+                @Html.ValidationMessage(nameof(Model.ChangePasswordOtpMaxAttempts))
+            </div>
+            <div class="form-row">
+                <label for="ChangePasswordOtpLockMinutes">Change password OTP lockout duration (minutes)</label>
+                <input id="ChangePasswordOtpLockMinutes" name="ChangePasswordOtpLockMinutes" type="number" min="1" step="1" value="@Model.ChangePasswordOtpLockMinutes" />
+                @Html.ValidationMessage(nameof(Model.ChangePasswordOtpLockMinutes))
+            </div>
+
+            <div class="toolbar">
+                <button type="submit">Save Settings</button>
+            </div>
+        </form>
+    </section>
+</div>

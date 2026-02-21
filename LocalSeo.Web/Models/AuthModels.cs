@@ -179,6 +179,7 @@ public sealed class InviteSetPasswordViewModel
     public string EmailAddressMasked { get; init; } = string.Empty;
     public string? Message { get; init; }
     public bool UseGravatar { get; init; }
+    public PasswordPolicyViewModel PasswordPolicy { get; init; } = new();
 }
 
 public sealed record UserInviteRecord(

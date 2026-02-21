@@ -1,8 +1,6 @@
 using LocalSeo.Web.Models;
-using LocalSeo.Web.Options;
 using LocalSeo.Web.Services;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -56,7 +54,7 @@ public class AuthServicesTests
             new NoopSendGridEmailService(),
             passwordHasher,
             new EmailAddressNormalizer(),
-            Microsoft.Extensions.Options.Options.Create(new AuthOptions { LockoutThreshold = 2, LockoutMinutes = 15 }),
+            new FixedSecuritySettingsProvider(BuildSecuritySettings(lockoutThreshold: 2, lockoutMinutes: 15)),
             timeProvider,
             NullLogger<AuthService>.Instance);
 
@@ -82,7 +80,7 @@ public class AuthServicesTests
         var service = new EmailCodeService(
             repository,
             new CodeHasher(),
-            Microsoft.Extensions.Options.Options.Create(new EmailCodesOptions { ExpiryMinutes = 10 }),
+            new FixedSecuritySettingsProvider(BuildSecuritySettings(emailCodeExpiryMinutes: 10)),
             timeProvider,
             NullLogger<EmailCodeService>.Instance);
 
@@ -163,7 +161,7 @@ public class AuthServicesTests
             sendGrid,
             new PasswordHasherService(),
             new EmailAddressNormalizer(),
-            Microsoft.Extensions.Options.Options.Create(new AuthOptions()),
+            new FixedSecuritySettingsProvider(BuildSecuritySettings()),
             timeProvider,
             NullLogger<AuthService>.Instance);
 
@@ -218,6 +216,42 @@ public class AuthServicesTests
 
         public Task<PagedResult<UserLoginLogRow>> SearchAsync(LoginLogQuery query, CancellationToken ct)
             => Task.FromResult(new PagedResult<UserLoginLogRow>([], 0));
+    }
+
+    private sealed class FixedSecuritySettingsProvider(SecuritySettingsSnapshot settings) : ISecuritySettingsProvider
+    {
+        public Task<SecuritySettingsSnapshot> GetAsync(CancellationToken ct) => Task.FromResult(settings);
+    }
+
+    private static SecuritySettingsSnapshot BuildSecuritySettings(
+        int lockoutThreshold = 5,
+        int lockoutMinutes = 15,
+        int emailCodeExpiryMinutes = 10)
+    {
+        return new SecuritySettingsSnapshot(
+            PasswordPolicy: new PasswordPolicyRules(12, true, true, true),
+            LoginLockoutThreshold: lockoutThreshold,
+            LoginLockoutMinutes: lockoutMinutes,
+            EmailCodeCooldownSeconds: 60,
+            EmailCodeMaxPerHourPerEmail: 10,
+            EmailCodeMaxPerHourPerIp: 50,
+            EmailCodeExpiryMinutes: emailCodeExpiryMinutes,
+            EmailCodeMaxFailedAttemptsPerCode: 5,
+            InviteExpiryHours: 24,
+            InviteOtpExpiryMinutes: 10,
+            InviteOtpCooldownSeconds: 60,
+            InviteOtpMaxPerHourPerInvite: 3,
+            InviteOtpMaxPerHourPerIp: 25,
+            InviteOtpMaxAttempts: 5,
+            InviteOtpLockMinutes: 15,
+            InviteMaxAttempts: 10,
+            InviteLockMinutes: 15,
+            ChangePasswordOtpExpiryMinutes: 10,
+            ChangePasswordOtpCooldownSeconds: 60,
+            ChangePasswordOtpMaxPerHourPerUser: 3,
+            ChangePasswordOtpMaxPerHourPerIp: 25,
+            ChangePasswordOtpMaxAttempts: 5,
+            ChangePasswordOtpLockMinutes: 15);
     }
 
     private sealed class InMemoryUserRepository(UserRecord user) : IUserRepository

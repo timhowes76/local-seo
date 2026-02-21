@@ -1,8 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
 using LocalSeo.Web.Models;
-using LocalSeo.Web.Options;
-using Microsoft.Extensions.Options;
 
 namespace LocalSeo.Web.Services;
 
@@ -24,8 +22,7 @@ public sealed class PasswordChangeService(
     IPasswordHasherService passwordHasherService,
     ICryptoService cryptoService,
     ISendGridEmailService sendGridEmailService,
-    IOptions<AuthOptions> authOptions,
-    IOptions<ChangePasswordOptions> options,
+    ISecuritySettingsProvider securitySettingsProvider,
     TimeProvider timeProvider,
     ILogger<PasswordChangeService> logger) : IPasswordChangeService
 {
@@ -36,6 +33,7 @@ public sealed class PasswordChangeService(
     public async Task<ChangePasswordStartResult> StartAsync(int userId, string? currentPassword, string? requestedFromIp, string? requestedUserAgent, string? auditCorrelationId, CancellationToken ct)
     {
         var nowUtc = timeProvider.GetUtcNow().UtcDateTime;
+        var settings = await securitySettingsProvider.GetAsync(ct);
         try
         {
             var user = await userRepository.GetByIdAsync(userId, ct);
@@ -48,20 +46,20 @@ public sealed class PasswordChangeService(
             var current = (currentPassword ?? string.Empty).Trim();
             if (current.Length == 0 || user.PasswordHash is null || user.PasswordHash.Length == 0)
             {
-                await userRepository.RecordFailedPasswordAttemptAsync(userId, authOptions.Value.LockoutThreshold, authOptions.Value.LockoutMinutes, nowUtc, ct);
+                await userRepository.RecordFailedPasswordAttemptAsync(userId, settings.LoginLockoutThreshold, settings.LoginLockoutMinutes, nowUtc, ct);
                 return new ChangePasswordStartResult(false, GenericInvalidCredentials, null);
             }
 
             if (!passwordHasherService.VerifyPassword(user.PasswordHash, current, out _))
             {
-                await userRepository.RecordFailedPasswordAttemptAsync(userId, authOptions.Value.LockoutThreshold, authOptions.Value.LockoutMinutes, nowUtc, ct);
+                await userRepository.RecordFailedPasswordAttemptAsync(userId, settings.LoginLockoutThreshold, settings.LoginLockoutMinutes, nowUtc, ct);
                 logger.LogWarning("Audit PasswordChangeStartFailed UserId={UserId} AtUtc={AtUtc} Reason=InvalidCurrentPassword", userId, nowUtc);
                 return new ChangePasswordStartResult(false, GenericInvalidCredentials, null);
             }
 
             await userRepository.ClearFailedPasswordAttemptsAsync(userId, ct);
 
-            var rateLimitDecision = await CheckOtpRateLimitAsync(userId, requestedFromIp, nowUtc, ct);
+            var rateLimitDecision = await CheckOtpRateLimitAsync(userId, requestedFromIp, nowUtc, settings, ct);
             if (!rateLimitDecision.Allowed)
                 return new ChangePasswordStartResult(false, "Verification is temporarily unavailable. Please try again shortly.", null);
 
@@ -70,7 +68,7 @@ public sealed class PasswordChangeService(
 
             var code = RandomNumberGenerator.GetInt32(0, 1_000_000).ToString("D6");
             var codeHash = ComputeChangePasswordOtpHash(userId, challengeCorrelationId, code);
-            var expiresAtUtc = nowUtc.AddMinutes(Math.Max(1, options.Value.OtpExpiryMinutes));
+            var expiresAtUtc = nowUtc.AddMinutes(Math.Max(1, settings.ChangePasswordOtpExpiryMinutes));
             await userOtpRepository.CreateOtpAsync(new UserOtpCreateRequest(
                 userId,
                 UserOtpPurpose.ChangePassword,
@@ -102,6 +100,7 @@ public sealed class PasswordChangeService(
     public async Task<ChangePasswordStartResult> ResendAsync(int userId, string? correlationId, string? requestedFromIp, string? requestedUserAgent, string? auditCorrelationId, CancellationToken ct)
     {
         var nowUtc = timeProvider.GetUtcNow().UtcDateTime;
+        var settings = await securitySettingsProvider.GetAsync(ct);
         try
         {
             var challengeResult = await GetChallengeAsync(userId, correlationId, ct);
@@ -112,7 +111,7 @@ public sealed class PasswordChangeService(
             if (user is null || !user.IsActive || user.InviteStatus != UserLifecycleStatus.Active)
                 return new ChangePasswordStartResult(false, GenericInvalidOrExpiredLink, null);
 
-            var rateLimitDecision = await CheckOtpRateLimitAsync(userId, requestedFromIp, nowUtc, ct);
+            var rateLimitDecision = await CheckOtpRateLimitAsync(userId, requestedFromIp, nowUtc, settings, ct);
             if (!rateLimitDecision.Allowed)
                 return new ChangePasswordStartResult(false, "Please wait before requesting another verification code.", challengeResult.Challenge.CorrelationId);
 
@@ -120,7 +119,7 @@ public sealed class PasswordChangeService(
 
             var code = RandomNumberGenerator.GetInt32(0, 1_000_000).ToString("D6");
             var codeHash = ComputeChangePasswordOtpHash(userId, challengeResult.Challenge.CorrelationId ?? string.Empty, code);
-            var expiresAtUtc = nowUtc.AddMinutes(Math.Max(1, options.Value.OtpExpiryMinutes));
+            var expiresAtUtc = nowUtc.AddMinutes(Math.Max(1, settings.ChangePasswordOtpExpiryMinutes));
             await userOtpRepository.CreateOtpAsync(new UserOtpCreateRequest(
                 userId,
                 UserOtpPurpose.ChangePassword,
@@ -177,6 +176,7 @@ public sealed class PasswordChangeService(
     public async Task<ChangePasswordVerifyResult> VerifyAndChangePasswordAsync(int userId, string? correlationId, string? otpCode, string? newPassword, string? confirmPassword, string? requestedFromIp, string? requestedUserAgent, string? auditCorrelationId, CancellationToken ct)
     {
         var nowUtc = timeProvider.GetUtcNow().UtcDateTime;
+        var settings = await securitySettingsProvider.GetAsync(ct);
         try
         {
             var challengeResult = await GetChallengeAsync(userId, correlationId, ct);
@@ -194,7 +194,7 @@ public sealed class PasswordChangeService(
             var expectedHash = ComputeChangePasswordOtpHash(userId, challenge.CorrelationId ?? string.Empty, code);
             if (!cryptoService.FixedTimeEquals(challenge.CodeHash, expectedHash))
             {
-                await userOtpRepository.MarkAttemptFailureAsync(challenge.UserOtpId, nowUtc, options.Value.OtpMaxAttempts, options.Value.OtpLockMinutes, ct);
+                await userOtpRepository.MarkAttemptFailureAsync(challenge.UserOtpId, nowUtc, settings.ChangePasswordOtpMaxAttempts, settings.ChangePasswordOtpLockMinutes, ct);
                 logger.LogWarning(
                     "Audit PasswordChangeOtpFailed UserId={UserId} CorrelationId={CorrelationId} RequestedFromIp={RequestedFromIp} UserAgent={UserAgent} AuditCorrelationId={AuditCorrelationId} AtUtc={AtUtc}",
                     userId,
@@ -208,9 +208,9 @@ public sealed class PasswordChangeService(
 
             var password = newPassword ?? string.Empty;
             var confirm = confirmPassword ?? string.Empty;
-            var minLength = Math.Max(8, options.Value.PasswordMinLength);
-            if (password.Length < minLength)
-                return new ChangePasswordVerifyResult(false, $"Password must be at least {minLength} characters.");
+            var passwordValidation = PasswordPolicyEvaluator.Validate(password, settings.PasswordPolicy);
+            if (!passwordValidation.IsValid)
+                return new ChangePasswordVerifyResult(false, PasswordPolicyEvaluator.BuildGuidanceMessage(passwordValidation));
             if (!string.Equals(password, confirm, StringComparison.Ordinal))
                 return new ChangePasswordVerifyResult(false, "Password and confirmation do not match.");
 
@@ -246,22 +246,21 @@ public sealed class PasswordChangeService(
         }
     }
 
-    private async Task<RateLimitDecision> CheckOtpRateLimitAsync(int userId, string? requestedFromIp, DateTime nowUtc, CancellationToken ct)
+    private async Task<RateLimitDecision> CheckOtpRateLimitAsync(int userId, string? requestedFromIp, DateTime nowUtc, SecuritySettingsSnapshot cfg, CancellationToken ct)
     {
-        var cfg = options.Value;
         var latestSentAt = await userOtpRepository.GetLatestSentAtUtcAsync(userId, UserOtpPurpose.ChangePassword, ct);
-        if (latestSentAt.HasValue && latestSentAt.Value > nowUtc.AddSeconds(-Math.Max(1, cfg.OtpCooldownSeconds)))
+        if (latestSentAt.HasValue && latestSentAt.Value > nowUtc.AddSeconds(-Math.Max(1, cfg.ChangePasswordOtpCooldownSeconds)))
             return new RateLimitDecision(false, "cooldown");
 
         var sentThisHour = await userOtpRepository.CountSentSinceAsync(userId, UserOtpPurpose.ChangePassword, nowUtc.AddHours(-1), ct);
-        if (sentThisHour >= Math.Max(1, cfg.OtpMaxPerHourPerUser))
+        if (sentThisHour >= Math.Max(1, cfg.ChangePasswordOtpMaxPerHourPerUser))
             return new RateLimitDecision(false, "max_per_hour_user");
 
         var normalizedIp = Normalize(requestedFromIp, 45);
         if (!string.IsNullOrWhiteSpace(normalizedIp))
         {
             var sentForIp = await userOtpRepository.CountSentSinceForIpAsync(normalizedIp, UserOtpPurpose.ChangePassword, nowUtc.AddHours(-1), ct);
-            if (sentForIp >= Math.Max(1, cfg.OtpMaxPerHourPerIp))
+            if (sentForIp >= Math.Max(1, cfg.ChangePasswordOtpMaxPerHourPerIp))
                 return new RateLimitDecision(false, "max_per_hour_ip");
         }
 

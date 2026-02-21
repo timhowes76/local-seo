@@ -119,6 +119,7 @@ builder.Services.AddScoped<IPasswordChangeService, PasswordChangeService>();
 builder.Services.AddScoped<IGooglePlacesClient, GooglePlacesClient>();
 builder.Services.AddScoped<ISearchIngestionService, SearchIngestionService>();
 builder.Services.AddScoped<IAdminSettingsService, AdminSettingsService>();
+builder.Services.AddScoped<ISecuritySettingsProvider, SecuritySettingsProvider>();
 builder.Services.AddScoped<IGbLocationDataListService, GbLocationDataListService>();
 builder.Services.AddScoped<ICategoryLocationKeywordService, CategoryLocationKeywordService>();
 builder.Services.AddScoped<IGoogleBusinessProfileRefreshTokenStore, LocalSecureGoogleRefreshTokenStore>();

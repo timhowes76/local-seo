@@ -1,7 +1,5 @@
 using System.Security.Cryptography;
 using LocalSeo.Web.Models;
-using LocalSeo.Web.Options;
-using Microsoft.Extensions.Options;
 
 namespace LocalSeo.Web.Services;
 
@@ -28,12 +26,10 @@ public interface IEmailCodeService
 public sealed class EmailCodeService(
     IEmailCodeRepository emailCodeRepository,
     ICodeHasher codeHasher,
-    IOptions<EmailCodesOptions> options,
+    ISecuritySettingsProvider securitySettingsProvider,
     TimeProvider timeProvider,
     ILogger<EmailCodeService> logger) : IEmailCodeService
 {
-    private const int MaxFailedAttemptsPerCode = 5;
-
     public async Task<IssuedEmailCode> IssueAsync(
         EmailCodePurpose purpose,
         string email,
@@ -42,10 +38,11 @@ public sealed class EmailCodeService(
         string? requestedUserAgent,
         CancellationToken ct)
     {
+        var settings = await securitySettingsProvider.GetAsync(ct);
         var nowUtc = timeProvider.GetUtcNow().UtcDateTime;
         var code = RandomNumberGenerator.GetInt32(0, 1_000_000).ToString("D6");
         var (hash, salt) = codeHasher.HashCode(code);
-        var expiresAtUtc = nowUtc.AddMinutes(options.Value.ExpiryMinutes);
+        var expiresAtUtc = nowUtc.AddMinutes(settings.EmailCodeExpiryMinutes);
 
         var rid = await emailCodeRepository.CreateAsync(new EmailCodeCreateRequest(
             purpose,
@@ -73,10 +70,11 @@ public sealed class EmailCodeService(
         string code,
         CancellationToken ct)
     {
+        var settings = await securitySettingsProvider.GetAsync(ct);
         var row = await emailCodeRepository.GetByIdAsync(rid, ct);
         var nowUtc = timeProvider.GetUtcNow().UtcDateTime;
 
-        if (row is null || row.Purpose != purpose || row.IsUsed || row.ExpiresAtUtc < nowUtc || row.FailedAttempts >= MaxFailedAttemptsPerCode)
+        if (row is null || row.Purpose != purpose || row.IsUsed || row.ExpiresAtUtc < nowUtc || row.FailedAttempts >= settings.EmailCodeMaxFailedAttemptsPerCode)
         {
             logger.LogWarning(
                 "Email code verify failed. Purpose={Purpose} Rid={Rid} Category={Category}",

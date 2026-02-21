@@ -513,6 +513,32 @@ public sealed class AdminSettingsModel
     public string ZohoLeadOwnerId { get; set; } = "1108404000000068001";
     public string ZohoLeadNextAction { get; set; } = "Make first contact";
     public string SiteUrl { get; set; } = "https://briskly-viceless-kayleen.ngrok-free.dev/";
+    public int MinimumPasswordLength { get; set; } = 12;
+    public bool PasswordRequiresNumber { get; set; } = true;
+    public bool PasswordRequiresCapitalLetter { get; set; } = true;
+    public bool PasswordRequiresSpecialCharacter { get; set; } = true;
+    public int LoginLockoutThreshold { get; set; } = 5;
+    public int LoginLockoutMinutes { get; set; } = 15;
+    public int EmailCodeCooldownSeconds { get; set; } = 60;
+    public int EmailCodeMaxPerHourPerEmail { get; set; } = 10;
+    public int EmailCodeMaxPerHourPerIp { get; set; } = 50;
+    public int EmailCodeExpiryMinutes { get; set; } = 10;
+    public int EmailCodeMaxFailedAttemptsPerCode { get; set; } = 5;
+    public int InviteExpiryHours { get; set; } = 24;
+    public int InviteOtpExpiryMinutes { get; set; } = 10;
+    public int InviteOtpCooldownSeconds { get; set; } = 60;
+    public int InviteOtpMaxPerHourPerInvite { get; set; } = 3;
+    public int InviteOtpMaxPerHourPerIp { get; set; } = 25;
+    public int InviteOtpMaxAttempts { get; set; } = 5;
+    public int InviteOtpLockMinutes { get; set; } = 15;
+    public int InviteMaxAttempts { get; set; } = 10;
+    public int InviteLockMinutes { get; set; } = 15;
+    public int ChangePasswordOtpExpiryMinutes { get; set; } = 10;
+    public int ChangePasswordOtpCooldownSeconds { get; set; } = 60;
+    public int ChangePasswordOtpMaxPerHourPerUser { get; set; } = 3;
+    public int ChangePasswordOtpMaxPerHourPerIp { get; set; } = 25;
+    public int ChangePasswordOtpMaxAttempts { get; set; } = 5;
+    public int ChangePasswordOtpLockMinutes { get; set; } = 15;
 }
 
 public sealed class AdminSiteSettingsModel
@@ -550,6 +576,44 @@ public sealed class AdminZohoLeadDefaultsSettingsModel
     public string ZohoLeadOwnerName { get; set; } = "Richard Howes";
     public string ZohoLeadOwnerId { get; set; } = "1108404000000068001";
     public string ZohoLeadNextAction { get; set; } = "Make first contact";
+}
+
+public sealed class AdminSecuritySettingsModel
+{
+    public int MinimumPasswordLength { get; set; } = 12;
+    public bool PasswordRequiresNumber { get; set; } = true;
+    public bool PasswordRequiresCapitalLetter { get; set; } = true;
+    public bool PasswordRequiresSpecialCharacter { get; set; } = true;
+    public int LoginLockoutThreshold { get; set; } = 5;
+    public int LoginLockoutMinutes { get; set; } = 15;
+    public int EmailCodeCooldownSeconds { get; set; } = 60;
+    public int EmailCodeMaxPerHourPerEmail { get; set; } = 10;
+    public int EmailCodeMaxPerHourPerIp { get; set; } = 50;
+    public int EmailCodeExpiryMinutes { get; set; } = 10;
+    public int EmailCodeMaxFailedAttemptsPerCode { get; set; } = 5;
+    public int InviteExpiryHours { get; set; } = 24;
+    public int InviteOtpExpiryMinutes { get; set; } = 10;
+    public int InviteOtpCooldownSeconds { get; set; } = 60;
+    public int InviteOtpMaxPerHourPerInvite { get; set; } = 3;
+    public int InviteOtpMaxPerHourPerIp { get; set; } = 25;
+    public int InviteOtpMaxAttempts { get; set; } = 5;
+    public int InviteOtpLockMinutes { get; set; } = 15;
+    public int InviteMaxAttempts { get; set; } = 10;
+    public int InviteLockMinutes { get; set; } = 15;
+    public int ChangePasswordOtpExpiryMinutes { get; set; } = 10;
+    public int ChangePasswordOtpCooldownSeconds { get; set; } = 60;
+    public int ChangePasswordOtpMaxPerHourPerUser { get; set; } = 3;
+    public int ChangePasswordOtpMaxPerHourPerIp { get; set; } = 25;
+    public int ChangePasswordOtpMaxAttempts { get; set; } = 5;
+    public int ChangePasswordOtpLockMinutes { get; set; } = 15;
+}
+
+public sealed class PasswordPolicyViewModel
+{
+    public int MinimumPasswordLength { get; init; } = 12;
+    public bool RequiresNumber { get; init; } = true;
+    public bool RequiresCapitalLetter { get; init; } = true;
+    public bool RequiresSpecialCharacter { get; init; } = true;
 }
 
 public sealed record GooglePlace(

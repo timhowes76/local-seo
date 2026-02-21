@@ -162,7 +162,7 @@ public class PlacesController(
             "my_business_info" => "Google Enhanced Data",
             "my_business_updates" => "Google Updates",
             "questions_and_answers" => "Google Question & Answers",
-            "social_profiles" => "Google Social Profiles",
+            "social_profiles" => "Social Profiles",
             _ => "Google Reviews"
         };
         TempData["Status"] = $"Refresh requested for {typeLabel}.";

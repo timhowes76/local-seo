@@ -1,8 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
 using LocalSeo.Web.Models;
-using LocalSeo.Web.Options;
-using Microsoft.Extensions.Options;
 
 namespace LocalSeo.Web.Services;
 
@@ -29,7 +27,7 @@ public sealed class InviteService(
     IPasswordHasherService passwordHasherService,
     ICryptoService cryptoService,
     ISendGridEmailService sendGridEmailService,
-    IOptions<InviteOptions> inviteOptions,
+    ISecuritySettingsProvider securitySettingsProvider,
     TimeProvider timeProvider,
     ILogger<InviteService> logger) : IInviteService
 {
@@ -160,15 +158,15 @@ public sealed class InviteService(
                 return new InviteOtpResult(true, "Email already verified. You can continue to set your password.", false, true, invite);
 
             var nowUtc = timeProvider.GetUtcNow().UtcDateTime;
-            var cfg = inviteOptions.Value;
+            var cfg = await securitySettingsProvider.GetAsync(ct);
             var latestOtpSentAtUtc = await userInviteRepository.GetLatestOtpSentAtUtcAsync(invite.UserInviteId, ct);
-            if (latestOtpSentAtUtc.HasValue && latestOtpSentAtUtc.Value > nowUtc.AddSeconds(-Math.Max(1, cfg.OtpCooldownSeconds)))
+            if (latestOtpSentAtUtc.HasValue && latestOtpSentAtUtc.Value > nowUtc.AddSeconds(-Math.Max(1, cfg.InviteOtpCooldownSeconds)))
             {
                 return new InviteOtpResult(false, "Please wait before requesting another code.", false, false, invite);
             }
 
             var sendsThisHour = await userInviteRepository.CountOtpSentSinceAsync(invite.UserInviteId, nowUtc.AddHours(-1), ct);
-            if (sendsThisHour >= Math.Max(1, cfg.OtpMaxPerHourPerInvite))
+            if (sendsThisHour >= Math.Max(1, cfg.InviteOtpMaxPerHourPerInvite))
             {
                 return new InviteOtpResult(false, "Verification is temporarily unavailable. Please contact an administrator.", false, false, invite);
             }
@@ -176,7 +174,7 @@ public sealed class InviteService(
             if (!string.IsNullOrWhiteSpace(requestedFromIp))
             {
                 var ipCountThisHour = await userInviteRepository.CountOtpSentSinceForIpAsync(requestedFromIp, nowUtc.AddHours(-1), ct);
-                if (ipCountThisHour >= Math.Max(1, cfg.OtpMaxPerHourPerIp))
+                if (ipCountThisHour >= Math.Max(1, cfg.InviteOtpMaxPerHourPerIp))
                 {
                     return new InviteOtpResult(false, "Verification is temporarily unavailable. Please contact an administrator.", false, false, invite);
                 }
@@ -184,7 +182,7 @@ public sealed class InviteService(
 
             var otpCode = RandomNumberGenerator.GetInt32(0, 1_000_000).ToString("D6");
             var otpHash = ComputeOtpHash(invite.UserInviteId, otpCode);
-            var expiresAtUtc = nowUtc.AddMinutes(Math.Max(1, cfg.OtpExpiryMinutes));
+            var expiresAtUtc = nowUtc.AddMinutes(Math.Max(1, cfg.InviteOtpExpiryMinutes));
             await userInviteRepository.CreateInviteOtpAsync(new InviteOtpCreateRequest(
                 invite.UserInviteId,
                 otpHash,
@@ -228,7 +226,7 @@ public sealed class InviteService(
                 return new InviteOtpResult(false, GenericOtpFailureMessage, false, false, invite);
 
             var nowUtc = timeProvider.GetUtcNow().UtcDateTime;
-            var cfg = inviteOptions.Value;
+            var cfg = await securitySettingsProvider.GetAsync(ct);
             var otp = await userInviteRepository.GetLatestInviteOtpAsync(invite.UserInviteId, nowUtc, ct);
             if (otp is null)
                 return new InviteOtpResult(false, GenericOtpFailureMessage, false, false, invite);
@@ -239,7 +237,7 @@ public sealed class InviteService(
             var expectedHash = ComputeOtpHash(invite.UserInviteId, otpCode);
             if (!cryptoService.FixedTimeEquals(otp.CodeHash, expectedHash))
             {
-                await userInviteRepository.MarkInviteOtpAttemptFailureAsync(otp.InviteOtpId, nowUtc, cfg.OtpMaxAttempts, cfg.OtpLockMinutes, ct);
+                await userInviteRepository.MarkInviteOtpAttemptFailureAsync(otp.InviteOtpId, nowUtc, cfg.InviteOtpMaxAttempts, cfg.InviteOtpLockMinutes, ct);
                 await userInviteRepository.MarkInviteAttemptFailureAsync(invite.UserInviteId, nowUtc, cfg.InviteMaxAttempts, cfg.InviteLockMinutes, ct);
                 logger.LogWarning(
                     "Audit InviteOtpFailed UserId={UserId} UserInviteId={UserInviteId} RequestedFromIp={RequestedFromIp} AtUtc={AtUtc}",
@@ -287,9 +285,10 @@ public sealed class InviteService(
 
             var password = newPassword ?? string.Empty;
             var confirm = confirmPassword ?? string.Empty;
-            var minLength = Math.Max(8, inviteOptions.Value.PasswordMinLength);
-            if (password.Length < minLength)
-                return new InviteSetPasswordResult(false, $"Password must be at least {minLength} characters.");
+            var settings = await securitySettingsProvider.GetAsync(ct);
+            var passwordValidation = PasswordPolicyEvaluator.Validate(password, settings.PasswordPolicy);
+            if (!passwordValidation.IsValid)
+                return new InviteSetPasswordResult(false, PasswordPolicyEvaluator.BuildGuidanceMessage(passwordValidation));
             if (!string.Equals(password, confirm, StringComparison.Ordinal))
                 return new InviteSetPasswordResult(false, "Password and confirmation do not match.");
 
@@ -346,7 +345,8 @@ public sealed class InviteService(
             var rawToken = cryptoService.GenerateRandomBytes(InviteTokenByteLength);
             var tokenHash = cryptoService.ComputeHmacSha256(rawToken);
             var token = cryptoService.Base64UrlEncode(rawToken);
-            var expiresAtUtc = nowUtc.AddHours(Math.Max(1, inviteOptions.Value.InviteExpiryHours));
+            var settings = await securitySettingsProvider.GetAsync(ct);
+            var expiresAtUtc = nowUtc.AddHours(Math.Max(1, settings.InviteExpiryHours));
 
             await userInviteRepository.CreateInviteAsync(new UserInviteCreateRequest(
                 user.Id,

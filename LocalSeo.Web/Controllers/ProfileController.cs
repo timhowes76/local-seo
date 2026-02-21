@@ -12,6 +12,7 @@ namespace LocalSeo.Web.Controllers;
 public sealed class ProfileController(
     IUserRepository userRepository,
     IPasswordChangeService passwordChangeService,
+    ISecuritySettingsProvider securitySettingsProvider,
     TimeProvider timeProvider,
     ILogger<ProfileController> logger) : Controller
 {
@@ -137,6 +138,7 @@ public sealed class ProfileController(
         var user = await GetCurrentUserAsync(ct);
         if (user is null)
             return Redirect("/login");
+        var securitySettings = await securitySettingsProvider.GetAsync(ct);
 
         var challenge = await passwordChangeService.GetChallengeAsync(user.Id, correlationId, ct);
         if (!challenge.Success || challenge.Challenge is null)
@@ -144,7 +146,14 @@ public sealed class ProfileController(
             return View(new ChangePasswordVerifyViewModel
             {
                 Message = challenge.Message,
-                IsInvalidOrExpired = true
+                IsInvalidOrExpired = true,
+                PasswordPolicy = new PasswordPolicyViewModel
+                {
+                    MinimumPasswordLength = securitySettings.PasswordPolicy.MinimumLength,
+                    RequiresNumber = securitySettings.PasswordPolicy.RequiresNumber,
+                    RequiresCapitalLetter = securitySettings.PasswordPolicy.RequiresCapitalLetter,
+                    RequiresSpecialCharacter = securitySettings.PasswordPolicy.RequiresSpecialCharacter
+                }
             });
         }
 
@@ -157,6 +166,13 @@ public sealed class ProfileController(
             Form = new ChangePasswordVerifyRequestModel
             {
                 CorrelationId = challenge.Challenge.CorrelationId ?? string.Empty
+            },
+            PasswordPolicy = new PasswordPolicyViewModel
+            {
+                MinimumPasswordLength = securitySettings.PasswordPolicy.MinimumLength,
+                RequiresNumber = securitySettings.PasswordPolicy.RequiresNumber,
+                RequiresCapitalLetter = securitySettings.PasswordPolicy.RequiresCapitalLetter,
+                RequiresSpecialCharacter = securitySettings.PasswordPolicy.RequiresSpecialCharacter
             }
         });
     }
@@ -188,6 +204,7 @@ public sealed class ProfileController(
         var user = await GetCurrentUserAsync(ct);
         if (user is null)
             return Redirect("/login");
+        var securitySettings = await securitySettingsProvider.GetAsync(ct);
 
         var result = await passwordChangeService.VerifyAndChangePasswordAsync(
             user.Id,
@@ -218,6 +235,13 @@ public sealed class ProfileController(
             Form = new ChangePasswordVerifyRequestModel
             {
                 CorrelationId = challenge.Challenge?.CorrelationId ?? model.CorrelationId
+            },
+            PasswordPolicy = new PasswordPolicyViewModel
+            {
+                MinimumPasswordLength = securitySettings.PasswordPolicy.MinimumLength,
+                RequiresNumber = securitySettings.PasswordPolicy.RequiresNumber,
+                RequiresCapitalLetter = securitySettings.PasswordPolicy.RequiresCapitalLetter,
+                RequiresSpecialCharacter = securitySettings.PasswordPolicy.RequiresSpecialCharacter
             }
         });
     }

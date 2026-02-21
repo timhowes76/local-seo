@@ -176,6 +176,103 @@ public class AdminController(
         return RedirectToAction(nameof(SettingsZohoLeadDefaults));
     }
 
+    [HttpGet("/admin/settings/security")]
+    public async Task<IActionResult> SettingsSecurity(CancellationToken ct)
+    {
+        var settings = await adminSettingsService.GetAsync(ct);
+        return View(new AdminSecuritySettingsModel
+        {
+            MinimumPasswordLength = settings.MinimumPasswordLength,
+            PasswordRequiresNumber = settings.PasswordRequiresNumber,
+            PasswordRequiresCapitalLetter = settings.PasswordRequiresCapitalLetter,
+            PasswordRequiresSpecialCharacter = settings.PasswordRequiresSpecialCharacter,
+            LoginLockoutThreshold = settings.LoginLockoutThreshold,
+            LoginLockoutMinutes = settings.LoginLockoutMinutes,
+            EmailCodeCooldownSeconds = settings.EmailCodeCooldownSeconds,
+            EmailCodeMaxPerHourPerEmail = settings.EmailCodeMaxPerHourPerEmail,
+            EmailCodeMaxPerHourPerIp = settings.EmailCodeMaxPerHourPerIp,
+            EmailCodeExpiryMinutes = settings.EmailCodeExpiryMinutes,
+            EmailCodeMaxFailedAttemptsPerCode = settings.EmailCodeMaxFailedAttemptsPerCode,
+            InviteExpiryHours = settings.InviteExpiryHours,
+            InviteOtpExpiryMinutes = settings.InviteOtpExpiryMinutes,
+            InviteOtpCooldownSeconds = settings.InviteOtpCooldownSeconds,
+            InviteOtpMaxPerHourPerInvite = settings.InviteOtpMaxPerHourPerInvite,
+            InviteOtpMaxPerHourPerIp = settings.InviteOtpMaxPerHourPerIp,
+            InviteOtpMaxAttempts = settings.InviteOtpMaxAttempts,
+            InviteOtpLockMinutes = settings.InviteOtpLockMinutes,
+            InviteMaxAttempts = settings.InviteMaxAttempts,
+            InviteLockMinutes = settings.InviteLockMinutes,
+            ChangePasswordOtpExpiryMinutes = settings.ChangePasswordOtpExpiryMinutes,
+            ChangePasswordOtpCooldownSeconds = settings.ChangePasswordOtpCooldownSeconds,
+            ChangePasswordOtpMaxPerHourPerUser = settings.ChangePasswordOtpMaxPerHourPerUser,
+            ChangePasswordOtpMaxPerHourPerIp = settings.ChangePasswordOtpMaxPerHourPerIp,
+            ChangePasswordOtpMaxAttempts = settings.ChangePasswordOtpMaxAttempts,
+            ChangePasswordOtpLockMinutes = settings.ChangePasswordOtpLockMinutes
+        });
+    }
+
+    [HttpPost("/admin/settings/security")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> SaveSettingsSecurity(AdminSecuritySettingsModel model, CancellationToken ct)
+    {
+        ValidateMinimum(nameof(model.MinimumPasswordLength), model.MinimumPasswordLength, 8, "characters");
+        ValidateMinimum(nameof(model.LoginLockoutThreshold), model.LoginLockoutThreshold, 1, "attempts");
+        ValidateMinimum(nameof(model.LoginLockoutMinutes), model.LoginLockoutMinutes, 1, "minutes");
+        ValidateMinimum(nameof(model.EmailCodeCooldownSeconds), model.EmailCodeCooldownSeconds, 1, "seconds");
+        ValidateMinimum(nameof(model.EmailCodeMaxPerHourPerEmail), model.EmailCodeMaxPerHourPerEmail, 1, "codes");
+        ValidateMinimum(nameof(model.EmailCodeMaxPerHourPerIp), model.EmailCodeMaxPerHourPerIp, 1, "codes");
+        ValidateMinimum(nameof(model.EmailCodeExpiryMinutes), model.EmailCodeExpiryMinutes, 1, "minutes");
+        ValidateMinimum(nameof(model.EmailCodeMaxFailedAttemptsPerCode), model.EmailCodeMaxFailedAttemptsPerCode, 1, "attempts");
+        ValidateMinimum(nameof(model.InviteExpiryHours), model.InviteExpiryHours, 1, "hours");
+        ValidateMinimum(nameof(model.InviteOtpExpiryMinutes), model.InviteOtpExpiryMinutes, 1, "minutes");
+        ValidateMinimum(nameof(model.InviteOtpCooldownSeconds), model.InviteOtpCooldownSeconds, 1, "seconds");
+        ValidateMinimum(nameof(model.InviteOtpMaxPerHourPerInvite), model.InviteOtpMaxPerHourPerInvite, 1, "codes");
+        ValidateMinimum(nameof(model.InviteOtpMaxPerHourPerIp), model.InviteOtpMaxPerHourPerIp, 1, "codes");
+        ValidateMinimum(nameof(model.InviteOtpMaxAttempts), model.InviteOtpMaxAttempts, 1, "attempts");
+        ValidateMinimum(nameof(model.InviteOtpLockMinutes), model.InviteOtpLockMinutes, 1, "minutes");
+        ValidateMinimum(nameof(model.InviteMaxAttempts), model.InviteMaxAttempts, 1, "attempts");
+        ValidateMinimum(nameof(model.InviteLockMinutes), model.InviteLockMinutes, 1, "minutes");
+        ValidateMinimum(nameof(model.ChangePasswordOtpExpiryMinutes), model.ChangePasswordOtpExpiryMinutes, 1, "minutes");
+        ValidateMinimum(nameof(model.ChangePasswordOtpCooldownSeconds), model.ChangePasswordOtpCooldownSeconds, 1, "seconds");
+        ValidateMinimum(nameof(model.ChangePasswordOtpMaxPerHourPerUser), model.ChangePasswordOtpMaxPerHourPerUser, 1, "codes");
+        ValidateMinimum(nameof(model.ChangePasswordOtpMaxPerHourPerIp), model.ChangePasswordOtpMaxPerHourPerIp, 1, "codes");
+        ValidateMinimum(nameof(model.ChangePasswordOtpMaxAttempts), model.ChangePasswordOtpMaxAttempts, 1, "attempts");
+        ValidateMinimum(nameof(model.ChangePasswordOtpLockMinutes), model.ChangePasswordOtpLockMinutes, 1, "minutes");
+        if (!ModelState.IsValid)
+            return View("SettingsSecurity", model);
+
+        var settings = await adminSettingsService.GetAsync(ct);
+        settings.MinimumPasswordLength = model.MinimumPasswordLength;
+        settings.PasswordRequiresNumber = model.PasswordRequiresNumber;
+        settings.PasswordRequiresCapitalLetter = model.PasswordRequiresCapitalLetter;
+        settings.PasswordRequiresSpecialCharacter = model.PasswordRequiresSpecialCharacter;
+        settings.LoginLockoutThreshold = model.LoginLockoutThreshold;
+        settings.LoginLockoutMinutes = model.LoginLockoutMinutes;
+        settings.EmailCodeCooldownSeconds = model.EmailCodeCooldownSeconds;
+        settings.EmailCodeMaxPerHourPerEmail = model.EmailCodeMaxPerHourPerEmail;
+        settings.EmailCodeMaxPerHourPerIp = model.EmailCodeMaxPerHourPerIp;
+        settings.EmailCodeExpiryMinutes = model.EmailCodeExpiryMinutes;
+        settings.EmailCodeMaxFailedAttemptsPerCode = model.EmailCodeMaxFailedAttemptsPerCode;
+        settings.InviteExpiryHours = model.InviteExpiryHours;
+        settings.InviteOtpExpiryMinutes = model.InviteOtpExpiryMinutes;
+        settings.InviteOtpCooldownSeconds = model.InviteOtpCooldownSeconds;
+        settings.InviteOtpMaxPerHourPerInvite = model.InviteOtpMaxPerHourPerInvite;
+        settings.InviteOtpMaxPerHourPerIp = model.InviteOtpMaxPerHourPerIp;
+        settings.InviteOtpMaxAttempts = model.InviteOtpMaxAttempts;
+        settings.InviteOtpLockMinutes = model.InviteOtpLockMinutes;
+        settings.InviteMaxAttempts = model.InviteMaxAttempts;
+        settings.InviteLockMinutes = model.InviteLockMinutes;
+        settings.ChangePasswordOtpExpiryMinutes = model.ChangePasswordOtpExpiryMinutes;
+        settings.ChangePasswordOtpCooldownSeconds = model.ChangePasswordOtpCooldownSeconds;
+        settings.ChangePasswordOtpMaxPerHourPerUser = model.ChangePasswordOtpMaxPerHourPerUser;
+        settings.ChangePasswordOtpMaxPerHourPerIp = model.ChangePasswordOtpMaxPerHourPerIp;
+        settings.ChangePasswordOtpMaxAttempts = model.ChangePasswordOtpMaxAttempts;
+        settings.ChangePasswordOtpLockMinutes = model.ChangePasswordOtpLockMinutes;
+        await adminSettingsService.SaveAsync(settings, ct);
+        TempData["Status"] = "Security settings saved.";
+        return RedirectToAction(nameof(SettingsSecurity));
+    }
+
     [HttpGet("/admin/dataforseo-tasks")]
     public async Task<IActionResult> DataForSeoTasks([FromQuery] string? taskType, [FromQuery] string? status, CancellationToken ct)
     {
@@ -903,6 +1000,12 @@ public class AdminController(
     {
         if (value < 0)
             ModelState.AddModelError(fieldName, $"Value must be at least 0 {unitLabel}.");
+    }
+
+    private void ValidateMinimum(string fieldName, int value, int minValue, string unitLabel)
+    {
+        if (value < minValue)
+            ModelState.AddModelError(fieldName, $"Value must be at least {minValue} {unitLabel}.");
     }
 
     private void ValidatePercent(string fieldName, int value)

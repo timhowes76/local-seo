@@ -1,7 +1,5 @@
 using System.Diagnostics;
 using LocalSeo.Web.Models;
-using LocalSeo.Web.Options;
-using Microsoft.Extensions.Options;
 
 namespace LocalSeo.Web.Services;
 
@@ -25,7 +23,7 @@ public sealed class AuthService(
     ISendGridEmailService sendGridEmailService,
     IPasswordHasherService passwordHasherService,
     IEmailAddressNormalizer emailAddressNormalizer,
-    IOptions<AuthOptions> authOptions,
+    ISecuritySettingsProvider securitySettingsProvider,
     TimeProvider timeProvider,
     ILogger<AuthService> logger) : IAuthService
 {
@@ -41,6 +39,7 @@ public sealed class AuthService(
         var normalizedIpAddress = NormalizeIpAddress(requestedFromIp);
         var normalizedUserAgent = NormalizeNullable(requestedUserAgent, 512);
         var normalizedCorrelationId = NormalizeNullable(correlationId, 64);
+        var securitySettings = await securitySettingsProvider.GetAsync(ct);
         const string genericFailureMessage = "Unable to sign in with those credentials.";
         const string temporaryFailureMessage = "Sign-in temporarily unavailable. Please try again shortly.";
 
@@ -85,7 +84,7 @@ public sealed class AuthService(
 
         if (user.PasswordHash is null || user.PasswordHash.Length == 0)
         {
-            await userRepository.RecordFailedPasswordAttemptAsync(user.Id, authOptions.Value.LockoutThreshold, authOptions.Value.LockoutMinutes, nowUtc, ct);
+            await userRepository.RecordFailedPasswordAttemptAsync(user.Id, securitySettings.LoginLockoutThreshold, securitySettings.LoginLockoutMinutes, nowUtc, ct);
             await WriteLogAsync(false, "InvalidPassword", user.Id);
             logger.LogWarning("Login failed. Category={Category} UserId={UserId}", "password_not_set", user.Id);
             return new BeginLoginResult(false, genericFailureMessage, 0, string.Empty);
@@ -93,7 +92,7 @@ public sealed class AuthService(
 
         if (!passwordHasherService.VerifyPassword(user.PasswordHash, password, out var needsRehash))
         {
-            await userRepository.RecordFailedPasswordAttemptAsync(user.Id, authOptions.Value.LockoutThreshold, authOptions.Value.LockoutMinutes, nowUtc, ct);
+            await userRepository.RecordFailedPasswordAttemptAsync(user.Id, securitySettings.LoginLockoutThreshold, securitySettings.LoginLockoutMinutes, nowUtc, ct);
             await WriteLogAsync(false, "InvalidPassword", user.Id);
             logger.LogWarning("Login failed. Category={Category} UserId={UserId}", "password_mismatch", user.Id);
             return new BeginLoginResult(false, genericFailureMessage, 0, string.Empty);

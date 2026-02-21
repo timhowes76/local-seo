@@ -94,15 +94,7 @@ public class InviteServicesTests
             new PasswordHasherService(),
             crypto,
             email,
-            Microsoft.Extensions.Options.Options.Create(new InviteOptions
-            {
-                HmacSecret = "abcdefghijklmnopqrstuvwxyz123456",
-                OtpMaxAttempts = 5,
-                OtpLockMinutes = 10,
-                OtpCooldownSeconds = 1,
-                OtpMaxPerHourPerInvite = 10,
-                OtpMaxPerHourPerIp = 50
-            }),
+            new FixedSecuritySettingsProvider(BuildSecuritySettings()),
             timeProvider,
             NullLogger<InviteService>.Instance);
 
@@ -402,5 +394,38 @@ public class InviteServicesTests
         public override DateTimeOffset GetUtcNow() => current;
 
         public void Advance(TimeSpan delta) => current = current.Add(delta);
+    }
+
+    private sealed class FixedSecuritySettingsProvider(SecuritySettingsSnapshot settings) : ISecuritySettingsProvider
+    {
+        public Task<SecuritySettingsSnapshot> GetAsync(CancellationToken ct) => Task.FromResult(settings);
+    }
+
+    private static SecuritySettingsSnapshot BuildSecuritySettings()
+    {
+        return new SecuritySettingsSnapshot(
+            PasswordPolicy: new PasswordPolicyRules(12, true, true, true),
+            LoginLockoutThreshold: 5,
+            LoginLockoutMinutes: 15,
+            EmailCodeCooldownSeconds: 60,
+            EmailCodeMaxPerHourPerEmail: 10,
+            EmailCodeMaxPerHourPerIp: 50,
+            EmailCodeExpiryMinutes: 10,
+            EmailCodeMaxFailedAttemptsPerCode: 5,
+            InviteExpiryHours: 24,
+            InviteOtpExpiryMinutes: 10,
+            InviteOtpCooldownSeconds: 1,
+            InviteOtpMaxPerHourPerInvite: 10,
+            InviteOtpMaxPerHourPerIp: 50,
+            InviteOtpMaxAttempts: 5,
+            InviteOtpLockMinutes: 10,
+            InviteMaxAttempts: 10,
+            InviteLockMinutes: 15,
+            ChangePasswordOtpExpiryMinutes: 10,
+            ChangePasswordOtpCooldownSeconds: 60,
+            ChangePasswordOtpMaxPerHourPerUser: 3,
+            ChangePasswordOtpMaxPerHourPerIp: 25,
+            ChangePasswordOtpMaxAttempts: 5,
+            ChangePasswordOtpLockMinutes: 15);
     }
 }

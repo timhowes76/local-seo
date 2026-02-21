@@ -6,7 +6,9 @@ using Microsoft.AspNetCore.Mvc;
 namespace LocalSeo.Web.Controllers;
 
 [AllowAnonymous]
-public sealed class InviteController(IInviteService inviteService) : Controller
+public sealed class InviteController(
+    IInviteService inviteService,
+    ISecuritySettingsProvider securitySettingsProvider) : Controller
 {
     [HttpGet("/invite/accept")]
     public async Task<IActionResult> Accept([FromQuery] string? token, CancellationToken ct)
@@ -53,7 +55,8 @@ public sealed class InviteController(IInviteService inviteService) : Controller
         if (!validation.Invite.OtpVerifiedAtUtc.HasValue)
             return View("Accept", BuildAcceptViewModel(token, validation.Invite, "Please verify your email first.", otpSent: false));
 
-        return View(BuildSetPasswordViewModel(token, validation.Invite, message: null, useGravatar: false));
+        var securitySettings = await securitySettingsProvider.GetAsync(ct);
+        return View(BuildSetPasswordViewModel(token, validation.Invite, message: null, useGravatar: false, securitySettings.PasswordPolicy));
     }
 
     [HttpPost("/invite/set-password")]
@@ -74,7 +77,8 @@ public sealed class InviteController(IInviteService inviteService) : Controller
             return Redirect("/login");
         }
 
-        return View(BuildSetPasswordViewModel(model.Token, validation.Invite, result.Message, model.UseGravatar));
+        var securitySettings = await securitySettingsProvider.GetAsync(ct);
+        return View(BuildSetPasswordViewModel(model.Token, validation.Invite, result.Message, model.UseGravatar, securitySettings.PasswordPolicy));
     }
 
     private InviteAcceptViewModel BuildAcceptViewModel(string token, UserInviteRecord invite, string? message, bool otpSent)
@@ -91,14 +95,21 @@ public sealed class InviteController(IInviteService inviteService) : Controller
         };
     }
 
-    private InviteSetPasswordViewModel BuildSetPasswordViewModel(string token, UserInviteRecord invite, string? message, bool useGravatar)
+    private InviteSetPasswordViewModel BuildSetPasswordViewModel(string token, UserInviteRecord invite, string? message, bool useGravatar, PasswordPolicyRules passwordPolicy)
     {
         return new InviteSetPasswordViewModel
         {
             Token = token,
             EmailAddressMasked = inviteService.MaskEmailAddress(invite.EmailAddress),
             Message = message,
-            UseGravatar = useGravatar
+            UseGravatar = useGravatar,
+            PasswordPolicy = new PasswordPolicyViewModel
+            {
+                MinimumPasswordLength = passwordPolicy.MinimumLength,
+                RequiresNumber = passwordPolicy.RequiresNumber,
+                RequiresCapitalLetter = passwordPolicy.RequiresCapitalLetter,
+                RequiresSpecialCharacter = passwordPolicy.RequiresSpecialCharacter
+            }
         };
     }
 }

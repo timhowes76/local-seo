@@ -50,4 +50,5 @@ public sealed class ChangePasswordVerifyViewModel
     public DateTime? ExpiresAtUtc { get; init; }
     public DateTime? LockedUntilUtc { get; init; }
     public ChangePasswordVerifyRequestModel Form { get; init; } = new();
+    public PasswordPolicyViewModel PasswordPolicy { get; init; } = new();
 }
