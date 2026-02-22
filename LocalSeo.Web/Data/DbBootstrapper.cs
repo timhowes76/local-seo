@@ -1057,7 +1057,8 @@ BEGIN
     Status nvarchar(20) NOT NULL CONSTRAINT DF_GoogleBusinessProfileCategory_Status DEFAULT('Active'),
     FirstSeenUtc datetime2(0) NOT NULL CONSTRAINT DF_GoogleBusinessProfileCategory_FirstSeenUtc DEFAULT SYSUTCDATETIME(),
     LastSeenUtc datetime2(0) NOT NULL CONSTRAINT DF_GoogleBusinessProfileCategory_LastSeenUtc DEFAULT SYSUTCDATETIME(),
-    LastSyncedUtc datetime2(0) NOT NULL CONSTRAINT DF_GoogleBusinessProfileCategory_LastSyncedUtc DEFAULT SYSUTCDATETIME()
+    LastSyncedUtc datetime2(0) NOT NULL CONSTRAINT DF_GoogleBusinessProfileCategory_LastSyncedUtc DEFAULT SYSUTCDATETIME(),
+    LastSeenCycleId uniqueidentifier NULL
   );
 END;
 IF COL_LENGTH('dbo.GoogleBusinessProfileCategory', 'DisplayName') IS NULL
@@ -1074,6 +1075,8 @@ IF COL_LENGTH('dbo.GoogleBusinessProfileCategory', 'LastSeenUtc') IS NULL
   ALTER TABLE dbo.GoogleBusinessProfileCategory ADD LastSeenUtc datetime2(0) NOT NULL CONSTRAINT DF_GoogleBusinessProfileCategory_LastSeenUtc_Alt DEFAULT SYSUTCDATETIME();
 IF COL_LENGTH('dbo.GoogleBusinessProfileCategory', 'LastSyncedUtc') IS NULL
   ALTER TABLE dbo.GoogleBusinessProfileCategory ADD LastSyncedUtc datetime2(0) NOT NULL CONSTRAINT DF_GoogleBusinessProfileCategory_LastSyncedUtc_Alt DEFAULT SYSUTCDATETIME();
+IF COL_LENGTH('dbo.GoogleBusinessProfileCategory', 'LastSeenCycleId') IS NULL
+  ALTER TABLE dbo.GoogleBusinessProfileCategory ADD LastSeenCycleId uniqueidentifier NULL;
 IF EXISTS (
   SELECT 1
   FROM sys.check_constraints
@@ -1091,6 +1094,8 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_GoogleBusinessProfileCat
   CREATE INDEX IX_GoogleBusinessProfileCategory_Status_DisplayName ON dbo.GoogleBusinessProfileCategory(Status, DisplayName, CategoryId);
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_GoogleBusinessProfileCategory_Region_Language_Status' AND object_id=OBJECT_ID('dbo.GoogleBusinessProfileCategory'))
   CREATE INDEX IX_GoogleBusinessProfileCategory_Region_Language_Status ON dbo.GoogleBusinessProfileCategory(RegionCode, LanguageCode, Status, CategoryId);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_GoogleBusinessProfileCategory_Region_Language_Cycle' AND object_id=OBJECT_ID('dbo.GoogleBusinessProfileCategory'))
+  CREATE INDEX IX_GoogleBusinessProfileCategory_Region_Language_Cycle ON dbo.GoogleBusinessProfileCategory(RegionCode, LanguageCode, LastSeenCycleId, CategoryId);
 IF OBJECT_ID('dbo.GoogleBusinessProfileCategorySyncRun','U') IS NULL
 BEGIN
   CREATE TABLE dbo.GoogleBusinessProfileCategorySyncRun(
@@ -1117,6 +1122,27 @@ IF COL_LENGTH('dbo.GoogleBusinessProfileCategorySyncRun', 'MarkedInactiveCount')
   ALTER TABLE dbo.GoogleBusinessProfileCategorySyncRun ADD MarkedInactiveCount int NOT NULL CONSTRAINT DF_GoogleBusinessProfileCategorySyncRun_MarkedInactiveCount_Alt DEFAULT(0);
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_GoogleBusinessProfileCategorySyncRun_Region_Language_RanAt' AND object_id=OBJECT_ID('dbo.GoogleBusinessProfileCategorySyncRun'))
   CREATE INDEX IX_GoogleBusinessProfileCategorySyncRun_Region_Language_RanAt ON dbo.GoogleBusinessProfileCategorySyncRun(RegionCode, LanguageCode, RanAtUtc DESC);
+IF OBJECT_ID('dbo.GoogleBusinessProfileCategorySyncCursor','U') IS NULL
+BEGIN
+  CREATE TABLE dbo.GoogleBusinessProfileCategorySyncCursor(
+    RegionCode nvarchar(10) NOT NULL,
+    LanguageCode nvarchar(20) NOT NULL,
+    CycleId uniqueidentifier NOT NULL,
+    NextPageToken nvarchar(2048) NULL,
+    UpdatedUtc datetime2(0) NOT NULL CONSTRAINT DF_GoogleBusinessProfileCategorySyncCursor_UpdatedUtc DEFAULT SYSUTCDATETIME(),
+    CONSTRAINT PK_GoogleBusinessProfileCategorySyncCursor PRIMARY KEY(RegionCode, LanguageCode)
+  );
+END;
+IF COL_LENGTH('dbo.GoogleBusinessProfileCategorySyncCursor', 'RegionCode') IS NULL
+  ALTER TABLE dbo.GoogleBusinessProfileCategorySyncCursor ADD RegionCode nvarchar(10) NOT NULL CONSTRAINT DF_GoogleBusinessProfileCategorySyncCursor_RegionCode DEFAULT N'GB';
+IF COL_LENGTH('dbo.GoogleBusinessProfileCategorySyncCursor', 'LanguageCode') IS NULL
+  ALTER TABLE dbo.GoogleBusinessProfileCategorySyncCursor ADD LanguageCode nvarchar(20) NOT NULL CONSTRAINT DF_GoogleBusinessProfileCategorySyncCursor_LanguageCode DEFAULT N'en-GB';
+IF COL_LENGTH('dbo.GoogleBusinessProfileCategorySyncCursor', 'CycleId') IS NULL
+  ALTER TABLE dbo.GoogleBusinessProfileCategorySyncCursor ADD CycleId uniqueidentifier NOT NULL CONSTRAINT DF_GoogleBusinessProfileCategorySyncCursor_CycleId DEFAULT NEWID();
+IF COL_LENGTH('dbo.GoogleBusinessProfileCategorySyncCursor', 'NextPageToken') IS NULL
+  ALTER TABLE dbo.GoogleBusinessProfileCategorySyncCursor ADD NextPageToken nvarchar(2048) NULL;
+IF COL_LENGTH('dbo.GoogleBusinessProfileCategorySyncCursor', 'UpdatedUtc') IS NULL
+  ALTER TABLE dbo.GoogleBusinessProfileCategorySyncCursor ADD UpdatedUtc datetime2(0) NOT NULL CONSTRAINT DF_GoogleBusinessProfileCategorySyncCursor_UpdatedUtc_Alt DEFAULT SYSUTCDATETIME();
 IF OBJECT_ID('dbo.GbCounty','U') IS NULL
 BEGIN
   CREATE TABLE dbo.GbCounty(

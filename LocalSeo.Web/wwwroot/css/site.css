@@ -458,6 +458,83 @@ button.avatar-menu-item:hover {
     align-items: stretch;
 }
 
+.run-summary-card {
+    display: grid;
+    gap: var(--space-3);
+}
+
+.run-summary-items {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 10px;
+}
+
+.run-summary-item {
+    border: 1px solid var(--border-soft);
+    border-radius: 10px;
+    background: var(--bg-subtle);
+    padding: 10px 12px;
+    display: grid;
+    gap: 8px;
+}
+
+.run-summary-item-head {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.run-summary-icon {
+    width: 24px;
+    height: 24px;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: #e8f0ff;
+    color: #1d4ed8;
+    font-size: 12px;
+}
+
+.run-summary-label {
+    color: var(--text-muted);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+}
+
+.run-summary-value {
+    color: var(--text-strong);
+    font-size: 14px;
+    font-weight: 700;
+    word-break: break-word;
+}
+
+.run-summary-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    border: 1px solid transparent;
+    padding: 4px 10px;
+    font-size: 12px;
+    font-weight: 700;
+    width: fit-content;
+}
+
+.run-summary-badge.is-on {
+    background: #ecfdf3;
+    border-color: #bbf7d0;
+    color: #166534;
+}
+
+.run-summary-badge.is-off {
+    background: #f8fafc;
+    border-color: #e2e8f0;
+    color: #475569;
+}
+
 .run-actions-grid {
     display: grid;
     gap: var(--space-3);
@@ -966,6 +1043,10 @@ button:disabled,
 }
 
 @media (max-width: 1000px) {
+    .run-summary-grid {
+        grid-template-columns: 1fr;
+    }
+
     .overview-split {
         grid-template-columns: 1fr;
     }
@@ -2015,6 +2096,23 @@ code {
 
 .theme-dark .keyword-type-help-grid strong {
     color: #f8fafc;
+}
+
+.theme-dark .run-summary-icon {
+    background: #1e293b;
+    color: #93c5fd;
+}
+
+.theme-dark .run-summary-badge.is-on {
+    background: #0f2c1f;
+    border-color: #14532d;
+    color: #86efac;
+}
+
+.theme-dark .run-summary-badge.is-off {
+    background: #1f2937;
+    border-color: #334155;
+    color: #cbd5e1;
 }
 
 .theme-dark .zoho-lead-meta {

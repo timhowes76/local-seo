@@ -112,12 +112,12 @@
                             <td><a href="/admin/users/@row.Id?status=@Uri.EscapeDataString(filter)&q=@escapedQ">@row.Id</a></td>
                             <td>@row.Name</td>
                             <td>@row.EmailAddress</td>
-                            <td>@row.DateCreatedAtUtc.ToString("u")</td>
+                            <td>@row.DateCreatedAtUtc.ToString("dd MMM yyyy HH:mm")</td>
                             <td>
                                 <span class="status-pill @LifecycleCss(row)">@LifecycleLabel(row)</span>
                                 @if (row.LastInviteCreatedAtUtc.HasValue)
                                 {
-                                    <div class="muted">Invite: @row.LastInviteCreatedAtUtc.Value.ToString("u")</div>
+                                    <div class="muted">Invite: @row.LastInviteCreatedAtUtc.Value.ToString("dd MMM yyyy HH:mm")</div>
                                 }
                             </td>
                             <td class="users-actions-cell">

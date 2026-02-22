@@ -16,6 +16,15 @@ public sealed record GoogleBusinessProfileCategorySyncSummary(
     int UpdatedCount,
     int MarkedInactiveCount);
 
+public sealed record GoogleBusinessProfileCategorySyncRunResult(
+    DateTime RanAtUtc,
+    int AddedCount,
+    int UpdatedCount,
+    int MarkedInactiveCount,
+    int PagesFetched,
+    bool IsCycleComplete,
+    bool WasRateLimited);
+
 public sealed class GoogleBusinessProfileCategoryListViewModel
 {
     public IReadOnlyList<GoogleBusinessProfileCategoryRow> Rows { get; init; } = [];

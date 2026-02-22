@@ -1,10 +1,13 @@
 @{
     ViewData["Title"] = "Invite Link";
+    var brandLogoPath = string.Equals(Context.Request.Cookies["theme"], "dark=1", StringComparison.Ordinal)
+        ? "/assets/images/dark-logo.svg"
+        : "/assets/images/logo.svg";
 }
 
 <div class="login-card card">
     <div class="login-brand">
-        <img class="login-brand-logo" src="/assets/images/logo.svg" alt="Kontrolit" />
+        <img class="login-brand-logo" src="@brandLogoPath" alt="Kontrolit" />
         <h2 class="card-title">Invite Link</h2>
     </div>
 

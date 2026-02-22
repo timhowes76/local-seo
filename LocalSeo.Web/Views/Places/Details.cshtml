@@ -1,6 +1,7 @@
 @using System.Globalization
 @using System.Text.Json
 @inject Microsoft.Extensions.Options.IOptions<LocalSeo.Web.Options.GoogleOptions> GoogleOptions
+@inject Microsoft.AspNetCore.Hosting.IWebHostEnvironment WebHostEnvironment
 @model PlaceDetailsViewModel
 @{
     var displayNameForTitle = string.IsNullOrWhiteSpace(Model.DisplayName) ? "Location Details" : Model.DisplayName!;
@@ -257,6 +258,23 @@
         .Select(x => (Label: x.Label, Url: x.Url!, IconClass: x.IconClass))
         .ToList();
     var logoUrl = string.IsNullOrWhiteSpace(Model.LogoUrl) ? null : Model.LogoUrl;
+    string? localLogoUrl = null;
+    if (!string.IsNullOrWhiteSpace(logoUrl)
+        && logoUrl.StartsWith("/", StringComparison.Ordinal)
+        && !logoUrl.StartsWith("//", StringComparison.Ordinal))
+    {
+        var webRootPath = WebHostEnvironment.WebRootPath ?? string.Empty;
+        if (!string.IsNullOrWhiteSpace(webRootPath))
+        {
+            var rootFullPath = System.IO.Path.GetFullPath(webRootPath).TrimEnd(System.IO.Path.DirectorySeparatorChar, System.IO.Path.AltDirectorySeparatorChar);
+            var relativePath = logoUrl.TrimStart('/').Replace('/', System.IO.Path.DirectorySeparatorChar);
+            var candidateFullPath = System.IO.Path.GetFullPath(System.IO.Path.Combine(webRootPath, relativePath));
+            var isUnderWebRoot = candidateFullPath.StartsWith(rootFullPath + System.IO.Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(candidateFullPath, rootFullPath, StringComparison.OrdinalIgnoreCase);
+            if (isUnderWebRoot && System.IO.File.Exists(candidateFullPath))
+                localLogoUrl = logoUrl;
+        }
+    }
     var mainPhotoUrl = string.IsNullOrWhiteSpace(Model.MainPhotoUrl) ? null : Model.MainPhotoUrl;
     var financialInfo = Model.FinancialInfo;
     var hasFinancialInfo = financialInfo is not null;
@@ -291,9 +309,9 @@
             <div class="overview-split">
                 <div class="overview-main">
                     <div class="overview-name-row">
-                        @if (!string.IsNullOrWhiteSpace(logoUrl))
+                        @if (!string.IsNullOrWhiteSpace(localLogoUrl))
                         {
-                            <img class="overview-logo" src="@logoUrl" alt="@(Model.DisplayName ?? "Business") logo" loading="lazy" />
+                            <img class="overview-logo" src="@localLogoUrl" alt="@(Model.DisplayName ?? "Business") logo" loading="lazy" />
                         }
                         <div class="overview-name-block">
                             <div class="overview-name">@(Model.DisplayName ?? "N/A")</div>
@@ -424,7 +442,7 @@
                                         <strong>Last Zoho error:</strong> @Model.ZohoLastError
                                         @if (Model.ZohoLastSyncAtUtc.HasValue)
                                         {
-                                            <span>(@Model.ZohoLastSyncAtUtc.Value.ToString("u") UTC)</span>
+                                            <span>(@Model.ZohoLastSyncAtUtc.Value.ToString("dd MMM yyyy HH:mm") UTC)</span>
                                         }
                                     </div>
                                 }
@@ -1108,7 +1126,7 @@ else
         @foreach (var u in Model.Updates)
         {
             <tr>
-                <td>@(u.PostDateUtc?.ToString("u") ?? u.LastSeenUtc.ToString("u"))</td>
+                <td>@(u.PostDateUtc?.ToString("dd MMM yyyy HH:mm") ?? u.LastSeenUtc.ToString("dd MMM yyyy HH:mm"))</td>
                 <td>@(u.PostText ?? "N/A")</td>
                 <td>
                     @if (!string.IsNullOrWhiteSpace(u.Url))
@@ -1261,10 +1279,10 @@ else
             @foreach (var qa in Model.QuestionsAndAnswers)
             {
                 <tr>
-                    <td>@(qa.QuestionTimestampUtc?.ToString("u") ?? qa.LastSeenUtc.ToString("u"))</td>
+                    <td>@(qa.QuestionTimestampUtc?.ToString("dd MMM yyyy HH:mm") ?? qa.LastSeenUtc.ToString("dd MMM yyyy HH:mm"))</td>
                     <td>@(qa.QuestionProfileName ?? "N/A")</td>
                     <td>@(qa.QuestionText ?? "N/A")</td>
-                    <td>@(qa.AnswerTimestampUtc?.ToString("u") ?? "N/A")</td>
+                    <td>@(qa.AnswerTimestampUtc?.ToString("dd MMM yyyy HH:mm") ?? "N/A")</td>
                     <td>@(qa.AnswerProfileName ?? "N/A")</td>
                     <td>@(qa.AnswerText ?? "N/A")</td>
                 </tr>
@@ -1510,7 +1528,7 @@ else
                                     @(string.IsNullOrWhiteSpace(account.OriginalFileName) ? account.DocumentId : account.OriginalFileName)
                                 </a>
                             </td>
-                            <td>@account.RetrievedUtc.ToString("u")</td>
+                            <td>@account.RetrievedUtc.ToString("dd MMM yyyy HH:mm")</td>
                             <td>
                                 @if (account.IsLatest)
                                 {
@@ -1532,7 +1550,7 @@ else
     <div><strong>Lat:</strong> @(Model.Lat?.ToString() ?? "N/A")</div>
     <div><strong>Long:</strong> @(Model.Lng?.ToString() ?? "N/A")</div>
     <div><strong>Active Run:</strong> @(Model.ActiveRunId?.ToString() ?? "N/A")</div>
-    <div><strong>Capturated At:</strong> @(Model.ActiveCapturedAtUtc?.ToString("u") ?? "N/A")</div>
+    <div><strong>Capturated At:</strong> @(Model.ActiveCapturedAtUtc?.ToString("dd MMM yyyy HH:mm") ?? "N/A")</div>
 </div>
 
 @if (!hasFinancialInfo)

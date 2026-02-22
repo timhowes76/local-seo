@@ -140,7 +140,7 @@
                                     }
                                 }
                             </td>
-                            <td>@(row.LastSucceededUtc?.ToString("u") ?? "N/A")</td>
+                            <td>@(row.LastSucceededUtc?.ToString("dd MMM yyyy HH:mm") ?? "N/A")</td>
                             <td>
                                 @if (row.Last12Months.Count == 0)
                                 {
@@ -156,7 +156,7 @@
                                         }
                                     </div>
                                     <div class="muted">
-                                        Data as of: @(row.DataAsOfUtc?.ToString("yyyy-MM") ?? "N/A")
+                                        Data as of: @(row.DataAsOfUtc?.ToString("MMM yyyy") ?? "N/A")
                                     </div>
                                 }
                             </td>

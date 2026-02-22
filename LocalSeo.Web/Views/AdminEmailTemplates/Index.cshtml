@@ -47,7 +47,7 @@
                                 <td>@(string.IsNullOrWhiteSpace(row.FromName) ? row.FromEmail : $"{row.FromName} <{row.FromEmail}>")</td>
                                 <td>@(row.IsSensitive ? "Yes" : "No")</td>
                                 <td>@(row.IsEnabled ? "Yes" : "No")</td>
-                                <td>@row.UpdatedUtc.ToString("u")</td>
+                                <td>@row.UpdatedUtc.ToString("dd MMM yyyy HH:mm")</td>
                                 <td><a class="btn btn-secondary" href="/admin/email-templates/@row.Id/edit">Edit</a></td>
                             </tr>
                         }

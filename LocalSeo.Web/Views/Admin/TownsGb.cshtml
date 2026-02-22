@@ -132,8 +132,8 @@
                             <td>@row.Name</td>
                             <td>@(string.IsNullOrWhiteSpace(row.Slug) ? "N/A" : row.Slug)</td>
                             <td><span class="status-pill status-@statusKey">@statusText</span></td>
-                            <td>@row.CreatedUtc.ToString("u")</td>
-                            <td>@row.UpdatedUtc.ToString("u")</td>
+                            <td>@row.CreatedUtc.ToString("dd MMM yyyy HH:mm")</td>
+                            <td>@row.UpdatedUtc.ToString("dd MMM yyyy HH:mm")</td>
                             <td>
                                 <div class="toolbar">
                                     <a class="btn btn-secondary" href="/admin/data-lists/towns-gb/view?townId=@row.TownId&@BuildActionQuery()">View</a>

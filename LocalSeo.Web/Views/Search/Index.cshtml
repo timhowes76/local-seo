@@ -1,9 +1,19 @@
+@using System.Globalization
 @model SearchFormModel
 @{
     ViewData["Title"] = "Search";
     var statusMessage = TempData["Status"] as string;
     var isRerun = Model.RerunSourceRunId.HasValue;
     var keyphrases = Model.Keyphrases;
+    string FormatMonthYear(int year, int month)
+    {
+        if (month < 1 || month > 12)
+        {
+            return $"{year}-{month:00}";
+        }
+
+        return new DateTime(year, month, 1).ToString("MMM yyyy", CultureInfo.InvariantCulture);
+    }
 }
 <div class="page-stack">
     @if (!string.IsNullOrWhiteSpace(statusMessage))
@@ -262,7 +272,7 @@
                                             }
                                         </div>
                                         <div class="muted">
-                                            Data as of: @(row.DataAsOfUtc?.ToString("yyyy-MM") ?? "N/A")
+                                            Data as of: @(row.DataAsOfUtc?.ToString("MMM yyyy", CultureInfo.InvariantCulture) ?? "N/A")
                                         </div>
                                     }
                                 </td>
@@ -330,11 +340,12 @@
                     @foreach (var point in keyphrases.WeightedTotalLast12Months)
                     {
                         var heightPercent = maxTotal <= 0 ? 0 : Math.Max(5, (int)Math.Round((point.WeightedSearchVolume * 100m) / maxTotal));
+                        var monthLabel = FormatMonthYear(point.Year, point.Month);
                         <div class="volume-chart-column">
                             <div class="volume-chart-plot">
-                                <span class="volume-chart-bar" style="height:@heightPercent%" title="@point.Year-@point.Month.ToString("00"): @point.WeightedSearchVolume.ToString("N1")"></span>
+                                <span class="volume-chart-bar" style="height:@heightPercent%" title="@monthLabel: @point.WeightedSearchVolume.ToString("N1")"></span>
                             </div>
-                            <span class="volume-chart-label">@point.Year-@point.Month.ToString("00")</span>
+                            <span class="volume-chart-label">@monthLabel</span>
                             <span class="volume-chart-value">@point.WeightedSearchVolume.ToString("N0")</span>
                         </div>
                     }

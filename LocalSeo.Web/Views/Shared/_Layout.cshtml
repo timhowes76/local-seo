@@ -6,6 +6,7 @@
     var pageTitle = (ViewData["Title"] as string) ?? (ViewContext.RouteData.Values["controller"]?.ToString() ?? "Dashboard");
     var currentController = (ViewContext.RouteData.Values["controller"]?.ToString() ?? string.Empty).ToLowerInvariant();
     var isDarkMode = false;
+    var brandLogoPath = "/assets/images/logo.svg";
     LocalSeo.Web.Models.UserRecord? topbarUser = null;
     var topbarDisplayName = User.Identity?.Name ?? "User";
     var topbarAvatar = AvatarResolver.Resolve(null, 40);
@@ -44,6 +45,9 @@
     {
         isDarkMode = string.Equals(Context.Request.Cookies["theme"], "dark=1", StringComparison.Ordinal);
     }
+
+    if (isDarkMode)
+        brandLogoPath = "/assets/images/dark-logo.svg";
 
     var breadcrumbMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
     {
@@ -122,7 +126,7 @@
     <div class="dashboard-shell">
         <aside class="sidebar">
             <div class="sidebar-brand">
-                <img class="sidebar-brand-logo" src="/assets/images/logo.svg" alt="Kontrolit" />
+                <img class="sidebar-brand-logo" src="@brandLogoPath" alt="Kontrolit" />
                 <div class="sidebar-brand-title">Local SEO Tool</div>
             </div>
             <nav class="sidebar-nav">

@@ -65,22 +65,22 @@
             </div>
             <div class="form-row">
                 <label>Date Created (UTC)</label>
-                <span>@user.DateCreatedAtUtc.ToString("u")</span>
+                <span>@user.DateCreatedAtUtc.ToString("dd MMM yyyy HH:mm")</span>
             </div>
             <div class="form-row">
                 <label>Date Password Last Set (UTC)</label>
-                <span>@(user.DatePasswordLastSetUtc.HasValue ? user.DatePasswordLastSetUtc.Value.ToString("u") : "Not set")</span>
+                <span>@(user.DatePasswordLastSetUtc.HasValue ? user.DatePasswordLastSetUtc.Value.ToString("dd MMM yyyy HH:mm") : "Not set")</span>
             </div>
             <div class="form-row">
                 <label>Last Login (UTC)</label>
-                <span>@(user.LastLoginAtUtc.HasValue ? user.LastLoginAtUtc.Value.ToString("u") : "Never")</span>
+                <span>@(user.LastLoginAtUtc.HasValue ? user.LastLoginAtUtc.Value.ToString("dd MMM yyyy HH:mm") : "Never")</span>
             </div>
             <div class="form-row">
                 <label>Status</label>
                 <span class="status-pill @statusBadgeClass">@status</span>
                 @if (Model.LastInviteCreatedAtUtc.HasValue)
                 {
-                    <div class="muted">Last invite: @Model.LastInviteCreatedAtUtc.Value.ToString("u")</div>
+                    <div class="muted">Last invite: @Model.LastInviteCreatedAtUtc.Value.ToString("dd MMM yyyy HH:mm")</div>
                 }
             </div>
         </div>

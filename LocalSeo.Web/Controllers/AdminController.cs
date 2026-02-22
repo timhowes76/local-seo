@@ -572,8 +572,19 @@ public class AdminController(
     {
         try
         {
-            var summary = await googleBusinessProfileCategoryService.SyncFromGoogleAsync(UkRegionCode, UkLanguageCode, ct);
-            TempData["Status"] = $"Sync completed at {summary.RanAtUtc:u}. Added: {summary.AddedCount}, Updated: {summary.UpdatedCount}, Marked Inactive: {summary.MarkedInactiveCount}.";
+            var result = await googleBusinessProfileCategoryService.SyncFromGoogleAsync(UkRegionCode, UkLanguageCode, ct);
+            if (result.IsCycleComplete)
+            {
+                TempData["Status"] = $"Sync completed at {result.RanAtUtc:u}. Added: {result.AddedCount}, Updated: {result.UpdatedCount}, Marked Inactive: {result.MarkedInactiveCount}.";
+            }
+            else if (result.WasRateLimited)
+            {
+                TempData["Status"] = $"Sync partially completed at {result.RanAtUtc:u}. Pages fetched: {result.PagesFetched}. Added: {result.AddedCount}, Updated: {result.UpdatedCount}. Google rate limit reached; click Sync again in about 1 minute to continue from where it stopped.";
+            }
+            else
+            {
+                TempData["Status"] = $"Sync partially completed at {result.RanAtUtc:u}. Pages fetched: {result.PagesFetched}. Added: {result.AddedCount}, Updated: {result.UpdatedCount}. Click Sync again to continue.";
+            }
         }
         catch (Exception ex)
         {

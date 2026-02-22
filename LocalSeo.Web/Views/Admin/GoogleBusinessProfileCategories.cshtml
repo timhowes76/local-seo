@@ -38,6 +38,7 @@
                 <button type="submit">Sync from Google (UK)</button>
             </form>
         </div>
+        <p class="muted">Sync resumes automatically from the last page token if Google rate limits a run. Click Sync again to continue.</p>
     </section>
 
     <section class="card">
@@ -48,7 +49,7 @@
         }
         else
         {
-            <div><strong>Timestamp:</strong> @Model.LastUkSyncSummary.RanAtUtc.ToString("u")</div>
+            <div><strong>Timestamp:</strong> @Model.LastUkSyncSummary.RanAtUtc.ToString("dd MMM yyyy HH:mm")</div>
             <div><strong>Number Added:</strong> @Model.LastUkSyncSummary.AddedCount</div>
             <div><strong>Number Updated:</strong> @Model.LastUkSyncSummary.UpdatedCount</div>
             <div><strong>Number Marked Inactive:</strong> @Model.LastUkSyncSummary.MarkedInactiveCount</div>
@@ -131,9 +132,9 @@
                             <td>@row.RegionCode</td>
                             <td>@row.LanguageCode</td>
                             <td><span class="status-pill status-@statusKey">@row.Status</span></td>
-                            <td>@row.FirstSeenUtc.ToString("u")</td>
-                            <td>@row.LastSeenUtc.ToString("u")</td>
-                            <td>@row.LastSyncedUtc.ToString("u")</td>
+                            <td>@row.FirstSeenUtc.ToString("dd MMM yyyy HH:mm")</td>
+                            <td>@row.LastSeenUtc.ToString("dd MMM yyyy HH:mm")</td>
+                            <td>@row.LastSyncedUtc.ToString("dd MMM yyyy HH:mm")</td>
                             <td>
                                 <div class="toolbar">
                                     <a class="btn btn-secondary" href="/admin/data-lists/google-business-profile-categories/edit?categoryId=@Uri.EscapeDataString(row.CategoryId)&@BuildActionQuery()">Edit</a>

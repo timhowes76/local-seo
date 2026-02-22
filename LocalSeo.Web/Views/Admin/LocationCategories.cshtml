@@ -47,7 +47,7 @@
                             <td>@row.CategoryDisplayName <span class="muted">(@row.CategoryId)</span></td>
                             <td>@row.KeywordCount</td>
                             <td>@row.MainTermCount</td>
-                            <td>@(row.LastKeywordUpdatedUtc?.ToString("u") ?? "N/A")</td>
+                            <td>@(row.LastKeywordUpdatedUtc?.ToString("dd MMM yyyy HH:mm") ?? "N/A")</td>
                             <td>
                                 <a class="btn btn-secondary" href="/admin/location/@Model.LocationId/category/@encodedCategoryId/keyphrases">Keyphrases</a>
                             </td>

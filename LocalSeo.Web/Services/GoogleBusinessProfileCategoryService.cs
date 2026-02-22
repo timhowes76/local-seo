@@ -1,4 +1,5 @@
 using System.Data;
+using System.Net;
 using System.Net.Http.Headers;
 using System.Text.Json;
 using Dapper;
@@ -19,7 +20,7 @@ public interface IGoogleBusinessProfileCategoryService
     Task AddManualAsync(GoogleBusinessProfileCategoryCreateModel model, CancellationToken ct);
     Task<bool> UpdateDisplayNameAsync(string categoryId, string displayName, CancellationToken ct);
     Task<bool> MarkInactiveAsync(string categoryId, CancellationToken ct);
-    Task<GoogleBusinessProfileCategorySyncSummary> SyncFromGoogleAsync(string regionCode, string languageCode, CancellationToken ct);
+    Task<GoogleBusinessProfileCategorySyncRunResult> SyncFromGoogleAsync(string regionCode, string languageCode, CancellationToken ct);
 }
 
 public sealed class GoogleBusinessProfileCategoryService(
@@ -256,7 +257,7 @@ WHERE CategoryId = @CategoryId;", new
         return affected > 0;
     }
 
-    public async Task<GoogleBusinessProfileCategorySyncSummary> SyncFromGoogleAsync(string regionCode, string languageCode, CancellationToken ct)
+    public async Task<GoogleBusinessProfileCategorySyncRunResult> SyncFromGoogleAsync(string regionCode, string languageCode, CancellationToken ct)
     {
         var normalizedRegionCode = NormalizeRegionCode(regionCode);
         var normalizedLanguageCode = NormalizeLanguageCode(languageCode);
@@ -265,44 +266,201 @@ WHERE CategoryId = @CategoryId;", new
         if (string.IsNullOrWhiteSpace(normalizedLanguageCode))
             throw new InvalidOperationException("Language Code is required.");
 
-        var incomingCategories = await FetchAllGoogleCategoriesAsync(normalizedRegionCode, normalizedLanguageCode, ct);
-        var syncedAtUtc = DateTime.UtcNow;
-
         await using var conn = (SqlConnection)await connectionFactory.OpenConnectionAsync(ct);
-        await using var tx = await conn.BeginTransactionAsync(ct);
+        var accessToken = await GetBusinessProfileAccessTokenAsync(ct);
+        var cursor = await GetSyncCursorAsync(conn, normalizedRegionCode, normalizedLanguageCode, ct);
+        var currentCycleId = cursor is null || string.IsNullOrWhiteSpace(cursor.NextPageToken)
+            ? Guid.NewGuid()
+            : cursor.CycleId;
+        var pageToken = string.IsNullOrWhiteSpace(cursor?.NextPageToken) ? null : cursor!.NextPageToken;
+
+        var totalAdded = 0;
+        var totalUpdated = 0;
+        var totalMarkedInactive = 0;
+        var pagesFetched = 0;
+        var ranAtUtc = DateTime.UtcNow;
+        var seenTokens = new HashSet<string>(StringComparer.Ordinal);
+
         try
         {
-            await conn.ExecuteAsync(new CommandDefinition(@"
+            while (true)
+            {
+                if (!string.IsNullOrWhiteSpace(pageToken) && !seenTokens.Add(pageToken))
+                    throw new InvalidOperationException("Google categories sync stopped due to a repeated page token.");
+
+                GoogleCategoriesPage page;
+                try
+                {
+                    page = await FetchGoogleCategoriesPageAsync(accessToken, normalizedRegionCode, normalizedLanguageCode, pageToken, ct);
+                }
+                catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.TooManyRequests)
+                {
+                    ranAtUtc = DateTime.UtcNow;
+                    await RecordSyncRunAsync(conn, normalizedRegionCode, normalizedLanguageCode, ranAtUtc, totalAdded, totalUpdated, totalMarkedInactive, ct);
+                    return new GoogleBusinessProfileCategorySyncRunResult(
+                        ranAtUtc,
+                        totalAdded,
+                        totalUpdated,
+                        totalMarkedInactive,
+                        pagesFetched,
+                        IsCycleComplete: false,
+                        WasRateLimited: true);
+                }
+
+                var syncedAtUtc = DateTime.UtcNow;
+                await using var tx = (SqlTransaction)await conn.BeginTransactionAsync(ct);
+                try
+                {
+                    var pageResult = await UpsertIncomingPageAsync(
+                        conn,
+                        tx,
+                        page.Categories,
+                        normalizedRegionCode,
+                        normalizedLanguageCode,
+                        currentCycleId,
+                        syncedAtUtc,
+                        ct);
+                    totalAdded += pageResult.AddedCount;
+                    totalUpdated += pageResult.UpdatedCount;
+                    pagesFetched++;
+
+                    pageToken = string.IsNullOrWhiteSpace(page.NextPageToken) ? null : page.NextPageToken;
+                    await UpsertSyncCursorAsync(conn, tx, normalizedRegionCode, normalizedLanguageCode, currentCycleId, pageToken, syncedAtUtc, ct);
+
+                    if (pageToken is null)
+                    {
+                        totalMarkedInactive += await MarkMissingInactiveForCycleAsync(
+                            conn,
+                            tx,
+                            normalizedRegionCode,
+                            normalizedLanguageCode,
+                            currentCycleId,
+                            syncedAtUtc,
+                            ct);
+                    }
+
+                    await tx.CommitAsync(ct);
+                    ranAtUtc = syncedAtUtc;
+                }
+                catch
+                {
+                    await tx.RollbackAsync(ct);
+                    throw;
+                }
+
+                if (pageToken is null)
+                    break;
+            }
+
+            await RecordSyncRunAsync(conn, normalizedRegionCode, normalizedLanguageCode, ranAtUtc, totalAdded, totalUpdated, totalMarkedInactive, ct);
+            return new GoogleBusinessProfileCategorySyncRunResult(
+                ranAtUtc,
+                totalAdded,
+                totalUpdated,
+                totalMarkedInactive,
+                pagesFetched,
+                IsCycleComplete: true,
+                WasRateLimited: false);
+        }
+        catch (Exception ex) when (!ct.IsCancellationRequested)
+        {
+            logger.LogError(ex, "Google category sync failed for region {RegionCode} language {LanguageCode}.", normalizedRegionCode, normalizedLanguageCode);
+            throw;
+        }
+    }
+
+    private async Task<GoogleCategoriesPage> FetchGoogleCategoriesPageAsync(
+        string accessToken,
+        string regionCode,
+        string languageCode,
+        string? pageToken,
+        CancellationToken ct)
+    {
+        var url = BuildCategoriesUrl(regionCode, languageCode, pageToken);
+        var client = httpClientFactory.CreateClient();
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        using var response = await client.SendAsync(request, ct);
+        var body = await response.Content.ReadAsStringAsync(ct);
+        if (!response.IsSuccessStatusCode)
+            throw new HttpRequestException(
+                $"Google Business Profile Categories API error {(int)response.StatusCode}: {body}",
+                null,
+                response.StatusCode);
+
+        using var doc = JsonDocument.Parse(body);
+        var root = doc.RootElement;
+
+        var categoriesById = new Dictionary<string, IncomingCategory>(StringComparer.OrdinalIgnoreCase);
+        if (root.TryGetProperty("categories", out var categoriesNode) && categoriesNode.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var categoryNode in categoriesNode.EnumerateArray())
+            {
+                var categoryId = ReadString(categoryNode, "name");
+                if (string.IsNullOrWhiteSpace(categoryId))
+                    continue;
+
+                var displayName = ReadString(categoryNode, "displayName");
+                if (string.IsNullOrWhiteSpace(displayName))
+                    displayName = categoryId;
+
+                categoriesById[categoryId] = new IncomingCategory(categoryId, displayName);
+            }
+        }
+
+        var nextPageToken = root.TryGetProperty("nextPageToken", out var tokenNode)
+            ? tokenNode.GetString()
+            : null;
+
+        return new GoogleCategoriesPage(
+            categoriesById.Values
+                .OrderBy(x => x.DisplayName, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(x => x.CategoryId, StringComparer.OrdinalIgnoreCase)
+                .ToList(),
+            string.IsNullOrWhiteSpace(nextPageToken) ? null : nextPageToken);
+    }
+
+    private async Task<PageSyncCounts> UpsertIncomingPageAsync(
+        SqlConnection conn,
+        SqlTransaction tx,
+        IReadOnlyList<IncomingCategory> incomingCategories,
+        string regionCode,
+        string languageCode,
+        Guid cycleId,
+        DateTime syncedAtUtc,
+        CancellationToken ct)
+    {
+        await conn.ExecuteAsync(new CommandDefinition(@"
 CREATE TABLE #IncomingCategories(
   CategoryId nvarchar(255) NOT NULL PRIMARY KEY,
   DisplayName nvarchar(300) NOT NULL
 );", transaction: tx, cancellationToken: ct));
 
-            if (incomingCategories.Count > 0)
+        if (incomingCategories.Count > 0)
+        {
+            var incomingData = new DataTable();
+            incomingData.Columns.Add("CategoryId", typeof(string));
+            incomingData.Columns.Add("DisplayName", typeof(string));
+            foreach (var incoming in incomingCategories)
+                incomingData.Rows.Add(incoming.CategoryId, incoming.DisplayName);
+
+            using var bulkCopy = new SqlBulkCopy(conn, SqlBulkCopyOptions.Default, tx)
             {
-                var incomingData = new DataTable();
-                incomingData.Columns.Add("CategoryId", typeof(string));
-                incomingData.Columns.Add("DisplayName", typeof(string));
-                foreach (var incoming in incomingCategories)
-                    incomingData.Rows.Add(incoming.CategoryId, incoming.DisplayName);
+                DestinationTableName = "#IncomingCategories"
+            };
+            bulkCopy.ColumnMappings.Add("CategoryId", "CategoryId");
+            bulkCopy.ColumnMappings.Add("DisplayName", "DisplayName");
+            await bulkCopy.WriteToServerAsync(incomingData, ct);
+        }
 
-                using var bulkCopy = new SqlBulkCopy(conn, SqlBulkCopyOptions.Default, (SqlTransaction)tx)
-                {
-                    DestinationTableName = "#IncomingCategories"
-                };
-                bulkCopy.ColumnMappings.Add("CategoryId", "CategoryId");
-                bulkCopy.ColumnMappings.Add("DisplayName", "DisplayName");
-                await bulkCopy.WriteToServerAsync(incomingData, ct);
-            }
-
-            var addedCount = await conn.ExecuteScalarAsync<int>(new CommandDefinition(@"
+        var addedCount = await conn.ExecuteScalarAsync<int>(new CommandDefinition(@"
 SELECT COUNT(1)
 FROM #IncomingCategories i
 LEFT JOIN dbo.GoogleBusinessProfileCategory c
   ON c.CategoryId = i.CategoryId
 WHERE c.CategoryId IS NULL;", transaction: tx, cancellationToken: ct));
 
-            var updatedCount = await conn.ExecuteScalarAsync<int>(new CommandDefinition(@"
+        var updatedCount = await conn.ExecuteScalarAsync<int>(new CommandDefinition(@"
 SELECT COUNT(1)
 FROM #IncomingCategories i
 JOIN dbo.GoogleBusinessProfileCategory c
@@ -311,14 +469,17 @@ WHERE
   ISNULL(c.DisplayName, N'') <> ISNULL(i.DisplayName, N'')
   OR c.RegionCode <> @RegionCode
   OR c.LanguageCode <> @LanguageCode
-  OR c.Status <> @StatusActive;", new
-            {
-                RegionCode = normalizedRegionCode,
-                LanguageCode = normalizedLanguageCode,
-                StatusActive
-            }, tx, cancellationToken: ct));
+  OR c.Status <> @StatusActive
+  OR c.LastSeenCycleId IS NULL
+  OR c.LastSeenCycleId <> @CycleId;", new
+        {
+            RegionCode = regionCode,
+            LanguageCode = languageCode,
+            StatusActive,
+            CycleId = cycleId
+        }, tx, cancellationToken: ct));
 
-            await conn.ExecuteAsync(new CommandDefinition(@"
+        await conn.ExecuteAsync(new CommandDefinition(@"
 MERGE dbo.GoogleBusinessProfileCategory AS target
 USING #IncomingCategories AS source
 ON target.CategoryId = source.CategoryId
@@ -328,7 +489,8 @@ WHEN MATCHED THEN UPDATE SET
   LanguageCode = @LanguageCode,
   Status = @StatusActive,
   LastSeenUtc = @SyncedAtUtc,
-  LastSyncedUtc = @SyncedAtUtc
+  LastSyncedUtc = @SyncedAtUtc,
+  LastSeenCycleId = @CycleId
 WHEN NOT MATCHED THEN
   INSERT(
     CategoryId,
@@ -338,7 +500,8 @@ WHEN NOT MATCHED THEN
     Status,
     FirstSeenUtc,
     LastSeenUtc,
-    LastSyncedUtc
+    LastSyncedUtc,
+    LastSeenCycleId
   )
   VALUES(
     source.CategoryId,
@@ -348,16 +511,30 @@ WHEN NOT MATCHED THEN
     @StatusActive,
     @SyncedAtUtc,
     @SyncedAtUtc,
-    @SyncedAtUtc
+    @SyncedAtUtc,
+    @CycleId
   );", new
-            {
-                RegionCode = normalizedRegionCode,
-                LanguageCode = normalizedLanguageCode,
-                StatusActive,
-                SyncedAtUtc = syncedAtUtc
-            }, tx, cancellationToken: ct));
+        {
+            RegionCode = regionCode,
+            LanguageCode = languageCode,
+            StatusActive,
+            SyncedAtUtc = syncedAtUtc,
+            CycleId = cycleId
+        }, tx, cancellationToken: ct));
 
-            var markedInactiveCount = await conn.ExecuteAsync(new CommandDefinition(@"
+        return new PageSyncCounts(addedCount, updatedCount);
+    }
+
+    private async Task<int> MarkMissingInactiveForCycleAsync(
+        SqlConnection conn,
+        SqlTransaction tx,
+        string regionCode,
+        string languageCode,
+        Guid cycleId,
+        DateTime syncedAtUtc,
+        CancellationToken ct)
+    {
+        return await conn.ExecuteAsync(new CommandDefinition(@"
 UPDATE c
 SET
   c.Status = @StatusInactive,
@@ -366,19 +543,27 @@ FROM dbo.GoogleBusinessProfileCategory c
 WHERE c.RegionCode = @RegionCode
   AND c.LanguageCode = @LanguageCode
   AND c.Status <> @StatusInactive
-  AND NOT EXISTS (
-    SELECT 1
-    FROM #IncomingCategories i
-    WHERE i.CategoryId = c.CategoryId
-  );", new
-            {
-                RegionCode = normalizedRegionCode,
-                LanguageCode = normalizedLanguageCode,
-                StatusInactive,
-                SyncedAtUtc = syncedAtUtc
-            }, tx, cancellationToken: ct));
+  AND (c.LastSeenCycleId IS NULL OR c.LastSeenCycleId <> @CycleId);", new
+        {
+            RegionCode = regionCode,
+            LanguageCode = languageCode,
+            StatusInactive,
+            SyncedAtUtc = syncedAtUtc,
+            CycleId = cycleId
+        }, tx, cancellationToken: ct));
+    }
 
-            await conn.ExecuteAsync(new CommandDefinition(@"
+    private async Task RecordSyncRunAsync(
+        SqlConnection conn,
+        string regionCode,
+        string languageCode,
+        DateTime ranAtUtc,
+        int addedCount,
+        int updatedCount,
+        int markedInactiveCount,
+        CancellationToken ct)
+    {
+        await conn.ExecuteAsync(new CommandDefinition(@"
 INSERT INTO dbo.GoogleBusinessProfileCategorySyncRun(
   RegionCode,
   LanguageCode,
@@ -395,72 +580,63 @@ VALUES(
   @UpdatedCount,
   @MarkedInactiveCount
 );", new
-            {
-                RegionCode = normalizedRegionCode,
-                LanguageCode = normalizedLanguageCode,
-                RanAtUtc = syncedAtUtc,
-                AddedCount = addedCount,
-                UpdatedCount = updatedCount,
-                MarkedInactiveCount = markedInactiveCount
-            }, tx, cancellationToken: ct));
-
-            await tx.CommitAsync(ct);
-            return new GoogleBusinessProfileCategorySyncSummary(syncedAtUtc, addedCount, updatedCount, markedInactiveCount);
-        }
-        catch (Exception ex) when (!ct.IsCancellationRequested)
         {
-            logger.LogError(ex, "Google category sync failed for region {RegionCode} language {LanguageCode}.", normalizedRegionCode, normalizedLanguageCode);
-            await tx.RollbackAsync(ct);
-            throw;
-        }
+            RegionCode = regionCode,
+            LanguageCode = languageCode,
+            RanAtUtc = ranAtUtc,
+            AddedCount = addedCount,
+            UpdatedCount = updatedCount,
+            MarkedInactiveCount = markedInactiveCount
+        }, cancellationToken: ct));
     }
 
-    private async Task<List<IncomingCategory>> FetchAllGoogleCategoriesAsync(string regionCode, string languageCode, CancellationToken ct)
+    private async Task<SyncCursorRow?> GetSyncCursorAsync(SqlConnection conn, string regionCode, string languageCode, CancellationToken ct)
     {
-        var accessToken = await GetBusinessProfileAccessTokenAsync(ct);
-
-        var categoriesById = new Dictionary<string, IncomingCategory>(StringComparer.OrdinalIgnoreCase);
-        var client = httpClientFactory.CreateClient();
-        string? nextPageToken = null;
-
-        do
+        return await conn.QuerySingleOrDefaultAsync<SyncCursorRow>(new CommandDefinition(@"
+SELECT
+  RegionCode,
+  LanguageCode,
+  CycleId,
+  NextPageToken
+FROM dbo.GoogleBusinessProfileCategorySyncCursor
+WHERE RegionCode = @RegionCode
+  AND LanguageCode = @LanguageCode;", new
         {
-            var url = BuildCategoriesUrl(regionCode, languageCode, nextPageToken);
-            using var request = new HttpRequestMessage(HttpMethod.Get, url);
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
-            using var response = await client.SendAsync(request, ct);
-            var body = await response.Content.ReadAsStringAsync(ct);
-            if (!response.IsSuccessStatusCode)
-                throw new HttpRequestException($"Google Business Profile Categories API error {(int)response.StatusCode}: {body}");
+            RegionCode = regionCode,
+            LanguageCode = languageCode
+        }, cancellationToken: ct));
+    }
 
-            using var doc = JsonDocument.Parse(body);
-            var root = doc.RootElement;
-
-            if (root.TryGetProperty("categories", out var categoriesNode) && categoriesNode.ValueKind == JsonValueKind.Array)
-            {
-                foreach (var categoryNode in categoriesNode.EnumerateArray())
-                {
-                    var categoryId = ReadString(categoryNode, "name");
-                    if (string.IsNullOrWhiteSpace(categoryId))
-                        continue;
-
-                    var displayName = ReadString(categoryNode, "displayName");
-                    if (string.IsNullOrWhiteSpace(displayName))
-                        displayName = categoryId;
-
-                    categoriesById[categoryId] = new IncomingCategory(categoryId, displayName);
-                }
-            }
-
-            nextPageToken = root.TryGetProperty("nextPageToken", out var tokenNode)
-                ? tokenNode.GetString()
-                : null;
-        } while (!string.IsNullOrWhiteSpace(nextPageToken));
-
-        return categoriesById.Values
-            .OrderBy(x => x.DisplayName, StringComparer.OrdinalIgnoreCase)
-            .ThenBy(x => x.CategoryId, StringComparer.OrdinalIgnoreCase)
-            .ToList();
+    private async Task UpsertSyncCursorAsync(
+        SqlConnection conn,
+        SqlTransaction tx,
+        string regionCode,
+        string languageCode,
+        Guid cycleId,
+        string? nextPageToken,
+        DateTime updatedUtc,
+        CancellationToken ct)
+    {
+        await conn.ExecuteAsync(new CommandDefinition(@"
+MERGE dbo.GoogleBusinessProfileCategorySyncCursor AS target
+USING (SELECT @RegionCode AS RegionCode, @LanguageCode AS LanguageCode) AS source
+ON target.RegionCode = source.RegionCode
+AND target.LanguageCode = source.LanguageCode
+WHEN MATCHED THEN
+  UPDATE SET
+    CycleId = @CycleId,
+    NextPageToken = @NextPageToken,
+    UpdatedUtc = @UpdatedUtc
+WHEN NOT MATCHED THEN
+  INSERT(RegionCode, LanguageCode, CycleId, NextPageToken, UpdatedUtc)
+  VALUES(@RegionCode, @LanguageCode, @CycleId, @NextPageToken, @UpdatedUtc);", new
+        {
+            RegionCode = regionCode,
+            LanguageCode = languageCode,
+            CycleId = cycleId,
+            NextPageToken = nextPageToken,
+            UpdatedUtc = updatedUtc
+        }, tx, cancellationToken: ct));
     }
 
     private async Task<string> GetBusinessProfileAccessTokenAsync(CancellationToken ct)
@@ -557,4 +733,14 @@ VALUES(
     }
 
     private sealed record IncomingCategory(string CategoryId, string DisplayName);
+
+    private sealed record GoogleCategoriesPage(IReadOnlyList<IncomingCategory> Categories, string? NextPageToken);
+
+    private sealed record PageSyncCounts(int AddedCount, int UpdatedCount);
+
+    private sealed record SyncCursorRow(
+        string RegionCode,
+        string LanguageCode,
+        Guid CycleId,
+        string? NextPageToken);
 }

@@ -1,3 +1,4 @@
+@using System.Globalization
 @using System.Text.Json
 @inject Microsoft.Extensions.Options.IOptions<LocalSeo.Web.Options.GoogleOptions> GoogleOptions
 @model RunDetailsViewModel
@@ -7,6 +8,15 @@
     {
         var key = (value ?? fallback).Trim().ToLowerInvariant().Replace(" ", string.Empty);
         return $"status-{key}";
+    }
+    string FormatMonthYear(int year, int month)
+    {
+        if (month < 1 || month > 12)
+        {
+            return $"{year}-{month:00}";
+        }
+
+        return new DateTime(year, month, 1).ToString("MMM yyyy", CultureInfo.InvariantCulture);
     }
     var apiKey = GoogleOptions.Value.ApiKey;
     var mapPoints = Model.Snapshots
@@ -30,17 +40,73 @@
 
 <div class="page-stack">
     <div class="run-summary-grid">
-        <section class="card">
+        <section class="card run-summary-card">
             <h2 class="card-title">Run @Model.Run.SearchRunId</h2>
-            <div><strong>Keyword:</strong> @Model.Run.SeedKeyword</div>
-            <div><strong>Location:</strong> @Model.Run.LocationName</div>
-            <div><strong>Search Depth:</strong> @Model.Run.ResultLimit</div>
-            <div><strong>Get Enhanced Google Data:</strong> @(Model.Run.FetchDetailedData ? "Yes" : "No")</div>
-            <div><strong>Get Google Reviews:</strong> @(Model.Run.FetchGoogleReviews ? "Yes" : "No")</div>
-            <div><strong>Get Google Updates:</strong> @(Model.Run.FetchGoogleUpdates ? "Yes" : "No")</div>
-            <div><strong>Get Google Question &amp; Answers:</strong> @(Model.Run.FetchGoogleQuestionsAndAnswers ? "Yes" : "No")</div>
-            <div><strong>Get Social Profiles:</strong> @(Model.Run.FetchGoogleSocialProfiles ? "Yes" : "No")</div>
-            <div><strong>Captured:</strong> @(capturedStampUtc?.ToString("u") ?? "N/A")</div>
+            <div class="run-summary-items">
+                <article class="run-summary-item">
+                    <div class="run-summary-item-head">
+                        <i class="bi bi-search run-summary-icon" aria-hidden="true"></i>
+                        <span class="run-summary-label">Keyword</span>
+                    </div>
+                    <span class="run-summary-value">@(string.IsNullOrWhiteSpace(Model.Run.SeedKeyword) ? "N/A" : Model.Run.SeedKeyword)</span>
+                </article>
+                <article class="run-summary-item">
+                    <div class="run-summary-item-head">
+                        <i class="bi bi-geo-alt run-summary-icon" aria-hidden="true"></i>
+                        <span class="run-summary-label">Location</span>
+                    </div>
+                    <span class="run-summary-value">@(string.IsNullOrWhiteSpace(Model.Run.LocationName) ? "N/A" : Model.Run.LocationName)</span>
+                </article>
+                <article class="run-summary-item">
+                    <div class="run-summary-item-head">
+                        <i class="bi bi-funnel run-summary-icon" aria-hidden="true"></i>
+                        <span class="run-summary-label">Search Depth</span>
+                    </div>
+                    <span class="run-summary-value">@Model.Run.ResultLimit</span>
+                </article>
+                <article class="run-summary-item">
+                    <div class="run-summary-item-head">
+                        <i class="bi bi-calendar3 run-summary-icon" aria-hidden="true"></i>
+                        <span class="run-summary-label">Captured</span>
+                    </div>
+                    <span class="run-summary-value">@(capturedStampUtc?.ToString("dd MMM yyyy HH:mm") ?? "N/A")</span>
+                </article>
+                <article class="run-summary-item">
+                    <div class="run-summary-item-head">
+                        <i class="bi bi-stars run-summary-icon" aria-hidden="true"></i>
+                        <span class="run-summary-label">Enhanced Google Data</span>
+                    </div>
+                    <span class="run-summary-badge @(Model.Run.FetchDetailedData ? "is-on" : "is-off")">@(Model.Run.FetchDetailedData ? "Enabled" : "Disabled")</span>
+                </article>
+                <article class="run-summary-item">
+                    <div class="run-summary-item-head">
+                        <i class="bi bi-chat-left-text run-summary-icon" aria-hidden="true"></i>
+                        <span class="run-summary-label">Google Reviews</span>
+                    </div>
+                    <span class="run-summary-badge @(Model.Run.FetchGoogleReviews ? "is-on" : "is-off")">@(Model.Run.FetchGoogleReviews ? "Enabled" : "Disabled")</span>
+                </article>
+                <article class="run-summary-item">
+                    <div class="run-summary-item-head">
+                        <i class="bi bi-megaphone run-summary-icon" aria-hidden="true"></i>
+                        <span class="run-summary-label">Google Updates</span>
+                    </div>
+                    <span class="run-summary-badge @(Model.Run.FetchGoogleUpdates ? "is-on" : "is-off")">@(Model.Run.FetchGoogleUpdates ? "Enabled" : "Disabled")</span>
+                </article>
+                <article class="run-summary-item">
+                    <div class="run-summary-item-head">
+                        <i class="bi bi-patch-question run-summary-icon" aria-hidden="true"></i>
+                        <span class="run-summary-label">Q&amp;A</span>
+                    </div>
+                    <span class="run-summary-badge @(Model.Run.FetchGoogleQuestionsAndAnswers ? "is-on" : "is-off")">@(Model.Run.FetchGoogleQuestionsAndAnswers ? "Enabled" : "Disabled")</span>
+                </article>
+                <article class="run-summary-item">
+                    <div class="run-summary-item-head">
+                        <i class="bi bi-share run-summary-icon" aria-hidden="true"></i>
+                        <span class="run-summary-label">Social Profiles</span>
+                    </div>
+                    <span class="run-summary-badge @(Model.Run.FetchGoogleSocialProfiles ? "is-on" : "is-off")">@(Model.Run.FetchGoogleSocialProfiles ? "Enabled" : "Disabled")</span>
+                </article>
+            </div>
         </section>
         <section class="run-actions-grid">
             <a href="/runs/@Model.Run.SearchRunId/compare-reviews" class="home-nav-card run-action-card">
@@ -219,11 +285,12 @@
                 @foreach (var point in keyphraseTraffic.Last12Months)
                 {
                     var heightPercent = maxTotal <= 0 ? 0 : Math.Max(5, (int)Math.Round((point.WeightedSearchVolume * 100m) / maxTotal));
+                    var monthLabel = FormatMonthYear(point.Year, point.Month);
                     <div class="volume-chart-column">
                         <div class="volume-chart-plot">
-                            <span class="volume-chart-bar" style="height:@heightPercent%" title="@point.Year-@point.Month.ToString("00"): @point.WeightedSearchVolume.ToString("N1")"></span>
+                            <span class="volume-chart-bar" style="height:@heightPercent%" title="@monthLabel: @point.WeightedSearchVolume.ToString("N1")"></span>
                         </div>
-                        <span class="volume-chart-label">@point.Year-@point.Month.ToString("00")</span>
+                        <span class="volume-chart-label">@monthLabel</span>
                         <span class="volume-chart-value">@point.WeightedSearchVolume.ToString("N0")</span>
                     </div>
                 }
@@ -232,7 +299,8 @@
                 Weighted Avg: @keyphraseTraffic.WeightedAvgSearchVolume.ToString("N0")
                 @if (keyphraseTraffic.WeightedLastMonthSearchVolume.HasValue && keyphraseTraffic.LatestMonthYear.HasValue && keyphraseTraffic.LatestMonthNumber.HasValue)
                 {
-                    <text> | Last Month (@keyphraseTraffic.LatestMonthYear-@keyphraseTraffic.LatestMonthNumber.Value.ToString("00")): @keyphraseTraffic.WeightedLastMonthSearchVolume.Value.ToString("N0")</text>
+                    var latestMonthLabel = FormatMonthYear(keyphraseTraffic.LatestMonthYear.Value, keyphraseTraffic.LatestMonthNumber.Value);
+                    <text> | Last Month (@latestMonthLabel): @keyphraseTraffic.WeightedLastMonthSearchVolume.Value.ToString("N0")</text>
                 }
             </p>
         }
