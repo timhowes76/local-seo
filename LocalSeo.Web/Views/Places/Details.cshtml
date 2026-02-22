@@ -841,6 +841,10 @@ else
     }
 
     <h4>Other Categories</h4>
+    <div class="help-panel">
+        <p>Secondary service types in your Google profile.</p>
+        <p>They can expand visibility for related services, but should be closely aligned with your core offering to avoid diluting relevance.</p>
+    </div>
     @if (Model.OtherCategories.Count == 0)
     {
         <p>None</p>
@@ -856,6 +860,10 @@ else
     }
 
     <h4>Place Topics</h4>
+    <div class="help-panel">
+        <p>Keywords Google associates with this business based on reviews and engagement.</p>
+        <p>They indicate how Google understands the services offered and can highlight positioning strengths or gaps.</p>
+    </div>
     @if (Model.PlaceTopics.Count == 0)
     {
         <p>None</p>
@@ -890,6 +898,10 @@ else
 
 <div id="tab-reviews" class="details-tab-panel card is-hidden">
     <h3>Reviews</h3>
+    <div class="help-panel">
+        <p>Steady, authentic reviews added over time support local visibility.</p>
+        <p>Encourage detailed feedback and respond promptly. Natural mention of services in reviews and replies helps reinforce relevance.</p>
+    </div>
     <h4>Reviews over time</h4>
     @if (velocity is null || velocity.MonthlySeries.Count == 0)
     {
@@ -1123,6 +1135,10 @@ else
 
 <div id="tab-updates" class="details-tab-panel card is-hidden">
     <h3>Updates</h3>
+    <div class="help-panel">
+        <p>Posts on your Google profile.</p>
+        <p>They do not directly boost rankings but can improve engagement and encourage enquiries. Useful for promotions, announcements, and service highlights.</p>
+    </div>
     @if (Model.Updates.Count == 0)
     {
         @if (updatesNoData)
@@ -1287,6 +1303,10 @@ else
 
 <div id="tab-questions-answers" class="details-tab-panel card is-hidden">
     <h3>Questions &amp; Answers</h3>
+    <div class="help-panel">
+        <p>Questions and answers shown on your Google profile.</p>
+        <p>Customers can ask questions, and owners can also add and answer common questions themselves. Not a direct ranking factor, but useful for improving trust, clarity, and conversion. Respond promptly and keep answers clear and helpful.</p>
+    </div>
     @if (Model.QuestionsAndAnswers.Count == 0)
     {
         <p>No stored question/answer rows yet.</p>

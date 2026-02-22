@@ -2047,6 +2047,45 @@ tbody tr:hover {
     margin-top: var(--space-3);
 }
 
+.help-panel {
+    margin: var(--space-2) 0;
+    padding: 12px 14px;
+    border: 1px solid #cdd8ea;
+    border-left: 4px solid #5b7cfa;
+    border-radius: var(--radius-sm);
+    background: #f7faff;
+    color: #334155;
+}
+
+.help-panel-title {
+    margin: 0 0 8px;
+    font-size: 15px;
+    font-weight: 700;
+    color: #1e3a8a;
+}
+
+.help-panel p {
+    margin: 0 0 8px;
+    line-height: 1.5;
+}
+
+.help-panel p:last-child {
+    margin-bottom: 0;
+}
+
+.help-panel ul {
+    margin: 0 0 8px;
+    padding-left: 18px;
+}
+
+.help-panel li {
+    margin-bottom: 4px;
+}
+
+.help-panel li:last-child {
+    margin-bottom: 0;
+}
+
 .reports-list {
     display: grid;
     gap: var(--space-2);
@@ -2156,6 +2195,17 @@ code {
 .theme-dark .reports-item {
     border-color: #334155;
     background: #111b2e;
+}
+
+.theme-dark .help-panel {
+    border-color: #334155;
+    border-left-color: #7da0ff;
+    background: #0f1b30;
+    color: #cbd5e1;
+}
+
+.theme-dark .help-panel-title {
+    color: #bfdbfe;
 }
 
 .theme-dark .zoho-sync-error {
