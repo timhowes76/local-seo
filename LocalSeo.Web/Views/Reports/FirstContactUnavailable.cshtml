@@ -1,0 +1,11 @@
+@model LocalSeo.Web.Models.FirstContactReportAvailability
+@{
+    ViewData["Title"] = "First Contact Report";
+}
+<div class="card">
+    <h2>First contact (1 page)</h2>
+    <p>@(string.IsNullOrWhiteSpace(Model.Message) ? "Run again with Reviews enabled to generate this report." : Model.Message)</p>
+    <p>
+        <a class="btn btn-secondary" href="/places/@Model.PlaceId?runId=@Model.RunId&tab=reports">Back to reports</a>
+    </p>
+</div>

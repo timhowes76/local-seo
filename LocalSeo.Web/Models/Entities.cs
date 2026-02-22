@@ -240,6 +240,7 @@ public sealed class PlaceDetailsViewModel
     public string? ZohoLeadId { get; init; }
     public DateTime? ZohoLastSyncAtUtc { get; init; }
     public string? ZohoLastError { get; init; }
+    public FirstContactReportAvailability? FirstContactReportAvailability { get; set; }
 }
 
 public sealed record PlaceFinancialInfo(

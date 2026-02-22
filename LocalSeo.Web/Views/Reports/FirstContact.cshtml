@@ -1,0 +1,248 @@
+@using System.Globalization
+@using System.Text.Json
+@model LocalSeo.Web.Models.FirstContactReportViewModel
+@{
+    Layout = null;
+    var printMode = (ViewBag.PrintMode as bool?) ?? false;
+    var variantQuery = Model.IsClientFacing ? "client" : "internal";
+    var pdfEndpoint = Url.Action("FirstContactPdf", "Reports", new { placeId = Model.PlaceId, runId = Model.RunId, variant = variantQuery }) ?? string.Empty;
+}
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>@Model.ReportTitle - @Model.BusinessName</title>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;600;700&display=swap" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" />
+    <link rel="stylesheet" href="~/css/reports-first-contact.css" asp-append-version="true" />
+</head>
+<body>
+    @if (!printMode)
+    {
+        <div class="fc-actions">
+            <a class="btn" href="/places/@Model.PlaceId?runId=@Model.RunId&tab=reports"><i class="bi bi-arrow-left"></i> Back to place</a>
+            <button id="generate-pdf-button" type="button" class="btn"><i class="bi bi-file-earmark-pdf"></i> Generate PDF</button>
+            @if (!string.IsNullOrWhiteSpace(Model.ExistingPdfPath))
+            {
+                <a id="download-pdf-link" class="btn" href="@Model.ExistingPdfPath" target="_blank" rel="noopener noreferrer"><i class="bi bi-download"></i> Download PDF</a>
+            }
+            else
+            {
+                <a id="download-pdf-link" class="btn" href="#" target="_blank" rel="noopener noreferrer" style="display:none;"><i class="bi bi-download"></i> Download PDF</a>
+            }
+            <button type="button" class="btn" onclick="window.print();"><i class="bi bi-printer"></i> Print</button>
+            <span id="pdf-status" class="muted"></span>
+            <form id="pdf-antiforgery-form" method="post">
+                @Html.AntiForgeryToken()
+            </form>
+        </div>
+    }
+    <div class="fc-shell">
+        <article class="fc-container" style="--brand-primary:@Model.BrandPrimary;--brand-accent:@Model.BrandAccent;--brand-dark:@Model.BrandDark;--brand-light:@Model.BrandLight;">
+            <header class="fc-header">
+                <div class="fc-brand">
+                    <img class="fc-logo" src="@Model.LogoPath" alt="Kontrolit" />
+                    <h1 class="fc-title">@Model.ReportTitle</h1>
+                </div>
+                <div class="fc-subtitle">
+                    <strong>@Model.BusinessName</strong> | @Model.TownName | @Model.PrimaryCategory | @Model.RunDateUtc.ToString("dd MMM yyyy", CultureInfo.InvariantCulture)
+                </div>
+                <div class="fc-strapline">@Model.Strapline</div>
+            </header>
+
+            <section class="fc-grid">
+                <div class="fc-card">
+                    <h2>Where you appear today</h2>
+                    <div class="fc-position-row">
+                        <span class="fc-position-value">Position @Model.CurrentPosition</span>
+                    </div>
+                    <p>@Model.PositionCommentary</p>
+                </div>
+
+                <div class="fc-card">
+                    <h2>Opportunity (estimate)</h2>
+                    <div class="fc-opportunity-grid">
+                        <section class="fc-opportunity">
+                            <h3>Move to position 3</h3>
+                            <p class="fc-range-line"><span class="fc-range-label">Conservative:</span> @Model.MoveToPosition3.Conservative:N0 monthly clicks</p>
+                            <p class="fc-range-line"><span class="fc-range-label">Expected:</span> @Model.MoveToPosition3.Expected:N0 monthly clicks</p>
+                            <p class="fc-range-line"><span class="fc-range-label">Upside:</span> @Model.MoveToPosition3.Upside:N0 monthly clicks</p>
+                        </section>
+                        <section class="fc-opportunity">
+                            <h3>Move to position 1</h3>
+                            <p class="fc-range-line"><span class="fc-range-label">Conservative:</span> @Model.MoveToPosition1.Conservative:N0 monthly clicks</p>
+                            <p class="fc-range-line"><span class="fc-range-label">Expected:</span> @Model.MoveToPosition1.Expected:N0 monthly clicks</p>
+                            <p class="fc-range-line"><span class="fc-range-label">Upside:</span> @Model.MoveToPosition1.Upside:N0 monthly clicks</p>
+                        </section>
+                    </div>
+                    <p>@Model.WhyThisMatters</p>
+                </div>
+
+                <div class="fc-card fc-card-wide">
+                    <h2>Review momentum (@Model.ReviewChart.GranularityLabel)</h2>
+                    <div class="fc-chart-wrap">
+                        <canvas id="review-momentum-chart"></canvas>
+                    </div>
+                    <div class="fc-legend">
+                        @foreach (var series in Model.ReviewChart.Series)
+                        {
+                            <span class="fc-legend-item">
+                                <span class="fc-dot @(series.IsYou ? "is-you" : null)"></span>
+                                <span>@series.Name</span>
+                            </span>
+                        }
+                    </div>
+                </div>
+
+                <div class="fc-card fc-card-wide">
+                    <h2>Profile Strength summary</h2>
+                    <div class="fc-signals">
+                        @foreach (var signal in Model.StrengthSignals)
+                        {
+                            var strengthCss = signal.Strength switch
+                            {
+                                LocalSeo.Web.Models.StrengthLevel.Strong => "is-strong",
+                                LocalSeo.Web.Models.StrengthLevel.Ok => "is-ok",
+                                LocalSeo.Web.Models.StrengthLevel.Weak => "is-weak",
+                                _ => "is-unknown"
+                            };
+                            var strengthLabel = signal.Strength switch
+                            {
+                                LocalSeo.Web.Models.StrengthLevel.Strong => "Strong",
+                                LocalSeo.Web.Models.StrengthLevel.Ok => "OK",
+                                LocalSeo.Web.Models.StrengthLevel.Weak => "Weak",
+                                _ => "Unknown"
+                            };
+                            <section class="fc-signal">
+                                <h4>@signal.Label</h4>
+                                <span class="fc-strength @strengthCss">@strengthLabel</span>
+                                <p class="fc-impact">@signal.Impact</p>
+                                @if (Model.ShowRawMetrics && !string.IsNullOrWhiteSpace(signal.RawValue))
+                                {
+                                    <p class="fc-impact"><strong>Raw:</strong> @signal.RawValue</p>
+                                }
+                            </section>
+                        }
+                    </div>
+                    <p>@Model.ProfileStrengthImpactText</p>
+                </div>
+
+                <div class="fc-card">
+                    <h2>What we'd do</h2>
+                    <ul class="fc-list">
+                        @foreach (var outcome in Model.Outcomes)
+                        {
+                            <li>@outcome</li>
+                        }
+                    </ul>
+                </div>
+
+                <div class="fc-card">
+                    <h2>About Kontrolit + next step</h2>
+                    <p>@Model.AboutKontrolit</p>
+                    <p><strong>@Model.CtaLine</strong></p>
+                </div>
+            </section>
+
+            <footer class="fc-disclaimer">
+                @Model.Disclaimer
+            </footer>
+        </article>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+    <script>
+        (() => {
+            window.__reportReady = false;
+
+            const chartHost = document.getElementById("review-momentum-chart");
+            const labels = @Html.Raw(JsonSerializer.Serialize(Model.ReviewChart.Labels));
+            const series = @Html.Raw(JsonSerializer.Serialize(Model.ReviewChart.Series.Select(x => new { x.Name, x.IsYou, Values = x.Values })));
+            const colors = ["#0f2a5f", "#4b5563", "#6b7280", "#9ca3af"];
+
+            if (chartHost && window.Chart && labels && series) {
+                const datasets = series.map((item, idx) => ({
+                    label: item.name || item.Name,
+                    data: item.values || item.Values,
+                    borderColor: item.isYou || item.IsYou ? colors[0] : colors[Math.min(idx + 1, colors.length - 1)],
+                    borderWidth: item.isYou || item.IsYou ? 2.5 : 2,
+                    pointRadius: 2,
+                    pointHoverRadius: 3,
+                    tension: 0.2,
+                    fill: false
+                }));
+
+                new Chart(chartHost, {
+                    type: "line",
+                    data: { labels, datasets },
+                    options: {
+                        animation: false,
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            x: {
+                                ticks: { color: "#374151", maxRotation: 0, autoSkip: true, maxTicksLimit: 8 },
+                                grid: { color: "#e5e7eb" }
+                            },
+                            y: {
+                                beginAtZero: true,
+                                ticks: { color: "#374151" },
+                                grid: { color: "#e5e7eb" }
+                            }
+                        },
+                        plugins: {
+                            legend: { display: false }
+                        }
+                    }
+                });
+            }
+
+            window.__reportReady = true;
+        })();
+    </script>
+
+    @if (!printMode)
+    {
+        <script>
+            (() => {
+                const button = document.getElementById("generate-pdf-button");
+                const status = document.getElementById("pdf-status");
+                const tokenInput = document.querySelector("#pdf-antiforgery-form input[name='__RequestVerificationToken']");
+                const downloadLink = document.getElementById("download-pdf-link");
+                if (!button || !status || !tokenInput) return;
+
+                button.addEventListener("click", async () => {
+                    button.disabled = true;
+                    status.textContent = "Generating PDF...";
+                    try {
+                        const response = await fetch("@pdfEndpoint", {
+                            method: "POST",
+                            headers: {
+                                "RequestVerificationToken": tokenInput.value
+                            },
+                            credentials: "same-origin"
+                        });
+
+                        const payload = await response.json();
+                        if (!response.ok || !payload || payload.success !== true) {
+                            status.textContent = payload?.message || "PDF generation failed.";
+                            return;
+                        }
+
+                        status.textContent = payload.message || "PDF generated.";
+                        if (payload.downloadUrl) {
+                            downloadLink.href = payload.downloadUrl;
+                            downloadLink.style.display = "inline-block";
+                        }
+                    } catch {
+                        status.textContent = "PDF generation failed.";
+                    } finally {
+                        button.disabled = false;
+                    }
+                });
+            })();
+        </script>
+    }
+</body>
+</html>

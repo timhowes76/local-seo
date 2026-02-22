@@ -1,0 +1,302 @@
+:root {
+    --brand-primary: #0f2a5f;
+    --brand-accent: #5b7cfa;
+    --brand-dark: #0f172a;
+    --brand-light: #f6f8fc;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+html,
+body {
+    margin: 0;
+    padding: 0;
+    background: #eef1f8;
+    color: #111827;
+    font-family: "Source Sans 3", "Source Sans Pro", "Segoe UI", Arial, sans-serif;
+}
+
+.fc-shell {
+    display: flex;
+    justify-content: center;
+    padding: 28px 0;
+}
+
+.fc-container {
+    width: 210mm;
+    min-height: 297mm;
+    background: #fff;
+    border: 1px solid #d7deec;
+    box-shadow: 0 8px 30px rgba(15, 42, 95, 0.08);
+    padding: 10mm;
+}
+
+.fc-header {
+    border-bottom: 2px solid #d7deec;
+    padding-bottom: 10px;
+    margin-bottom: 12px;
+}
+
+.fc-brand {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.fc-logo {
+    height: 28px;
+    width: auto;
+}
+
+.fc-title {
+    margin: 0;
+    color: var(--brand-primary);
+    font-size: 25px;
+    font-weight: 700;
+    line-height: 1.1;
+}
+
+.fc-subtitle {
+    margin-top: 3px;
+    color: #4b5563;
+    font-size: 13px;
+}
+
+.fc-strapline {
+    margin-top: 8px;
+    color: #374151;
+    font-style: italic;
+    font-size: 12px;
+}
+
+.fc-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+}
+
+.fc-card {
+    border: 1px solid #dde4f0;
+    border-radius: 8px;
+    padding: 10px;
+    background: var(--brand-light);
+    break-inside: avoid-page;
+}
+
+.fc-card-wide {
+    grid-column: 1 / -1;
+}
+
+.fc-card h2 {
+    margin: 0 0 8px;
+    color: var(--brand-primary);
+    font-size: 16px;
+    line-height: 1.2;
+}
+
+.fc-card p {
+    margin: 0 0 8px;
+    line-height: 1.35;
+    font-size: 13px;
+}
+
+.fc-position-row {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+}
+
+.fc-position-value {
+    color: var(--brand-dark);
+    font-size: 28px;
+    font-weight: 700;
+    line-height: 1;
+}
+
+.fc-opportunity-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+}
+
+.fc-opportunity {
+    border: 1px dashed #b8c5dc;
+    border-radius: 8px;
+    padding: 8px;
+    background: #fff;
+}
+
+.fc-opportunity h3 {
+    margin: 0 0 5px;
+    font-size: 13px;
+    color: #1f2937;
+}
+
+.fc-opportunity .fc-range-line {
+    margin: 0;
+    color: #1f2937;
+    font-size: 13px;
+}
+
+.fc-range-label {
+    color: #4b5563;
+}
+
+.fc-signals {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.fc-signal {
+    border: 1px solid #d6deee;
+    border-radius: 8px;
+    padding: 8px;
+    background: #fff;
+}
+
+.fc-signal h4 {
+    margin: 0 0 6px;
+    font-size: 13px;
+}
+
+.fc-strength {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 6px;
+    padding: 2px 7px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+}
+
+.fc-strength.is-strong {
+    background: #e5ecfb;
+    color: #243b85;
+}
+
+.fc-strength.is-ok {
+    background: #eceff5;
+    color: #374151;
+}
+
+.fc-strength.is-weak {
+    background: #f1e9e9;
+    color: #6b1f1f;
+}
+
+.fc-strength.is-unknown {
+    background: #f2f4f7;
+    color: #4b5563;
+}
+
+.fc-impact {
+    margin: 0;
+    color: #374151;
+    font-size: 12px;
+    line-height: 1.35;
+}
+
+.fc-list {
+    margin: 0;
+    padding-left: 18px;
+}
+
+.fc-list li {
+    margin-bottom: 5px;
+    font-size: 13px;
+}
+
+.fc-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 8px;
+    font-size: 12px;
+    color: #374151;
+}
+
+.fc-legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.fc-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #374151;
+}
+
+.fc-dot.is-you {
+    background: var(--brand-primary);
+}
+
+.fc-chart-wrap {
+    height: 220px;
+}
+
+.fc-actions {
+    display: flex;
+    gap: 8px;
+    margin: 0 auto 12px;
+    width: 210mm;
+    max-width: calc(100% - 16px);
+}
+
+.fc-actions .btn {
+    border: 1px solid #c2cede;
+    border-radius: 6px;
+    background: #fff;
+    color: #111827;
+    padding: 8px 12px;
+    font-size: 14px;
+    text-decoration: none;
+}
+
+.fc-actions .btn:hover {
+    background: #f6f8fc;
+}
+
+.fc-disclaimer {
+    margin-top: 10px;
+    border-top: 1px solid #d7deec;
+    padding-top: 6px;
+    color: #4b5563;
+    font-size: 11px;
+}
+
+@page {
+    size: A4 portrait;
+    margin: 12mm;
+}
+
+@media print {
+    html,
+    body {
+        background: #fff;
+        color: #000;
+    }
+
+    .fc-actions {
+        display: none !important;
+    }
+
+    .fc-shell {
+        padding: 0;
+    }
+
+    .fc-container {
+        border: none;
+        box-shadow: none;
+        width: auto;
+        min-height: auto;
+        padding: 0;
+    }
+}

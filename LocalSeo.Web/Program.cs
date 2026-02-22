@@ -28,6 +28,8 @@ builder.Services.Configure<CompaniesHouseOptions>(builder.Configuration.GetSecti
 builder.Services.Configure<InviteOptions>(builder.Configuration.GetSection("Invites"));
 builder.Services.Configure<ChangePasswordOptions>(builder.Configuration.GetSection("ChangePassword"));
 builder.Services.Configure<EmailTemplatePathOptions>(builder.Configuration.GetSection("EmailTemplate"));
+builder.Services.Configure<BrandSettings>(builder.Configuration.GetSection("Brand"));
+builder.Services.Configure<ReportsOptions>(builder.Configuration.GetSection("Reports"));
 
 builder.Services.AddControllersWithViews();
 builder.Services.AddHttpClient();
@@ -188,6 +190,7 @@ builder.Services.AddScoped<DataForSeoReviewsProvider>();
 builder.Services.AddScoped<IDataForSeoTaskTracker, DataForSeoReviewsProvider>();
 builder.Services.AddScoped<IReviewVelocityService, ReviewVelocityService>();
 builder.Services.AddScoped<ICompetitorVelocityAdapter, NullCompetitorVelocityAdapter>();
+builder.Services.AddScoped<IReportsService, ReportsService>();
 
 var app = builder.Build();
 

@@ -11,7 +11,8 @@ public class PlacesController(
     IReviewVelocityService reviewVelocityService,
     IDataForSeoTaskTracker dataForSeoTaskTracker,
     IReviewsProviderResolver reviewsProviderResolver,
-    IZohoLeadSyncService zohoLeadSyncService) : Controller
+    IZohoLeadSyncService zohoLeadSyncService,
+    IReportsService reportsService) : Controller
 {
     [HttpGet("/places")]
     public async Task<IActionResult> Index([FromQuery] string? sort, [FromQuery] string? direction, [FromQuery] string? placeName, [FromQuery] string? keyword, [FromQuery] string? location, CancellationToken ct)
@@ -38,6 +39,23 @@ public class PlacesController(
         var model = await ingestionService.GetPlaceDetailsAsync(id, runId, ct, reviewPage);
         if (model is null)
             return NotFound();
+
+        var reportRunId = runId ?? model.ActiveRunId;
+        if (reportRunId.HasValue && reportRunId.Value > 0)
+        {
+            model.FirstContactReportAvailability = await reportsService.GetFirstContactAvailabilityAsync(id, reportRunId.Value, ct);
+        }
+        else
+        {
+            model.FirstContactReportAvailability = new FirstContactReportAvailability
+            {
+                PlaceId = id,
+                RunId = 0,
+                IsAvailable = false,
+                Message = "Open this place from a run to generate reports.",
+                BusinessName = model.DisplayName
+            };
+        }
 
         ViewBag.RequestedRunId = runId;
         return View(model);

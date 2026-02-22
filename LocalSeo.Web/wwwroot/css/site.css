@@ -2047,6 +2047,40 @@ tbody tr:hover {
     margin-top: var(--space-3);
 }
 
+.reports-list {
+    display: grid;
+    gap: var(--space-2);
+}
+
+.reports-item {
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-sm);
+    padding: var(--space-2);
+    background: var(--bg-card);
+}
+
+.reports-item-header h4 {
+    margin: 0;
+}
+
+.reports-item-header .muted {
+    margin: 4px 0 0;
+}
+
+.reports-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1);
+    margin-top: var(--space-2);
+}
+
+.reports-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+    margin-top: var(--space-2);
+}
+
 .is-hidden {
     display: none !important;
 }
@@ -2117,6 +2151,11 @@ code {
 
 .theme-dark .zoho-lead-meta {
     color: var(--text-muted);
+}
+
+.theme-dark .reports-item {
+    border-color: #334155;
+    background: #111b2e;
 }
 
 .theme-dark .zoho-sync-error {
