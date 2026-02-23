@@ -141,11 +141,14 @@ GROUP BY PlaceId;", new { PlaceIds = requiredPlaceIds }, cancellationToken: ct))
             VariantLabel = GetVariantLabel(variant),
             ShowRawMetrics = false,
             Version = Math.Max(1, reportsOptions.Value.FirstContactVersion),
+            ReportTitle = $"Local Visibiltiy Snapshot for {context.BusinessName}",
             BusinessName = context.BusinessName,
+            CompanyLogoPath = context.CompanyLogoPath,
             TownName = context.TownName,
             PrimaryCategory = context.PrimaryCategory,
             RunDateUtc = context.RunDateUtc,
             CurrentPosition = context.CurrentPosition,
+            PositionCommentary = "In Google Maps searches, most clicks go to the top 3 listings. Positions 4+ typically see a sharp drop in attention.",
             MoveToPosition3 = BuildRange(expectedTo3, conservativeMultiplier, upsideMultiplier),
             MoveToPosition1 = BuildRange(expectedTo1, conservativeMultiplier, upsideMultiplier),
             WhyThisMatters = BuildWhyThisMatters(context.BusinessName, context.TownName, context.PrimaryCategory),
@@ -295,7 +298,8 @@ SELECT TOP 1
   cat.DisplayName AS CategoryDisplayName,
   ps.RankPosition AS CurrentPosition,
   COALESCE(NULLIF(LTRIM(RTRIM(p.DisplayName)), N''), @PlaceId) AS BusinessName,
-  COALESCE(NULLIF(LTRIM(RTRIM(p.PrimaryCategory)), N''), cat.DisplayName, N'Unknown') AS PrimaryCategory
+  COALESCE(NULLIF(LTRIM(RTRIM(p.PrimaryCategory)), N''), cat.DisplayName, N'Unknown') AS PrimaryCategory,
+  NULLIF(LTRIM(RTRIM(p.LogoUrl)), N'') AS CompanyLogoPath
 FROM dbo.SearchRun sr
 JOIN dbo.PlaceSnapshot ps ON ps.SearchRunId = sr.SearchRunId AND ps.PlaceId = @PlaceId
 LEFT JOIN dbo.Place p ON p.PlaceId = ps.PlaceId
@@ -354,6 +358,7 @@ WHERE PlaceId = @PlaceId
             TownName = string.IsNullOrWhiteSpace(contextRow.TownName) ? "Unknown Town" : contextRow.TownName,
             PrimaryCategory = contextRow.PrimaryCategory,
             BusinessName = contextRow.BusinessName,
+            CompanyLogoPath = contextRow.CompanyLogoPath,
             CurrentPosition = contextRow.CurrentPosition,
             FetchGoogleReviews = contextRow.FetchGoogleReviews,
             Target = target,
@@ -649,16 +654,16 @@ ORDER BY EventDate ASC;", new { PlaceIds = placeIds }, cancellationToken: ct))).
     {
         return new List<string>
         {
-            $"Increase relevance signals for {primaryCategory} searches in {townName}.",
-            "Strengthen trust signals that influence map-pack visibility.",
-            "Improve engagement signals and reduce ranking volatility.",
-            "Increase qualified map-pack clicks from local intent searches."
+            $"Increase relevance signals for Google Maps searches for {primaryCategory} in {townName}.",
+            "Strengthen trust signals that influence Google Maps map-pack visibility.",
+            "Improve engagement signals and reduce Google Maps ranking volatility.",
+            "Increase qualified Google Maps clicks from local intent searches."
         };
     }
 
     private static string BuildWhyThisMatters(string businessName, string townName, string primaryCategory)
     {
-        return $"{businessName} is already visible for {primaryCategory} in {townName}, but most attention concentrates in the top map-pack positions. Even modest ranking movement can create a meaningful increase in monthly high-intent visits. This estimate highlights the scale of opportunity so decisions can be made with clear commercial context.";
+        return $"{businessName} is already visible for Google Maps searches for {primaryCategory} in {townName}, but most attention concentrates in the top map-pack positions. Even modest ranking movement can create a meaningful increase in monthly high-intent visits. This estimate highlights the scale of opportunity so decisions can be made with clear commercial context.";
     }
 
     private static FirstContactOpportunityEstimate BuildRange(int expected, decimal conservativeMultiplier, decimal upsideMultiplier)
@@ -777,12 +782,16 @@ ORDER BY m.[Year] DESC, m.[Month] DESC;", new { CategoryId = categoryId, TownId 
             variant = model.Variant.ToString(),
             model.Version,
             model.BusinessName,
+            model.CompanyLogoPath,
+            model.ReportTitle,
             model.TownName,
             model.PrimaryCategory,
             model.RunDateUtc,
             model.CurrentPosition,
+            model.PositionCommentary,
             model.MoveToPosition3,
             model.MoveToPosition1,
+            model.WhyThisMatters,
             model.EstimatedMonthlySearchDemand,
             chart = model.ReviewChart.Series.Select(x => new { x.Name, x.Values }),
             model.StrengthSignals,
@@ -1018,6 +1027,7 @@ OUTPUT INSERTED.ReportId;", new
         public string TownName { get; init; } = string.Empty;
         public string PrimaryCategory { get; init; } = string.Empty;
         public string BusinessName { get; init; } = string.Empty;
+        public string? CompanyLogoPath { get; init; }
         public int CurrentPosition { get; init; }
         public bool FetchGoogleReviews { get; init; }
         public ParticipantContext Target { get; init; } = new("", "", 0, true);
@@ -1043,7 +1053,8 @@ OUTPUT INSERTED.ReportId;", new
         string CategoryDisplayName,
         int CurrentPosition,
         string BusinessName,
-        string PrimaryCategory);
+        string PrimaryCategory,
+        string? CompanyLogoPath);
 
     private sealed record CompetitorRow(
         string PlaceId,

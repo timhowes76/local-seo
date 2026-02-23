@@ -40,6 +40,7 @@ public sealed class FirstContactReportViewModel
     public int Version { get; init; } = 1;
 
     public string LogoPath { get; init; } = "/assets/images/logo.svg";
+    public string? CompanyLogoPath { get; init; }
     public string ReportTitle { get; init; } = "Local Visibility Snapshot";
     public string Strapline { get; init; } = "Successful websites driven by marketing expertise";
     public string BusinessName { get; init; } = string.Empty;

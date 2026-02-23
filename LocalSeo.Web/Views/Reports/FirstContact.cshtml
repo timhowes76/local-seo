@@ -6,13 +6,21 @@
     var printMode = (ViewBag.PrintMode as bool?) ?? false;
     var variantQuery = Model.IsClientFacing ? "client" : "internal";
     var pdfEndpoint = Url.Action("FirstContactPdf", "Reports", new { placeId = Model.PlaceId, runId = Model.RunId, variant = variantQuery }) ?? string.Empty;
+    var showOpportunitySection = Model.CurrentPosition != 1;
+    var showMoveToPosition3 = Model.CurrentPosition != 2 && Model.CurrentPosition != 3;
+    var hasCompanyLogo = !string.IsNullOrWhiteSpace(Model.CompanyLogoPath);
+    var youSeriesColor = "#e11d48";
+    var competitorSeriesPalette = new[] { "#0ea5e9", "#f97316", "#16a34a", "#a855f7", "#f59e0b", "#14b8a6" };
+    var reviewSeriesColors = Model.ReviewChart.Series
+        .Select((series, idx) => series.IsYou ? youSeriesColor : competitorSeriesPalette[idx % competitorSeriesPalette.Length])
+        .ToArray();
 }
 <!doctype html>
 <html lang="en">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>@Model.ReportTitle - @Model.BusinessName</title>
+    <title>@Model.ReportTitle</title>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;600;700&display=swap" />
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" />
     <link rel="stylesheet" href="~/css/reports-first-contact.css" asp-append-version="true" />
@@ -42,18 +50,26 @@
         <article class="fc-container" style="--brand-primary:@Model.BrandPrimary;--brand-accent:@Model.BrandAccent;--brand-dark:@Model.BrandDark;--brand-light:@Model.BrandLight;">
             <header class="fc-header">
                 <div class="fc-brand">
-                    <img class="fc-logo" src="@Model.LogoPath" alt="Kontrolit" />
-                    <h1 class="fc-title">@Model.ReportTitle</h1>
+                    <div class="fc-brand-main">
+                        <img class="fc-logo" src="@Model.LogoPath" alt="Kontrolit" />
+                        <h1 class="fc-title">@Model.ReportTitle</h1>
+                    </div>
+                    @if (hasCompanyLogo)
+                    {
+                        <img class="fc-company-logo" src="@Model.CompanyLogoPath" alt="@Model.BusinessName logo" />
+                    }
                 </div>
                 <div class="fc-subtitle">
-                    <strong>@Model.BusinessName</strong> | @Model.TownName | @Model.PrimaryCategory | @Model.RunDateUtc.ToString("dd MMM yyyy", CultureInfo.InvariantCulture)
+                    <img class="fc-google-icon" src="/assets/images/google.svg" onerror="this.onerror=null;this.src='/assets/images/google.png';" alt="Google" />
+                    <span><strong>Google Maps Search Results</strong> for <strong>@Model.BusinessName</strong> | @Model.TownName | @Model.PrimaryCategory | @Model.RunDateUtc.ToString("dd MMM yyyy", CultureInfo.InvariantCulture)</span>
                 </div>
                 <div class="fc-strapline">@Model.Strapline</div>
+                <div class="fc-scope-note">All ranking and click estimates in this report are based on Google Maps local search visibility.</div>
             </header>
 
             <section class="fc-grid">
                 <div class="fc-card">
-                    <h2>Where you appear today</h2>
+                    <h2>Where you appear today in Google Maps</h2>
                     <div class="fc-position-row">
                         <span class="fc-position-value">Position @Model.CurrentPosition</span>
                     </div>
@@ -61,22 +77,8 @@
                 </div>
 
                 <div class="fc-card">
-                    <h2>Opportunity (estimate)</h2>
-                    <div class="fc-opportunity-grid">
-                        <section class="fc-opportunity">
-                            <h3>Move to position 3</h3>
-                            <p class="fc-range-line"><span class="fc-range-label">Conservative:</span> @Model.MoveToPosition3.Conservative:N0 monthly clicks</p>
-                            <p class="fc-range-line"><span class="fc-range-label">Expected:</span> @Model.MoveToPosition3.Expected:N0 monthly clicks</p>
-                            <p class="fc-range-line"><span class="fc-range-label">Upside:</span> @Model.MoveToPosition3.Upside:N0 monthly clicks</p>
-                        </section>
-                        <section class="fc-opportunity">
-                            <h3>Move to position 1</h3>
-                            <p class="fc-range-line"><span class="fc-range-label">Conservative:</span> @Model.MoveToPosition1.Conservative:N0 monthly clicks</p>
-                            <p class="fc-range-line"><span class="fc-range-label">Expected:</span> @Model.MoveToPosition1.Expected:N0 monthly clicks</p>
-                            <p class="fc-range-line"><span class="fc-range-label">Upside:</span> @Model.MoveToPosition1.Upside:N0 monthly clicks</p>
-                        </section>
-                    </div>
-                    <p>@Model.WhyThisMatters</p>
+                    <h2>Search scope</h2>
+                    <p>This snapshot reflects Google Maps map-pack rankings and projected Google Maps clicks, not general organic website rankings.</p>
                 </div>
 
                 <div class="fc-card fc-card-wide">
@@ -85,10 +87,12 @@
                         <canvas id="review-momentum-chart"></canvas>
                     </div>
                     <div class="fc-legend">
-                        @foreach (var series in Model.ReviewChart.Series)
+                        @for (var idx = 0; idx < Model.ReviewChart.Series.Count; idx++)
                         {
-                            <span class="fc-legend-item">
-                                <span class="fc-dot @(series.IsYou ? "is-you" : null)"></span>
+                            var series = Model.ReviewChart.Series[idx];
+                            var seriesColor = reviewSeriesColors[idx];
+                            <span class="fc-legend-item @(series.IsYou ? "is-you" : null)">
+                                <span class="fc-dot @(series.IsYou ? "is-you" : null)" style="--dot-color:@seriesColor;"></span>
                                 <span>@series.Name</span>
                             </span>
                         }
@@ -96,7 +100,7 @@
                 </div>
 
                 <div class="fc-card fc-card-wide">
-                    <h2>Profile Strength summary</h2>
+                    <h2>Your Profile Strength Summary</h2>
                     <div class="fc-signals">
                         @foreach (var signal in Model.StrengthSignals)
                         {
@@ -127,6 +131,31 @@
                     </div>
                     <p>@Model.ProfileStrengthImpactText</p>
                 </div>
+
+                @if (showOpportunitySection)
+                {
+                    <div class="fc-card">
+                        <h2>Opportunity monthly clicks (estimate)</h2>
+                        <div class="fc-opportunity-grid@(showMoveToPosition3 ? string.Empty : " is-single")">
+                            @if (showMoveToPosition3)
+                            {
+                                <section class="fc-opportunity">
+                                    <h3>Move to position 3</h3>
+                                    <p class="fc-range-line"><span class="fc-range-label">Conservative:</span> +@Model.MoveToPosition3.Conservative.ToString("N0", CultureInfo.InvariantCulture)</p>
+                                    <p class="fc-range-line"><span class="fc-range-label">Expected:</span> +@Model.MoveToPosition3.Expected.ToString("N0", CultureInfo.InvariantCulture)</p>
+                                    <p class="fc-range-line"><span class="fc-range-label">Upside:</span> +@Model.MoveToPosition3.Upside.ToString("N0", CultureInfo.InvariantCulture)</p>
+                                </section>
+                            }
+                            <section class="fc-opportunity">
+                                <h3>Move to position 1</h3>
+                                <p class="fc-range-line"><span class="fc-range-label">Conservative:</span> +@Model.MoveToPosition1.Conservative.ToString("N0", CultureInfo.InvariantCulture)</p>
+                                <p class="fc-range-line"><span class="fc-range-label">Expected:</span> +@Model.MoveToPosition1.Expected.ToString("N0", CultureInfo.InvariantCulture)</p>
+                                <p class="fc-range-line"><span class="fc-range-label">Upside:</span> +@Model.MoveToPosition1.Upside.ToString("N0", CultureInfo.InvariantCulture)</p>
+                            </section>
+                        </div>
+                        <p>@Model.WhyThisMatters</p>
+                    </div>
+                }
 
                 <div class="fc-card">
                     <h2>What we'd do</h2>
@@ -159,23 +188,33 @@
             const chartHost = document.getElementById("review-momentum-chart");
             const labels = @Html.Raw(JsonSerializer.Serialize(Model.ReviewChart.Labels));
             const series = @Html.Raw(JsonSerializer.Serialize(Model.ReviewChart.Series.Select(x => new { x.Name, x.IsYou, Values = x.Values })));
-            const colors = ["#0f2a5f", "#4b5563", "#6b7280", "#9ca3af"];
+            const seriesColors = @Html.Raw(JsonSerializer.Serialize(reviewSeriesColors));
 
             if (chartHost && window.Chart && labels && series) {
-                const datasets = series.map((item, idx) => ({
-                    label: item.name || item.Name,
-                    data: item.values || item.Values,
-                    borderColor: item.isYou || item.IsYou ? colors[0] : colors[Math.min(idx + 1, colors.length - 1)],
-                    borderWidth: item.isYou || item.IsYou ? 2.5 : 2,
-                    pointRadius: 2,
-                    pointHoverRadius: 3,
-                    tension: 0.2,
-                    fill: false
-                }));
+                const datasets = series.map((item, idx) => {
+                    const isYou = item.isYou || item.IsYou;
+                    const color = seriesColors[idx] || "#4b5563";
+                    return {
+                        label: item.name || item.Name,
+                        data: item.values || item.Values,
+                        borderColor: color,
+                        backgroundColor: color,
+                        borderWidth: isYou ? 4 : 2.5,
+                        pointRadius: isYou ? 3.5 : 2.25,
+                        pointHoverRadius: isYou ? 5 : 3.5,
+                        pointBorderWidth: isYou ? 2 : 0,
+                        pointBackgroundColor: isYou ? "#ffffff" : color,
+                        pointBorderColor: color,
+                        tension: 0.25,
+                        fill: false,
+                        isYou
+                    };
+                });
+                const orderedDatasets = datasets.filter(x => !x.isYou).concat(datasets.filter(x => x.isYou));
 
                 new Chart(chartHost, {
                     type: "line",
-                    data: { labels, datasets },
+                    data: { labels, datasets: orderedDatasets },
                     options: {
                         animation: false,
                         responsive: true,
