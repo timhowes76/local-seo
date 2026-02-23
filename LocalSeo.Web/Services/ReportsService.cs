@@ -141,9 +141,9 @@ GROUP BY PlaceId;", new { PlaceIds = requiredPlaceIds }, cancellationToken: ct))
             VariantLabel = GetVariantLabel(variant),
             ShowRawMetrics = false,
             Version = Math.Max(1, reportsOptions.Value.FirstContactVersion),
-            ReportTitle = $"Local Visibiltiy Snapshot for {context.BusinessName}",
+            ReportTitle = $"Google Maps Local Visibility Snapshot for {context.BusinessName}",
             BusinessName = context.BusinessName,
-            CompanyLogoPath = context.CompanyLogoPath,
+            CompanyLogoPath = ResolveCompanyLogoPath(context.CompanyLogoPath),
             TownName = context.TownName,
             PrimaryCategory = context.PrimaryCategory,
             RunDateUtc = context.RunDateUtc,
@@ -771,6 +771,37 @@ ORDER BY m.[Year] DESC, m.[Month] DESC;", new { CategoryId = categoryId, TownId 
         if (candidate.Length is 4 or 7 && candidate.StartsWith('#'))
             return candidate;
         return fallback;
+    }
+
+    private string? ResolveCompanyLogoPath(string? rawPath)
+    {
+        if (string.IsNullOrWhiteSpace(rawPath))
+            return null;
+
+        var candidate = rawPath.Trim();
+
+        // Keep absolute URLs; if unavailable at runtime, the view fallback hides the image on error.
+        if (Uri.TryCreate(candidate, UriKind.Absolute, out _))
+            return candidate;
+
+        var normalized = candidate.Replace('\\', '/');
+        if (!normalized.StartsWith('/'))
+            normalized = "/" + normalized;
+        if (normalized.Contains("..", StringComparison.Ordinal))
+            return null;
+
+        var webRoot = webHostEnvironment.WebRootPath;
+        if (string.IsNullOrWhiteSpace(webRoot))
+            return null;
+
+        var absolute = Path.GetFullPath(Path.Combine(webRoot, normalized.TrimStart('/').Replace('/', Path.DirectorySeparatorChar)));
+        var rootFullPath = Path.GetFullPath(webRoot).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var isUnderRoot = absolute.StartsWith(rootFullPath + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(absolute, rootFullPath, StringComparison.OrdinalIgnoreCase);
+        if (!isUnderRoot)
+            return null;
+
+        return File.Exists(absolute) ? normalized : null;
     }
 
     private static string ComputeContentHash(FirstContactReportViewModel model)

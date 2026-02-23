@@ -50,20 +50,21 @@
         <article class="fc-container" style="--brand-primary:@Model.BrandPrimary;--brand-accent:@Model.BrandAccent;--brand-dark:@Model.BrandDark;--brand-light:@Model.BrandLight;">
             <header class="fc-header">
                 <div class="fc-brand">
-                    <div class="fc-brand-main">
-                        <img class="fc-logo" src="@Model.LogoPath" alt="Kontrolit" />
-                        <h1 class="fc-title">@Model.ReportTitle</h1>
-                    </div>
                     @if (hasCompanyLogo)
                     {
-                        <img class="fc-company-logo" src="@Model.CompanyLogoPath" alt="@Model.BusinessName logo" />
+                        <img class="fc-company-logo" src="@Model.CompanyLogoPath" alt="@Model.BusinessName logo" onerror="this.style.display='none';" />
                     }
+                    else
+                    {
+                        <span class="fc-company-logo-spacer" aria-hidden="true"></span>
+                    }
+                    <h1 class="fc-title">@Model.ReportTitle</h1>
+                    <img class="fc-logo" src="@Model.LogoPath" alt="Kontrolit" />
                 </div>
                 <div class="fc-subtitle">
                     <img class="fc-google-icon" src="/assets/images/google.svg" onerror="this.onerror=null;this.src='/assets/images/google.png';" alt="Google" />
                     <span><strong>Google Maps Search Results</strong> for <strong>@Model.BusinessName</strong> | @Model.TownName | @Model.PrimaryCategory | @Model.RunDateUtc.ToString("dd MMM yyyy", CultureInfo.InvariantCulture)</span>
                 </div>
-                <div class="fc-strapline">@Model.Strapline</div>
                 <div class="fc-scope-note">All ranking and click estimates in this report are based on Google Maps local search visibility.</div>
             </header>
 
@@ -81,23 +82,31 @@
                     <p>This snapshot reflects Google Maps map-pack rankings and projected Google Maps clicks, not general organic website rankings.</p>
                 </div>
 
-                <div class="fc-card fc-card-wide">
-                    <h2>Review momentum (@Model.ReviewChart.GranularityLabel)</h2>
-                    <div class="fc-chart-wrap">
-                        <canvas id="review-momentum-chart"></canvas>
+                @if (showOpportunitySection)
+                {
+                    <div class="fc-card fc-card-wide fc-card-opportunity">
+                        <h2>Opportunity monthly clicks (estimate)</h2>
+                        <p class="fc-opportunity-summary">Estimated extra Google Maps clicks per month if ranking improves.</p>
+                        <div class="fc-opportunity-grid@(showMoveToPosition3 ? string.Empty : " is-single")">
+                            @if (showMoveToPosition3)
+                            {
+                                <section class="fc-opportunity">
+                                    <h3>Move to position 3</h3>
+                                    <p class="fc-range-line"><span class="fc-range-label">Conservative</span><span class="fc-range-value">+@Model.MoveToPosition3.Conservative.ToString("N0", CultureInfo.InvariantCulture)</span></p>
+                                    <p class="fc-range-line"><span class="fc-range-label">Expected</span><span class="fc-range-value">+@Model.MoveToPosition3.Expected.ToString("N0", CultureInfo.InvariantCulture)</span></p>
+                                    <p class="fc-range-line"><span class="fc-range-label">Upside</span><span class="fc-range-value">+@Model.MoveToPosition3.Upside.ToString("N0", CultureInfo.InvariantCulture)</span></p>
+                                </section>
+                            }
+                            <section class="fc-opportunity">
+                                <h3>Move to position 1</h3>
+                                <p class="fc-range-line"><span class="fc-range-label">Conservative</span><span class="fc-range-value">+@Model.MoveToPosition1.Conservative.ToString("N0", CultureInfo.InvariantCulture)</span></p>
+                                <p class="fc-range-line"><span class="fc-range-label">Expected</span><span class="fc-range-value">+@Model.MoveToPosition1.Expected.ToString("N0", CultureInfo.InvariantCulture)</span></p>
+                                <p class="fc-range-line"><span class="fc-range-label">Upside</span><span class="fc-range-value">+@Model.MoveToPosition1.Upside.ToString("N0", CultureInfo.InvariantCulture)</span></p>
+                            </section>
+                        </div>
+                        <p>@Model.WhyThisMatters</p>
                     </div>
-                    <div class="fc-legend">
-                        @for (var idx = 0; idx < Model.ReviewChart.Series.Count; idx++)
-                        {
-                            var series = Model.ReviewChart.Series[idx];
-                            var seriesColor = reviewSeriesColors[idx];
-                            <span class="fc-legend-item @(series.IsYou ? "is-you" : null)">
-                                <span class="fc-dot @(series.IsYou ? "is-you" : null)" style="--dot-color:@seriesColor;"></span>
-                                <span>@series.Name</span>
-                            </span>
-                        }
-                    </div>
-                </div>
+                }
 
                 <div class="fc-card fc-card-wide">
                     <h2>Your Profile Strength Summary</h2>
@@ -132,30 +141,23 @@
                     <p>@Model.ProfileStrengthImpactText</p>
                 </div>
 
-                @if (showOpportunitySection)
-                {
-                    <div class="fc-card">
-                        <h2>Opportunity monthly clicks (estimate)</h2>
-                        <div class="fc-opportunity-grid@(showMoveToPosition3 ? string.Empty : " is-single")">
-                            @if (showMoveToPosition3)
-                            {
-                                <section class="fc-opportunity">
-                                    <h3>Move to position 3</h3>
-                                    <p class="fc-range-line"><span class="fc-range-label">Conservative:</span> +@Model.MoveToPosition3.Conservative.ToString("N0", CultureInfo.InvariantCulture)</p>
-                                    <p class="fc-range-line"><span class="fc-range-label">Expected:</span> +@Model.MoveToPosition3.Expected.ToString("N0", CultureInfo.InvariantCulture)</p>
-                                    <p class="fc-range-line"><span class="fc-range-label">Upside:</span> +@Model.MoveToPosition3.Upside.ToString("N0", CultureInfo.InvariantCulture)</p>
-                                </section>
-                            }
-                            <section class="fc-opportunity">
-                                <h3>Move to position 1</h3>
-                                <p class="fc-range-line"><span class="fc-range-label">Conservative:</span> +@Model.MoveToPosition1.Conservative.ToString("N0", CultureInfo.InvariantCulture)</p>
-                                <p class="fc-range-line"><span class="fc-range-label">Expected:</span> +@Model.MoveToPosition1.Expected.ToString("N0", CultureInfo.InvariantCulture)</p>
-                                <p class="fc-range-line"><span class="fc-range-label">Upside:</span> +@Model.MoveToPosition1.Upside.ToString("N0", CultureInfo.InvariantCulture)</p>
-                            </section>
-                        </div>
-                        <p>@Model.WhyThisMatters</p>
+                <div class="fc-card fc-card-wide">
+                    <h2>Review momentum (@Model.ReviewChart.GranularityLabel)</h2>
+                    <div class="fc-chart-wrap">
+                        <canvas id="review-momentum-chart"></canvas>
                     </div>
-                }
+                    <div class="fc-legend">
+                        @for (var idx = 0; idx < Model.ReviewChart.Series.Count; idx++)
+                        {
+                            var series = Model.ReviewChart.Series[idx];
+                            var seriesColor = reviewSeriesColors[idx];
+                            <span class="fc-legend-item @(series.IsYou ? "is-you" : null)">
+                                <span class="fc-dot @(series.IsYou ? "is-you" : null)" style="--dot-color:@seriesColor;"></span>
+                                <span>@series.Name</span>
+                            </span>
+                        }
+                    </div>
+                </div>
 
                 <div class="fc-card">
                     <h2>What we'd do</h2>
@@ -171,6 +173,7 @@
                     <h2>About Kontrolit + next step</h2>
                     <p>@Model.AboutKontrolit</p>
                     <p><strong>@Model.CtaLine</strong></p>
+                    <p>Call us on <strong>01935 434734</strong> and visit <strong>www.kontrolit.net</strong> for more info.</p>
                 </div>
             </section>
 

@@ -40,21 +40,16 @@ body {
 }
 
 .fc-brand {
-    display: flex;
+    display: grid;
+    grid-template-columns: 140px 1fr 140px;
     align-items: center;
-    justify-content: space-between;
     gap: 12px;
-}
-
-.fc-brand-main {
-    display: flex;
-    align-items: center;
-    gap: 10px;
 }
 
 .fc-logo {
     height: 28px;
     width: auto;
+    justify-self: end;
 }
 
 .fc-company-logo {
@@ -64,12 +59,19 @@ body {
     object-fit: contain;
 }
 
+.fc-company-logo-spacer {
+    display: block;
+    width: 140px;
+    height: 1px;
+}
+
 .fc-title {
     margin: 0;
     color: var(--brand-primary);
     font-size: 25px;
     font-weight: 700;
     line-height: 1.1;
+    text-align: center;
 }
 
 .fc-subtitle {
@@ -85,13 +87,6 @@ body {
     width: 16px;
     height: 16px;
     flex: 0 0 auto;
-}
-
-.fc-strapline {
-    margin-top: 8px;
-    color: #374151;
-    font-style: italic;
-    font-size: 12px;
 }
 
 .fc-scope-note {
@@ -166,20 +161,48 @@ body {
     background: #fff;
 }
 
+.fc-card-opportunity {
+    border: 2px solid #f59e0b;
+    background: linear-gradient(180deg, #fff7ed 0%, #fff 100%);
+    box-shadow: 0 8px 24px rgba(245, 158, 11, 0.18);
+}
+
+.fc-card-opportunity h2 {
+    color: #9a3412;
+    font-size: 18px;
+}
+
+.fc-opportunity-summary {
+    margin: 0 0 10px !important;
+    font-weight: 600;
+    color: #9a3412 !important;
+}
+
 .fc-opportunity h3 {
     margin: 0 0 5px;
-    font-size: 13px;
-    color: #1f2937;
+    font-size: 14px;
+    color: #7c2d12;
 }
 
 .fc-opportunity .fc-range-line {
     margin: 0;
     color: #1f2937;
     font-size: 13px;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
 }
 
 .fc-range-label {
     color: #4b5563;
+}
+
+.fc-range-value {
+    color: #b91c1c;
+    font-size: 22px;
+    line-height: 1;
+    font-weight: 800;
 }
 
 .fc-signals {
