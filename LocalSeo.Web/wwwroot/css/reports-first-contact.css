@@ -13,9 +13,12 @@ html,
 body {
     margin: 0;
     padding: 0;
-    background: #eef1f8;
+    background:
+        radial-gradient(circle at 8% 12%, rgba(14, 165, 233, 0.2), transparent 30%),
+        radial-gradient(circle at 88% 20%, rgba(245, 158, 11, 0.17), transparent 34%),
+        linear-gradient(135deg, #e8efff 0%, #f4f8ff 48%, #eef8ff 100%);
     color: #111827;
-    font-family: "Source Sans 3", "Source Sans Pro", "Segoe UI", Arial, sans-serif;
+    font-family: "Manrope", "Segoe UI", Arial, sans-serif;
 }
 
 .fc-shell {
@@ -25,18 +28,41 @@ body {
 }
 
 .fc-container {
+    position: relative;
     width: 210mm;
     min-height: 297mm;
-    background: #fff;
-    border: 1px solid #d7deec;
-    box-shadow: 0 8px 30px rgba(15, 42, 95, 0.08);
+    background: linear-gradient(180deg, #ffffff 0%, #f9fbff 100%);
+    border: 1px solid #cfdcf3;
+    box-shadow: 0 22px 60px rgba(15, 42, 95, 0.16);
+    border-radius: 18px;
+    overflow: hidden;
     padding: 10mm;
 }
 
 .fc-header {
-    border-bottom: 2px solid #d7deec;
-    padding-bottom: 10px;
-    margin-bottom: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.24);
+    border-radius: 14px;
+    background:
+        radial-gradient(circle at 10% 20%, rgba(14, 165, 233, 0.32), transparent 42%),
+        linear-gradient(130deg, var(--brand-primary) 0%, #0b3b76 42%, var(--brand-dark) 100%);
+    padding: 12px 14px 14px;
+    margin-bottom: 14px;
+    box-shadow: 0 12px 28px rgba(15, 42, 95, 0.24);
+}
+
+.fc-tech-kicker {
+    display: inline-flex;
+    align-items: center;
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    border-radius: 999px;
+    padding: 3px 10px;
+    margin-bottom: 9px;
+    color: rgba(255, 255, 255, 0.95);
+    background: rgba(255, 255, 255, 0.08);
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    font-size: 10px;
+    font-weight: 700;
 }
 
 .fc-brand {
@@ -47,9 +73,13 @@ body {
 }
 
 .fc-logo {
-    height: 28px;
+    height: 30px;
     width: auto;
     justify-self: end;
+    padding: 0;
+    border-radius: 0;
+    background: transparent;
+    border: none;
 }
 
 .fc-company-logo {
@@ -57,6 +87,10 @@ body {
     max-width: 140px;
     width: auto;
     object-fit: contain;
+    padding: 4px 8px;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.97);
+    border: 1px solid rgba(148, 163, 184, 0.35);
 }
 
 .fc-company-logo-spacer {
@@ -67,26 +101,32 @@ body {
 
 .fc-title {
     margin: 0;
-    color: var(--brand-primary);
-    font-size: 25px;
+    color: #fff;
+    font-family: "Space Grotesk", "Manrope", sans-serif;
+    font-size: 27px;
     font-weight: 700;
     line-height: 1.1;
     text-align: center;
+    letter-spacing: 0.01em;
 }
 
 .fc-subtitle {
     display: flex;
     align-items: center;
     gap: 8px;
-    margin-top: 3px;
-    color: #4b5563;
+    margin-top: 8px;
+    color: rgba(255, 255, 255, 0.94);
     font-size: 13px;
+    line-height: 1.35;
 }
 
 .fc-google-icon {
-    width: 16px;
-    height: 16px;
+    width: 18px;
+    height: 18px;
     flex: 0 0 auto;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.9);
+    padding: 2px;
 }
 
 .fc-card-title-with-icon {
@@ -96,12 +136,12 @@ body {
 }
 
 .fc-scope-note {
-    margin-top: 8px;
+    margin-top: 10px;
     padding: 6px 8px;
-    border: 1px solid #d7deec;
+    border: 1px solid rgba(255, 255, 255, 0.3);
     border-radius: 6px;
-    background: #f8fbff;
-    color: #334155;
+    background: rgba(255, 255, 255, 0.1);
+    color: rgba(255, 255, 255, 0.96);
     font-size: 12px;
     line-height: 1.35;
 }
@@ -109,14 +149,15 @@ body {
 .fc-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 10px;
+    gap: 12px;
 }
 
 .fc-card {
-    border: 1px solid #dde4f0;
-    border-radius: 8px;
-    padding: 10px;
-    background: var(--brand-light);
+    border: 1px solid #d7e3f4;
+    border-radius: 12px;
+    padding: 12px;
+    background: linear-gradient(180deg, #ffffff 0%, #f7fbff 100%);
+    box-shadow: 0 8px 18px rgba(15, 42, 95, 0.08);
     break-inside: avoid-page;
 }
 
@@ -126,8 +167,9 @@ body {
 
 .fc-card h2 {
     margin: 0 0 8px;
-    color: var(--brand-primary);
-    font-size: 16px;
+    color: #102a57;
+    font-family: "Space Grotesk", "Manrope", sans-serif;
+    font-size: 18px;
     line-height: 1.2;
 }
 
@@ -144,10 +186,19 @@ body {
 }
 
 .fc-position-value {
-    color: var(--brand-dark);
-    font-size: 28px;
-    font-weight: 700;
+    color: #0b3b76;
+    font-size: 34px;
+    font-weight: 800;
     line-height: 1;
+    letter-spacing: 0.01em;
+}
+
+.fc-card-attention {
+    border-top: 4px solid #0ea5e9;
+}
+
+.fc-card-scope {
+    border-top: 4px solid #22c55e;
 }
 
 .fc-opportunity-grid {
@@ -169,29 +220,33 @@ body {
 
 .fc-card-opportunity {
     border: 2px solid #f59e0b;
-    background: linear-gradient(180deg, #fff7ed 0%, #fff 100%);
-    box-shadow: 0 8px 24px rgba(245, 158, 11, 0.18);
+    background:
+        radial-gradient(circle at 86% 16%, rgba(248, 113, 113, 0.22), transparent 36%),
+        linear-gradient(180deg, #fff2df 0%, #fff8ef 54%, #fff 100%);
+    box-shadow: 0 12px 28px rgba(245, 158, 11, 0.26);
 }
 
 .fc-card-opportunity h2 {
     color: #9a3412;
-    font-size: 18px;
+    font-size: 22px;
 }
 
 .fc-opportunity-summary {
     margin: 0 0 10px !important;
-    font-weight: 600;
+    font-weight: 700;
     color: #9a3412 !important;
+    font-size: 14px !important;
 }
 
 .fc-opportunity h3 {
-    margin: 0 0 5px;
+    margin: 0 0 8px;
     font-size: 14px;
     color: #7c2d12;
+    font-family: "Space Grotesk", "Manrope", sans-serif;
 }
 
 .fc-opportunity .fc-range-line {
-    margin: 0;
+    margin: 0 0 4px;
     color: #1f2937;
     font-size: 13px;
     display: flex;
@@ -202,13 +257,15 @@ body {
 
 .fc-range-label {
     color: #4b5563;
+    font-weight: 600;
 }
 
 .fc-range-value {
     color: #b91c1c;
-    font-size: 22px;
+    font-size: 26px;
     line-height: 1;
     font-weight: 800;
+    letter-spacing: 0.01em;
 }
 
 .fc-signals {
@@ -218,7 +275,7 @@ body {
 }
 
 .fc-signal {
-    border: 1px solid #d6deee;
+    border: 1px solid #d8e4f4;
     border-radius: 8px;
     padding: 8px;
     background: #fff;
@@ -227,6 +284,7 @@ body {
 .fc-signal h4 {
     margin: 0 0 6px;
     font-size: 13px;
+    color: #0f2a5f;
 }
 
 .fc-strength {
@@ -274,7 +332,7 @@ body {
 }
 
 .fc-list li {
-    margin-bottom: 5px;
+    margin-bottom: 6px;
     font-size: 13px;
 }
 
@@ -311,6 +369,63 @@ body {
     height: 13px;
     border: 2px solid #fff;
     box-shadow: 0 0 0 2px var(--dot-color, #e11d48);
+}
+
+.fc-card-strength {
+    border-top: 4px solid #3b82f6;
+}
+
+.fc-card-review {
+    border-top: 4px solid #14b8a6;
+}
+
+.fc-card-plan {
+    border-top: 4px solid #2563eb;
+}
+
+.fc-card-cta {
+    border: 1px solid rgba(15, 42, 95, 0.12);
+    background:
+        radial-gradient(circle at 84% 18%, rgba(14, 165, 233, 0.25), transparent 42%),
+        linear-gradient(135deg, #0f2a5f 0%, #123a74 54%, #0f172a 100%);
+    box-shadow: 0 14px 30px rgba(15, 42, 95, 0.3);
+}
+
+.fc-card-cta h2,
+.fc-card-cta p {
+    color: #eef6ff;
+}
+
+.fc-card-cta strong {
+    color: #fff;
+}
+
+.fc-cta-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 10px;
+    flex-wrap: wrap;
+}
+
+.fc-cta-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 8px 12px;
+    border-radius: 999px;
+    text-decoration: none;
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 0.02em;
+    background: #fff;
+    color: #0f2a5f;
+    border: 1px solid #d7e3f4;
+}
+
+.fc-cta-btn.is-secondary {
+    background: transparent;
+    color: #fff;
+    border-color: rgba(255, 255, 255, 0.5);
 }
 
 .fc-chart-wrap {
@@ -370,8 +485,59 @@ body {
     .fc-container {
         border: none;
         box-shadow: none;
+        border-radius: 0;
         width: auto;
         min-height: auto;
         padding: 0;
+    }
+
+    .fc-cta-btn {
+        color: #0f2a5f !important;
+    }
+}
+
+@media (max-width: 900px) {
+    .fc-container {
+        width: calc(100% - 20px);
+        min-height: auto;
+        border-radius: 12px;
+        padding: 14px;
+    }
+
+    .fc-brand {
+        grid-template-columns: 1fr;
+        justify-items: center;
+        gap: 8px;
+    }
+
+    .fc-company-logo-spacer {
+        display: none;
+    }
+
+    .fc-logo {
+        justify-self: center;
+    }
+
+    .fc-title {
+        font-size: 22px;
+    }
+
+    .fc-subtitle {
+        font-size: 12px;
+        text-align: center;
+        justify-content: center;
+        flex-wrap: wrap;
+    }
+
+    .fc-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .fc-signals {
+        grid-template-columns: 1fr;
+    }
+
+    .fc-cta-actions {
+        flex-direction: column;
     }
 }

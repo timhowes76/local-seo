@@ -21,9 +21,10 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>@Model.ReportTitle</title>
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;600;700&display=swap" />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700;800&family=Space+Grotesk:wght@500;700&display=swap" />
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" />
     <link rel="stylesheet" href="~/css/reports-first-contact.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/print.css" asp-append-version="true" media="print" />
 </head>
 <body>
     @if (!printMode)
@@ -49,6 +50,7 @@
     <div class="fc-shell">
         <article class="fc-container" style="--brand-primary:@Model.BrandPrimary;--brand-accent:@Model.BrandAccent;--brand-dark:@Model.BrandDark;--brand-light:@Model.BrandLight;">
             <header class="fc-header">
+                <div class="fc-tech-kicker">Local Search Intelligence</div>
                 <div class="fc-brand">
                     @if (hasCompanyLogo)
                     {
@@ -59,16 +61,16 @@
                         <span class="fc-company-logo-spacer" aria-hidden="true"></span>
                     }
                     <h1 class="fc-title">@Model.ReportTitle</h1>
-                    <img class="fc-logo" src="@Model.LogoPath" alt="Kontrolit" />
+                    <img class="fc-logo" src="/assets/images/dark-logo.svg" alt="Kontrolit" />
                 </div>
                 <div class="fc-subtitle">
-                    <span><strong>Figures for @Model.TownName</strong> | @Model.PrimaryCategory and other common keyphrases | @Model.RunDateUtc.ToString("dd MMM yyyy", CultureInfo.InvariantCulture)</span>
+                    <span>Figures for @Model.TownName | @Model.PrimaryCategory and other common keyphrases | @Model.RunDateUtc.ToString("dd MMM yyyy", CultureInfo.InvariantCulture)</span>
                 </div>
                 <div class="fc-scope-note">All ranking and click estimates in this report are based on Google Maps local search visibility.</div>
             </header>
 
             <section class="fc-grid">
-                <div class="fc-card">
+                <div class="fc-card fc-card-attention">
                     <h2 class="fc-card-title-with-icon">
                         <img class="fc-google-icon" src="/assets/images/google.svg" onerror="this.onerror=null;this.src='/assets/images/google.png';" alt="Google" />
                         <span>Where you appear today in Google Maps</span>
@@ -79,7 +81,7 @@
                     <p>@Model.PositionCommentary</p>
                 </div>
 
-                <div class="fc-card">
+                <div class="fc-card fc-card-scope">
                     <h2>Search scope</h2>
                     <p>This snapshot reflects Google Maps map-pack rankings and projected Google Maps clicks, not general organic website rankings.</p>
                 </div>
@@ -110,7 +112,7 @@
                     </div>
                 }
 
-                <div class="fc-card fc-card-wide">
+                <div class="fc-card fc-card-wide fc-card-strength">
                     <h2>Your Profile Strength Summary</h2>
                     <div class="fc-signals">
                         @foreach (var signal in Model.StrengthSignals)
@@ -143,7 +145,7 @@
                     <p>@Model.ProfileStrengthImpactText</p>
                 </div>
 
-                <div class="fc-card fc-card-wide">
+                <div class="fc-card fc-card-wide fc-card-review">
                     <h2>Review momentum (@Model.ReviewChart.GranularityLabel)</h2>
                     <div class="fc-chart-wrap">
                         <canvas id="review-momentum-chart"></canvas>
@@ -161,7 +163,7 @@
                     </div>
                 </div>
 
-                <div class="fc-card">
+                <div class="fc-card fc-card-plan">
                     <h2>What we'd do</h2>
                     <ul class="fc-list">
                         @foreach (var outcome in Model.Outcomes)
@@ -171,11 +173,15 @@
                     </ul>
                 </div>
 
-                <div class="fc-card">
+                <div class="fc-card fc-card-cta">
                     <h2>About Kontrolit + next step</h2>
                     <p>@Model.AboutKontrolit</p>
                     <p><strong>@Model.CtaLine</strong></p>
                     <p>Call us on <strong>01935 434734</strong> and visit <strong>www.kontrolit.net</strong> for more info.</p>
+                    <div class="fc-cta-actions">
+                        <a class="fc-cta-btn" href="tel:01935434734">Call 01935 434734</a>
+                        <a class="fc-cta-btn is-secondary" href="https://www.kontrolit.net" target="_blank" rel="noopener noreferrer">Visit kontrolit.net</a>
+                    </div>
                 </div>
             </section>
 

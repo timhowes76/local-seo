@@ -28,6 +28,7 @@ public sealed class ReportsService(
 {
     private const string FirstContactReportType = "FirstContactOnePager";
     private const string MissingReviewsMessage = "Run again with Reviews enabled to generate this report.";
+    private const int FirstContactTemplateRevision = 2;
 
     public async Task<FirstContactReportAvailability> GetFirstContactAvailabilityAsync(string placeId, long runId, CancellationToken ct)
     {
@@ -806,6 +807,7 @@ ORDER BY m.[Year] DESC, m.[Month] DESC;", new { CategoryId = categoryId, TownId 
     {
         var canonical = new
         {
+            TemplateRevision = FirstContactTemplateRevision,
             model.PlaceId,
             model.RunId,
             variant = model.Variant.ToString(),
@@ -1012,13 +1014,14 @@ OUTPUT INSERTED.ReportId;", new
         {
             Path = outputPath,
             Format = "A4",
+            PreferCSSPageSize = true,
             PrintBackground = true,
             Margin = new Margin
             {
-                Top = "12mm",
-                Bottom = "12mm",
-                Left = "12mm",
-                Right = "12mm"
+                Top = "0",
+                Bottom = "0",
+                Left = "0",
+                Right = "0"
             }
         });
 
