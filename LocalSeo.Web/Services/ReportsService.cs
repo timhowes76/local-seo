@@ -779,10 +779,8 @@ ORDER BY m.[Year] DESC, m.[Month] DESC;", new { CategoryId = categoryId, TownId 
             return null;
 
         var candidate = rawPath.Trim();
-
-        // Keep absolute URLs; if unavailable at runtime, the view fallback hides the image on error.
         if (Uri.TryCreate(candidate, UriKind.Absolute, out _))
-            return candidate;
+            return null;
 
         var normalized = candidate.Replace('\\', '/');
         if (!normalized.StartsWith('/'))

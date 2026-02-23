@@ -89,6 +89,12 @@ body {
     flex: 0 0 auto;
 }
 
+.fc-card-title-with-icon {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+}
+
 .fc-scope-note {
     margin-top: 8px;
     padding: 6px 8px;

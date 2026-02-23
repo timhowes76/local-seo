@@ -62,15 +62,17 @@
                     <img class="fc-logo" src="@Model.LogoPath" alt="Kontrolit" />
                 </div>
                 <div class="fc-subtitle">
-                    <img class="fc-google-icon" src="/assets/images/google.svg" onerror="this.onerror=null;this.src='/assets/images/google.png';" alt="Google" />
-                    <span><strong>Google Maps Search Results</strong> for <strong>@Model.BusinessName</strong> | @Model.TownName | @Model.PrimaryCategory | @Model.RunDateUtc.ToString("dd MMM yyyy", CultureInfo.InvariantCulture)</span>
+                    <span><strong>Figures for @Model.TownName</strong> | @Model.PrimaryCategory and other common keyphrases | @Model.RunDateUtc.ToString("dd MMM yyyy", CultureInfo.InvariantCulture)</span>
                 </div>
                 <div class="fc-scope-note">All ranking and click estimates in this report are based on Google Maps local search visibility.</div>
             </header>
 
             <section class="fc-grid">
                 <div class="fc-card">
-                    <h2>Where you appear today in Google Maps</h2>
+                    <h2 class="fc-card-title-with-icon">
+                        <img class="fc-google-icon" src="/assets/images/google.svg" onerror="this.onerror=null;this.src='/assets/images/google.png';" alt="Google" />
+                        <span>Where you appear today in Google Maps</span>
+                    </h2>
                     <div class="fc-position-row">
                         <span class="fc-position-value">Position @Model.CurrentPosition</span>
                     </div>
