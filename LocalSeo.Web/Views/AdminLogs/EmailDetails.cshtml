@@ -5,6 +5,7 @@
 
     var subjectForDisplay = Model.Log.SubjectRendered ?? string.Empty;
     var bodyForDisplay = Model.Log.BodyHtmlRendered ?? string.Empty;
+    var emailPreviewSrcDoc = "<style>html,body{background:#ffffff !important;color:#111827 !important;}body{padding:12px;line-height:1.45;}body *{color:inherit !important;}a{color:#2563eb !important;}</style>" + bodyForDisplay;
     var displayRedactionApplied = Model.Log.RedactionApplied;
 
     if (Model.Log.IsSensitive)
@@ -118,7 +119,7 @@
     <section class="card">
         <h2 class="card-title">Rendered HTML Body</h2>
         <p class="muted">Rendered in a sandboxed frame to avoid active scripts.</p>
-        <iframe class="email-preview-frame" sandbox="" srcdoc="@bodyForDisplay"></iframe>
+        <iframe class="email-preview-frame" sandbox="" srcdoc="@emailPreviewSrcDoc"></iframe>
     </section>
 
     <section class="card">

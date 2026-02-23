@@ -48,7 +48,7 @@
             <input id="search" name="q" type="text" value="@currentSearch" placeholder="Town Name, Slug, or External ID" />
 
             <label for="statusFilter">Status</label>
-            <select id="statusFilter" name="status">
+            <select id="statusFilter" name="status" class="js-searchable" data-placeholder="Search">
                 @if (currentStatus == "active")
                 {
                     <option value="active" selected>Active</option>
@@ -76,7 +76,7 @@
             </select>
 
             <label for="countyFilter">County</label>
-            <select id="countyFilter" name="countyId">
+            <select id="countyFilter" name="countyId" class="js-searchable" data-placeholder="Search">
                 <option value="">All Counties</option>
                 @foreach (var county in Model.CountyOptions)
                 {
@@ -176,3 +176,4 @@
         </div>
     </section>
 </div>
+

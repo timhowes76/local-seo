@@ -448,7 +448,8 @@ button.avatar-menu-item:hover {
     min-height: 320px;
     border: 1px solid var(--border-soft);
     border-radius: 10px;
-    background: var(--bg-card);
+    background: #ffffff;
+    color: #111827;
 }
 
 .run-summary-grid {
@@ -2505,5 +2506,100 @@ code {
     to {
         transform: rotate(360deg);
     }
+}
+
+.ts-wrapper.single .ts-control {
+    min-height: 42px;
+    border-radius: 10px;
+    padding-right: 2.25rem;
+    position: relative;
+}
+
+.ts-wrapper.single .ts-control::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    right: 0.85rem;
+    width: 0;
+    height: 0;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-top: 6px solid currentColor;
+    transform: translateY(-35%);
+    opacity: 0.7;
+    pointer-events: none;
+}
+
+.ts-wrapper.single.dropdown-active .ts-control::after {
+    transform: translateY(-35%) rotate(180deg);
+}
+
+.ts-wrapper.single .ts-control input {
+    min-width: 1px;
+}
+
+.ts-dropdown .dropdown-input-wrap {
+    padding: 0.35rem 0.5rem 0.25rem;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+.ts-dropdown .dropdown-input {
+    width: 100%;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    padding: 0.4rem 0.55rem;
+}
+
+.theme-dark .ts-wrapper.single .ts-control {
+    background: var(--bg-card);
+    border-color: var(--border-input);
+    color: var(--text-primary);
+}
+
+.theme-dark .ts-wrapper.single .ts-control .item,
+.theme-dark .ts-wrapper.single .ts-control input {
+    color: var(--text-strong);
+}
+
+.theme-dark .ts-wrapper.single .ts-control input::placeholder {
+    color: var(--text-muted);
+    opacity: 1;
+}
+
+.theme-dark .ts-dropdown {
+    background: #0f172a;
+    border-color: #334155;
+    color: var(--text-primary);
+}
+
+.theme-dark .ts-dropdown .option {
+    color: var(--text-primary);
+}
+
+.theme-dark .ts-dropdown .active,
+.theme-dark .ts-dropdown .option:hover {
+    background: #1e293b;
+    color: #f8fafc;
+}
+
+.theme-dark .ts-dropdown .dropdown-input-wrap {
+    border-bottom-color: #334155;
+    background: #0f172a;
+}
+
+.theme-dark .ts-dropdown .dropdown-input {
+    background: #111827;
+    border-color: #475569;
+    color: #f8fafc;
+}
+
+.theme-dark .ts-dropdown .dropdown-input::placeholder {
+    color: #94a3b8;
+    opacity: 1;
+}
+
+.theme-dark .email-preview-frame {
+    border-color: #475569;
+    background: #ffffff;
 }
 

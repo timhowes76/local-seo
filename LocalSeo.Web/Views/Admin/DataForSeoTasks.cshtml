@@ -17,7 +17,7 @@
             <a href="/admin" class="btn btn-secondary">Back to Admin</a>
             <form method="get" action="/admin/dataforseo-tasks" class="inline-group">
                 <label for="taskTypeFilter">Task Type</label>
-                <select id="taskTypeFilter" name="taskType">
+                <select id="taskTypeFilter" name="taskType" class="js-searchable" data-placeholder="Search">
                     @if (selectedTaskType == "all")
                     {
                         <option value="all" selected>All</option>
@@ -68,7 +68,7 @@
                     }
                 </select>
                 <label for="statusFilter">Status</label>
-                <select id="statusFilter" name="status">
+                <select id="statusFilter" name="status" class="js-searchable" data-placeholder="Search">
                     @if (selectedStatus == "all")
                     {
                         <option value="all" selected>All</option>
@@ -250,3 +250,4 @@
         }
     </section>
 </div>
+

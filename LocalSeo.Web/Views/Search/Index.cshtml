@@ -36,8 +36,8 @@
             <input asp-for="RerunSourceRunId" type="hidden" />
             <div class="form-row">
                 <label asp-for="CategoryId">Google Business Profile Category</label>
-                <select asp-for="CategoryId" required>
-                    <option value="">Select category</option>
+                <select asp-for="CategoryId" class="js-searchable" data-placeholder="Search" required>
+                    <option value=""></option>
                     @foreach (var category in Model.CategoryOptions)
                     {
                         if (string.Equals(category.CategoryId, Model.CategoryId, StringComparison.OrdinalIgnoreCase))
@@ -55,8 +55,8 @@
             <div class="search-location-row">
                 <div class="form-row">
                     <label asp-for="CountyId">County</label>
-                    <select asp-for="CountyId" id="CountyId" required>
-                        <option value="">Select county</option>
+                    <select asp-for="CountyId" id="CountyId" class="js-searchable" data-placeholder="Search" required>
+                        <option value=""></option>
                         @foreach (var county in Model.CountyOptions)
                         {
                             if (Model.CountyId.HasValue && county.CountyId == Model.CountyId.Value)
@@ -73,8 +73,8 @@
                 </div>
                 <div class="form-row">
                     <label asp-for="TownId">Town</label>
-                    <select asp-for="TownId" id="TownId" required>
-                        <option value="">Select town</option>
+                    <select asp-for="TownId" id="TownId" class="js-searchable" data-placeholder="Search" required>
+                        <option value=""></option>
                         @foreach (var town in Model.TownOptions)
                         {
                             if (Model.TownId.HasValue && town.TownId == Model.TownId.Value)
@@ -426,10 +426,18 @@
 
         const resetTownOptions = () => {
             if (!(townSelect instanceof HTMLSelectElement)) return;
+            if (townSelect.tomselect) {
+                townSelect.tomselect.clear(true);
+                townSelect.tomselect.clearOptions();
+                townSelect.tomselect.addOption({ value: "", text: "" });
+                townSelect.tomselect.setValue("", true);
+                townSelect.tomselect.refreshOptions(false);
+                return;
+            }
             townSelect.innerHTML = "";
             const placeholder = document.createElement("option");
             placeholder.value = "";
-            placeholder.textContent = "Select town";
+            placeholder.textContent = "";
             townSelect.appendChild(placeholder);
         };
 
@@ -445,29 +453,30 @@
                 });
                 if (!response.ok) return;
                 const towns = await response.json();
-                for (const town of towns) {
-                    townSelect.appendChild(buildTownOption(town, selectedTownId));
+                if (townSelect.tomselect) {
+                    for (const town of towns) {
+                        townSelect.tomselect.addOption({
+                            value: String(town.townId),
+                            text: town.name
+                        });
+                    }
+                    if (selectedTownId) {
+                        townSelect.tomselect.setValue(String(selectedTownId), true);
+                    }
+                    townSelect.tomselect.refreshOptions(false);
+                } else {
+                    for (const town of towns) {
+                        townSelect.appendChild(buildTownOption(town, selectedTownId));
+                    }
                 }
             } catch {
                 // Ignore and keep form usable without dynamic loading.
             }
         };
 
-        const navigateToSelection = (includeTown) => {
-            const query = new URLSearchParams();
-            const categoryId = categorySelect instanceof HTMLSelectElement ? categorySelect.value : "";
-            const countyId = countySelect instanceof HTMLSelectElement ? countySelect.value : "";
-            const townId = townSelect instanceof HTMLSelectElement ? townSelect.value : "";
-            if (rerunId) query.set("rerunId", rerunId);
-            if (categoryId) query.set("categoryId", categoryId);
-            if (countyId) query.set("countyId", countyId);
-            if (includeTown && townId) query.set("townId", townId);
-            window.location.href = query.toString() ? `/search?${query}` : "/search";
-        };
-
         if (countySelect instanceof HTMLSelectElement) {
             countySelect.addEventListener("change", () => {
-                navigateToSelection(false);
+                loadTowns("");
             });
 
             if (countySelect.value && (!(townSelect instanceof HTMLSelectElement) || townSelect.options.length <= 1)) {
@@ -475,21 +484,17 @@
             }
         }
 
-        if (categorySelect instanceof HTMLSelectElement) {
-            categorySelect.addEventListener("change", () => {
-                navigateToSelection(true);
-            });
-        }
-
-        if (townSelect instanceof HTMLSelectElement) {
-            townSelect.addEventListener("change", () => {
-                navigateToSelection(true);
-            });
-        }
-
         if (viewKeyphrasesButton instanceof HTMLButtonElement) {
             viewKeyphrasesButton.addEventListener("click", () => {
-                navigateToSelection(true);
+                const query = new URLSearchParams();
+                const categoryId = categorySelect instanceof HTMLSelectElement ? categorySelect.value : "";
+                const countyId = countySelect instanceof HTMLSelectElement ? countySelect.value : "";
+                const townId = townSelect instanceof HTMLSelectElement ? townSelect.value : "";
+                if (rerunId) query.set("rerunId", rerunId);
+                if (categoryId) query.set("categoryId", categoryId);
+                if (countyId) query.set("countyId", countyId);
+                if (townId) query.set("townId", townId);
+                window.location.href = query.toString() ? `/search?${query}` : "/search";
             });
         }
 
@@ -561,3 +566,4 @@
         syncFromKm();
     })();
 </script>
+

@@ -32,7 +32,7 @@
             <input id="login-log-search" name="q" type="text" value="@currentSearch" maxlength="200" placeholder="Email or IP address" />
 
             <label for="login-log-succeeded">Succeeded</label>
-            <select id="login-log-succeeded" name="succeeded">
+            <select id="login-log-succeeded" name="succeeded" class="js-searchable" data-placeholder="Search">
                 @if (currentSucceeded == "all")
                 {
                     <option value="all" selected>All</option>
@@ -60,7 +60,7 @@
             </select>
 
             <label for="login-log-page-size">Page Size</label>
-            <select id="login-log-page-size" name="pageSize">
+            <select id="login-log-page-size" name="pageSize" class="js-searchable" data-placeholder="Search">
                 @if (currentPageSize == 25)
                 {
                     <option value="25" selected>25</option>
@@ -179,3 +179,4 @@
         </div>
     </section>
 </div>
+

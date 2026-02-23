@@ -36,7 +36,7 @@
 
             <div class="form-row">
                 <label for="CountyId">County</label>
-                <select id="CountyId" name="CountyId" required>
+                <select id="CountyId" name="CountyId" class="js-searchable" data-placeholder="Search" required>
                     <option value="">Select County</option>
                     @foreach (var county in Model.CountyOptions)
                     {
@@ -100,3 +100,4 @@
         </form>
     </section>
 </div>
+

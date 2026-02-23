@@ -21,7 +21,7 @@
         <h2 class="card-title">Select County</h2>
         <form method="get" action="/admin/data-lists/towns-gb/sort" class="places-filter-line">
             <label for="countyId">County</label>
-            <select id="countyId" name="countyId" required>
+            <select id="countyId" name="countyId" class="js-searchable" data-placeholder="Search" required>
                 <option value="">Select County</option>
                 @foreach (var county in Model.CountyOptions)
                 {
@@ -110,3 +110,4 @@
         });
     })();
 </script>
+

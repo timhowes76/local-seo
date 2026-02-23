@@ -85,7 +85,7 @@
 
             <div class="email-filter-item">
                 <label for="email-log-template">Template</label>
-                <select id="email-log-template" name="templateKey">
+                <select id="email-log-template" name="templateKey" class="js-searchable" data-placeholder="Search">
                     <option value="">All</option>
                     @foreach (var key in Model.TemplateKeys)
                     {
@@ -103,7 +103,7 @@
 
             <div class="email-filter-item">
                 <label for="email-log-status">Queue Status</label>
-                <select id="email-log-status" name="status">
+                <select id="email-log-status" name="status" class="js-searchable" data-placeholder="Search">
                     @if (string.IsNullOrWhiteSpace(query.Status))
                     {
                         <option value="" selected>All</option>
@@ -161,7 +161,7 @@
 
             <div class="email-filter-item">
                 <label for="email-log-page-size">Page Size</label>
-                <select id="email-log-page-size" name="pageSize">
+                <select id="email-log-page-size" name="pageSize" class="js-searchable" data-placeholder="Search">
                     @if (query.PageSize == 25)
                     {
                         <option value="25" selected>25</option>
@@ -296,3 +296,4 @@
         </div>
     </section>
 </div>
+

@@ -38,7 +38,7 @@
             </div>
             <div class="form-row">
                 <label for="edit-user-status">Status</label>
-                <select id="edit-user-status" name="InviteStatus">
+                <select id="edit-user-status" name="InviteStatus" class="js-searchable" data-placeholder="Search">
                     @if (Model.User.InviteStatus == UserLifecycleStatus.Pending)
                     {
                         <option value="@((byte)UserLifecycleStatus.Pending)" selected>Pending</option>
@@ -78,3 +78,4 @@
         </form>
     </section>
 </div>
+

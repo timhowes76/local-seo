@@ -25,7 +25,7 @@
             <input id="placeNameFilter" name="placeName" type="text" value="@placeNameQuery" placeholder="Search place name" />
 
             <label for="keywordFilter">Keyword</label>
-            <select id="keywordFilter" name="keyword">
+            <select id="keywordFilter" name="keyword" class="js-searchable" data-placeholder="Search">
                 <option value="">All Keywords</option>
                 @foreach (var keyword in Model.KeywordOptions)
                 {
@@ -41,7 +41,7 @@
             </select>
 
             <label for="locationFilter">Location</label>
-            <select id="locationFilter" name="location">
+            <select id="locationFilter" name="location" class="js-searchable" data-placeholder="Search">
                 <option value="">All Locations</option>
                 @foreach (var location in Model.LocationOptions)
                 {
@@ -121,3 +121,4 @@
         </div>
     </section>
 </div>
+

@@ -63,7 +63,7 @@
             <input id="search" name="q" type="text" value="@currentSearch" placeholder="Display Name or Category ID" />
 
             <label for="statusFilter">Status</label>
-            <select id="statusFilter" name="status">
+            <select id="statusFilter" name="status" class="js-searchable" data-placeholder="Search">
                 @if (currentStatus == "active")
                 {
                     <option value="active" selected>Active</option>
@@ -176,3 +176,4 @@
         </div>
     </section>
 </div>
+

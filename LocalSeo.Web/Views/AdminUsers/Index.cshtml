@@ -47,7 +47,7 @@
             <label for="users-search-filter">Search</label>
             <input id="users-search-filter" name="q" type="text" value="@searchTerm" maxlength="200" placeholder="Name or email address" />
             <label for="status-filter">Status</label>
-            <select id="status-filter" name="status">
+            <select id="status-filter" name="status" class="js-searchable" data-placeholder="Search">
                 @if (filter == "active")
                 {
                     <option value="active" selected>Active</option>
@@ -150,3 +150,4 @@
         }
     </section>
 </div>
+
