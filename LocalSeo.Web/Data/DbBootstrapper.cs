@@ -1174,6 +1174,7 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_GoogleBusinessProfileCat
   CREATE INDEX IX_GoogleBusinessProfileCategory_Region_Language_Status ON dbo.GoogleBusinessProfileCategory(RegionCode, LanguageCode, Status, CategoryId);
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_GoogleBusinessProfileCategory_Region_Language_Cycle' AND object_id=OBJECT_ID('dbo.GoogleBusinessProfileCategory'))
   CREATE INDEX IX_GoogleBusinessProfileCategory_Region_Language_Cycle ON dbo.GoogleBusinessProfileCategory(RegionCode, LanguageCode, LastSeenCycleId, CategoryId);
+
 IF OBJECT_ID('dbo.GoogleBusinessProfileCategorySyncRun','U') IS NULL
 BEGIN
   CREATE TABLE dbo.GoogleBusinessProfileCategorySyncRun(
@@ -1474,6 +1475,226 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='UX_CategoryLocationSearchVo
   CREATE UNIQUE INDEX UX_CategoryLocationSearchVolume_Keyword_Year_Month ON dbo.CategoryLocationSearchVolume(CategoryLocationKeywordId, [Year], [Month]);
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_CategoryLocationSearchVolume_Keyword' AND object_id=OBJECT_ID('dbo.CategoryLocationSearchVolume'))
   CREATE INDEX IX_CategoryLocationSearchVolume_Keyword ON dbo.CategoryLocationSearchVolume(CategoryLocationKeywordId, [Year] DESC, [Month] DESC);
+
+IF OBJECT_ID('tempdb..#CategoryIdNormalizationMap') IS NOT NULL
+  DROP TABLE #CategoryIdNormalizationMap;
+CREATE TABLE #CategoryIdNormalizationMap(
+  OldCategoryId nvarchar(255) NOT NULL PRIMARY KEY,
+  NewCategoryId nvarchar(255) NOT NULL
+);
+
+INSERT INTO #CategoryIdNormalizationMap(OldCategoryId, NewCategoryId)
+SELECT
+  c.CategoryId,
+  normalized.NewCategoryId
+FROM dbo.GoogleBusinessProfileCategory c
+CROSS APPLY (
+  SELECT LTRIM(RTRIM(c.CategoryId)) AS TrimmedCategoryId
+) src
+CROSS APPLY (
+  SELECT
+    CASE
+      WHEN src.TrimmedCategoryId LIKE 'categories/gcid:%'
+        THEN SUBSTRING(src.TrimmedCategoryId, LEN('categories/gcid:') + 1, 255)
+      WHEN src.TrimmedCategoryId LIKE 'categories/%'
+        THEN SUBSTRING(src.TrimmedCategoryId, LEN('categories/') + 1, 255)
+      WHEN src.TrimmedCategoryId LIKE 'gcid:%'
+        THEN SUBSTRING(src.TrimmedCategoryId, LEN('gcid:') + 1, 255)
+      ELSE src.TrimmedCategoryId
+    END AS CandidateCategoryId
+) raw
+CROSS APPLY (
+  SELECT
+    CASE
+      WHEN CHARINDEX('/', raw.CandidateCategoryId) > 0
+        THEN RIGHT(raw.CandidateCategoryId, CHARINDEX('/', REVERSE(raw.CandidateCategoryId)) - 1)
+      ELSE raw.CandidateCategoryId
+    END AS SlashNormalizedCategoryId
+) slash_norm
+CROSS APPLY (
+  SELECT
+    LTRIM(RTRIM(CASE
+      WHEN slash_norm.SlashNormalizedCategoryId LIKE 'gcid:%'
+        THEN SUBSTRING(slash_norm.SlashNormalizedCategoryId, LEN('gcid:') + 1, 255)
+      ELSE slash_norm.SlashNormalizedCategoryId
+    END)) AS NewCategoryId
+) normalized
+WHERE normalized.NewCategoryId <> N''
+  AND normalized.NewCategoryId <> c.CategoryId;
+
+IF EXISTS (SELECT 1 FROM #CategoryIdNormalizationMap)
+BEGIN
+  ;WITH source_rows AS (
+    SELECT
+      m.NewCategoryId,
+      c.DisplayName,
+      c.RegionCode,
+      c.LanguageCode,
+      c.Status,
+      c.FirstSeenUtc,
+      c.LastSeenUtc,
+      c.LastSyncedUtc,
+      c.LastSeenCycleId,
+      ROW_NUMBER() OVER (
+        PARTITION BY m.NewCategoryId
+        ORDER BY
+          CASE WHEN c.Status = N'Active' THEN 0 ELSE 1 END,
+          c.LastSeenUtc DESC,
+          c.CategoryId ASC
+      ) AS rn
+    FROM #CategoryIdNormalizationMap m
+    JOIN dbo.GoogleBusinessProfileCategory c ON c.CategoryId = m.OldCategoryId
+  )
+  INSERT INTO dbo.GoogleBusinessProfileCategory(
+    CategoryId,
+    DisplayName,
+    RegionCode,
+    LanguageCode,
+    Status,
+    FirstSeenUtc,
+    LastSeenUtc,
+    LastSyncedUtc,
+    LastSeenCycleId
+  )
+  SELECT
+    s.NewCategoryId,
+    s.DisplayName,
+    s.RegionCode,
+    s.LanguageCode,
+    s.Status,
+    s.FirstSeenUtc,
+    s.LastSeenUtc,
+    s.LastSyncedUtc,
+    s.LastSeenCycleId
+  FROM source_rows s
+  WHERE s.rn = 1
+    AND NOT EXISTS (
+      SELECT 1
+      FROM dbo.GoogleBusinessProfileCategory existing
+      WHERE existing.CategoryId = s.NewCategoryId
+    );
+
+  IF OBJECT_ID('dbo.SearchRun','U') IS NOT NULL
+     AND COL_LENGTH('dbo.SearchRun', 'CategoryId') IS NOT NULL
+  BEGIN
+    UPDATE sr
+    SET CategoryId = m.NewCategoryId
+    FROM dbo.SearchRun sr
+    JOIN #CategoryIdNormalizationMap m ON m.OldCategoryId = sr.CategoryId
+    WHERE sr.CategoryId <> m.NewCategoryId;
+  END;
+
+  IF OBJECT_ID('tempdb..#KeywordMerge') IS NOT NULL
+    DROP TABLE #KeywordMerge;
+  CREATE TABLE #KeywordMerge(
+    FromKeywordId int NOT NULL PRIMARY KEY,
+    ToKeywordId int NOT NULL
+  );
+
+  INSERT INTO #KeywordMerge(FromKeywordId, ToKeywordId)
+  SELECT old_k.Id, target_k.Id
+  FROM dbo.CategoryLocationKeyword old_k
+  JOIN #CategoryIdNormalizationMap m ON m.OldCategoryId = old_k.CategoryId
+  JOIN dbo.CategoryLocationKeyword target_k
+    ON target_k.CategoryId = m.NewCategoryId
+   AND target_k.LocationId = old_k.LocationId
+   AND target_k.Keyword = old_k.Keyword
+   AND target_k.Id <> old_k.Id;
+
+  INSERT INTO #KeywordMerge(FromKeywordId, ToKeywordId)
+  SELECT old_k.Id, target_main.Id
+  FROM dbo.CategoryLocationKeyword old_k
+  JOIN #CategoryIdNormalizationMap m ON m.OldCategoryId = old_k.CategoryId
+  JOIN dbo.CategoryLocationKeyword target_main
+    ON target_main.CategoryId = m.NewCategoryId
+   AND target_main.LocationId = old_k.LocationId
+   AND target_main.KeywordType = 1
+   AND target_main.Id <> old_k.Id
+  WHERE old_k.KeywordType = 1
+    AND NOT EXISTS (
+      SELECT 1
+      FROM #KeywordMerge km
+      WHERE km.FromKeywordId = old_k.Id
+    );
+
+  DELETE sv_source
+  FROM dbo.CategoryLocationSearchVolume sv_source
+  JOIN #KeywordMerge km ON km.FromKeywordId = sv_source.CategoryLocationKeywordId
+  JOIN dbo.CategoryLocationSearchVolume sv_target
+    ON sv_target.CategoryLocationKeywordId = km.ToKeywordId
+   AND sv_target.[Year] = sv_source.[Year]
+   AND sv_target.[Month] = sv_source.[Month];
+
+  UPDATE sv
+  SET CategoryLocationKeywordId = km.ToKeywordId
+  FROM dbo.CategoryLocationSearchVolume sv
+  JOIN #KeywordMerge km ON km.FromKeywordId = sv.CategoryLocationKeywordId;
+
+  UPDATE k
+  SET CanonicalKeywordId = km.ToKeywordId
+  FROM dbo.CategoryLocationKeyword k
+  JOIN #KeywordMerge km ON km.FromKeywordId = k.CanonicalKeywordId;
+
+  DELETE k
+  FROM dbo.CategoryLocationKeyword k
+  JOIN #KeywordMerge km ON km.FromKeywordId = k.Id;
+
+  DECLARE @MapOldCategoryId nvarchar(255);
+  DECLARE @MapNewCategoryId nvarchar(255);
+
+  DECLARE category_map_cursor CURSOR LOCAL FAST_FORWARD FOR
+    SELECT OldCategoryId, NewCategoryId
+    FROM #CategoryIdNormalizationMap
+    ORDER BY OldCategoryId;
+
+  OPEN category_map_cursor;
+  FETCH NEXT FROM category_map_cursor INTO @MapOldCategoryId, @MapNewCategoryId;
+  WHILE @@FETCH_STATUS = 0
+  BEGIN
+    UPDATE k
+    SET CategoryId = @MapNewCategoryId
+    FROM dbo.CategoryLocationKeyword k
+    WHERE k.CategoryId = @MapOldCategoryId
+      AND @MapOldCategoryId <> @MapNewCategoryId
+      AND NOT EXISTS (
+        SELECT 1
+        FROM dbo.CategoryLocationKeyword existing
+        WHERE existing.Id <> k.Id
+          AND existing.CategoryId = @MapNewCategoryId
+          AND existing.LocationId = k.LocationId
+          AND existing.Keyword = k.Keyword
+      )
+      AND NOT (
+        k.KeywordType = 1
+        AND EXISTS (
+          SELECT 1
+          FROM dbo.CategoryLocationKeyword existing_main
+          WHERE existing_main.Id <> k.Id
+            AND existing_main.CategoryId = @MapNewCategoryId
+            AND existing_main.LocationId = k.LocationId
+            AND existing_main.KeywordType = 1
+        )
+      );
+
+    FETCH NEXT FROM category_map_cursor INTO @MapOldCategoryId, @MapNewCategoryId;
+  END;
+  CLOSE category_map_cursor;
+  DEALLOCATE category_map_cursor;
+
+  DELETE c
+  FROM dbo.GoogleBusinessProfileCategory c
+  JOIN #CategoryIdNormalizationMap m ON m.OldCategoryId = c.CategoryId
+  WHERE NOT EXISTS (
+      SELECT 1
+      FROM dbo.SearchRun sr
+      WHERE sr.CategoryId = c.CategoryId
+    )
+    AND NOT EXISTS (
+      SELECT 1
+      FROM dbo.CategoryLocationKeyword k
+      WHERE k.CategoryId = c.CategoryId
+    );
+END;
 
 IF NOT EXISTS (SELECT 1 FROM dbo.GbCounty WHERE Name = N'Somerset')
   INSERT INTO dbo.GbCounty(Name, Slug, IsActive, SortOrder, CreatedUtc, UpdatedUtc)

@@ -396,11 +396,11 @@ WHERE CategoryId = @CategoryId;", new
         {
             foreach (var categoryNode in categoriesNode.EnumerateArray())
             {
-                var categoryId = ReadString(categoryNode, "name");
+                var categoryId = NormalizeCategoryId(ReadString(categoryNode, "name"));
                 if (string.IsNullOrWhiteSpace(categoryId))
                     continue;
 
-                var displayName = ReadString(categoryNode, "displayName");
+                var displayName = NormalizeDisplayName(ReadString(categoryNode, "displayName"));
                 if (string.IsNullOrWhiteSpace(displayName))
                     displayName = categoryId;
 
@@ -431,6 +431,9 @@ WHERE CategoryId = @CategoryId;", new
         CancellationToken ct)
     {
         await conn.ExecuteAsync(new CommandDefinition(@"
+IF OBJECT_ID('tempdb..#IncomingCategories') IS NOT NULL
+  DROP TABLE #IncomingCategories;
+
 CREATE TABLE #IncomingCategories(
   CategoryId nvarchar(255) NOT NULL PRIMARY KEY,
   DisplayName nvarchar(300) NOT NULL
@@ -708,7 +711,39 @@ WHEN NOT MATCHED THEN
     }
 
     private static string NormalizeCategoryId(string? value)
-        => (value ?? string.Empty).Trim();
+    {
+        var trimmed = (value ?? string.Empty).Trim();
+        if (trimmed.Length == 0)
+            return string.Empty;
+
+        const string categoriesGcidPrefix = "categories/gcid:";
+        if (trimmed.StartsWith(categoriesGcidPrefix, StringComparison.OrdinalIgnoreCase))
+            return trimmed[categoriesGcidPrefix.Length..].Trim();
+
+        const string categoriesPrefix = "categories/";
+        if (trimmed.StartsWith(categoriesPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            var remainder = trimmed[categoriesPrefix.Length..].Trim();
+            if (remainder.Length == 0)
+                return string.Empty;
+
+            var slashIndex = remainder.LastIndexOf('/');
+            if (slashIndex >= 0 && slashIndex < remainder.Length - 1)
+                remainder = remainder[(slashIndex + 1)..].Trim();
+
+            const string gcidPrefix = "gcid:";
+            if (remainder.StartsWith(gcidPrefix, StringComparison.OrdinalIgnoreCase))
+                remainder = remainder[gcidPrefix.Length..].Trim();
+
+            return remainder;
+        }
+
+        const string bareGcidPrefix = "gcid:";
+        if (trimmed.StartsWith(bareGcidPrefix, StringComparison.OrdinalIgnoreCase))
+            return trimmed[bareGcidPrefix.Length..].Trim();
+
+        return trimmed;
+    }
 
     private static string NormalizeDisplayName(string? value)
         => (value ?? string.Empty).Trim();
