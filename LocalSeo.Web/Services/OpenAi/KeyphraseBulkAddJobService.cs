@@ -112,9 +112,9 @@ public sealed class KeyphraseBulkAddJobService(
                     continue;
                 }
 
-                if (item.KeywordType is not (CategoryLocationKeywordTypes.Modifier or CategoryLocationKeywordTypes.Adjacent))
+                if (item.KeywordType is not (CategoryLocationKeywordTypes.MainTerm or CategoryLocationKeywordTypes.Modifier or CategoryLocationKeywordTypes.Adjacent))
                 {
-                    AddResult(state, keyword, item.KeywordType, "error", "Only Modifier or Adjacent keyphrase types are allowed.");
+                    AddResult(state, keyword, item.KeywordType, "error", "Only Main Term, Modifier, or Adjacent keyphrase types are allowed.");
                     continue;
                 }
 

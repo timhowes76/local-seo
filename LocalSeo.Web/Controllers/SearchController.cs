@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 using System.Security.Claims;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace LocalSeo.Web.Controllers;
 
@@ -336,6 +337,159 @@ public class SearchController(
         }
     }
 
+    [HttpPost("/search/keyphrases/other-locations/list")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ListOtherLocations([FromBody] OtherLocationKeyphrasesRequest? request, CancellationToken ct)
+    {
+        if (request is null)
+            return BadRequest(new { message = "Request body is required." });
+
+        var validationError = await ValidateSuggestionSelectionAsync(request.CategoryId, request.CountyId, request.TownId, ct);
+        if (!string.IsNullOrWhiteSpace(validationError))
+            return BadRequest(new { message = validationError });
+
+        var items = await categoryLocationKeywordService.GetRecentCategoryLocationsWithKeyphrasesAsync(
+            request.CategoryId,
+            request.TownId,
+            take: 20,
+            ct);
+
+        return Json(new
+        {
+            items = items.Select(x => new
+            {
+                locationId = x.LocationId,
+                locationName = x.LocationName,
+                countyName = x.CountyName,
+                keywordCount = x.KeywordCount,
+                lastUpdatedUtc = x.LastUpdatedUtc
+            })
+        });
+    }
+
+    [HttpPost("/search/keyphrases/other-locations/details")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> GetOtherLocationDetails([FromBody] OtherLocationKeyphraseDetailsRequest? request, CancellationToken ct)
+    {
+        if (request is null)
+            return BadRequest(new { message = "Request body is required." });
+
+        var validationError = await ValidateSuggestionSelectionAsync(request.CategoryId, request.CountyId, request.TownId, ct);
+        if (!string.IsNullOrWhiteSpace(validationError))
+            return BadRequest(new { message = validationError });
+        if (request.SourceTownId <= 0)
+            return BadRequest(new { message = "Source location is required." });
+        if (request.SourceTownId == request.TownId)
+            return BadRequest(new { message = "Choose a different source location." });
+
+        var sourceTown = await gbLocationDataListService.GetTownLookupByIdAsync(request.SourceTownId, ct);
+        if (sourceTown is null)
+            return BadRequest(new { message = "Source location was not found." });
+
+        CategoryKeyphrasesViewModel source;
+        try
+        {
+            source = await categoryLocationKeywordService.GetKeyphrasesAsync(request.SourceTownId, request.CategoryId, ct);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+
+        return Json(new
+        {
+            sourceTownId = request.SourceTownId,
+            sourceLocationName = source.LocationName,
+            sourceCountyName = source.CountyName,
+            keywordCount = source.Rows.Count,
+            rows = source.Rows.Select(x => new
+            {
+                keyword = x.Keyword,
+                keywordType = x.KeywordType,
+                synonymOfKeyword = x.SynonymOfKeyword,
+                avgSearchVolume = x.AvgSearchVolume,
+                noData = x.NoData,
+                last12Months = x.Last12Months.Select(m => new
+                {
+                    year = m.Year,
+                    month = m.Month,
+                    searchVolume = m.SearchVolume
+                })
+            })
+        });
+    }
+
+    [HttpPost("/search/keyphrases/other-locations/add-bulk/start")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> StartCopyFromOtherLocation([FromBody] CopyFromOtherLocationRequest? request, CancellationToken ct)
+    {
+        if (request is null)
+            return BadRequest(new { message = "Request body is required." });
+
+        var validationError = await ValidateSuggestionSelectionAsync(request.CategoryId, request.CountyId, request.TownId, ct);
+        if (!string.IsNullOrWhiteSpace(validationError))
+            return BadRequest(new { message = validationError });
+        if (request.SourceTownId <= 0)
+            return BadRequest(new { message = "Source location is required." });
+        if (request.SourceTownId == request.TownId)
+            return BadRequest(new { message = "Choose a different source location." });
+
+        var sourceTown = await gbLocationDataListService.GetTownLookupByIdAsync(request.SourceTownId, ct);
+        if (sourceTown is null)
+            return BadRequest(new { message = "Source location was not found." });
+        var targetTown = await gbLocationDataListService.GetTownLookupByIdAsync(request.TownId, ct);
+        if (targetTown is null)
+            return BadRequest(new { message = "Target location was not found." });
+
+        CategoryKeyphrasesViewModel sourceKeyphrases;
+        try
+        {
+            sourceKeyphrases = await categoryLocationKeywordService.GetKeyphrasesAsync(request.SourceTownId, request.CategoryId, ct);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+
+        var items = new List<AddBulkKeyphraseItem>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var row in sourceKeyphrases.Rows)
+        {
+            var keywordType = NormalizeCopiedKeywordType(row.KeywordType);
+            var copiedKeyword = SwapLocationName(row.Keyword, sourceKeyphrases.LocationName, targetTown.Name);
+            if (string.IsNullOrWhiteSpace(copiedKeyword))
+                continue;
+
+            var normalizedKeyword = KeyphraseSuggestionRules.Normalize(copiedKeyword);
+            if (string.IsNullOrWhiteSpace(normalizedKeyword) || !seen.Add(normalizedKeyword))
+                continue;
+
+            items.Add(new AddBulkKeyphraseItem
+            {
+                Keyword = copiedKeyword,
+                KeywordType = keywordType
+            });
+        }
+
+        if (items.Count == 0)
+            return BadRequest(new { message = "No keyphrases were available to copy from the selected location." });
+
+        var ownerKey = GetCurrentUserIdentityKey();
+        var jobId = keyphraseBulkAddJobService.Start(new AddBulkKeyphrasesRequest
+        {
+            CategoryId = request.CategoryId,
+            CountyId = request.CountyId,
+            TownId = request.TownId,
+            Items = items
+        }, ownerKey);
+
+        return Json(new AddBulkKeyphraseJobStartResponse
+        {
+            JobId = jobId,
+            TotalCount = items.Count
+        });
+    }
+
     [HttpPost("/search/keyphrases/add-bulk")]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> AddBulkKeyphrases([FromBody] AddBulkKeyphrasesRequest? request, CancellationToken ct)
@@ -661,6 +815,88 @@ public class SearchController(
         if (!string.IsNullOrWhiteSpace(User.Identity?.Name))
             return User.Identity.Name;
         return "unknown";
+    }
+
+    private static int NormalizeCopiedKeywordType(int sourceKeywordType)
+    {
+        return sourceKeywordType switch
+        {
+            CategoryLocationKeywordTypes.MainTerm => CategoryLocationKeywordTypes.MainTerm,
+            CategoryLocationKeywordTypes.Adjacent => CategoryLocationKeywordTypes.Adjacent,
+            _ => CategoryLocationKeywordTypes.Modifier
+        };
+    }
+
+    private static string SwapLocationName(string keyword, string sourceLocationName, string targetLocationName)
+    {
+        var input = CompactSpaces(keyword);
+        if (string.IsNullOrWhiteSpace(input))
+            return string.Empty;
+
+        var replaced = ReplaceLocationToken(input, sourceLocationName, targetLocationName);
+        replaced = CompactSpaces(replaced);
+        if (!ContainsLocationToken(replaced, targetLocationName))
+            replaced = CompactSpaces($"{replaced} {targetLocationName}");
+
+        if (replaced.Length > 255)
+            replaced = replaced[..255].Trim();
+        return replaced;
+    }
+
+    private static string ReplaceLocationToken(string value, string sourceLocationName, string targetLocationName)
+    {
+        var sourceWords = TokenizeWords(sourceLocationName);
+        if (sourceWords.Count == 0)
+            return value;
+
+        var pattern = $"(?<![A-Za-z0-9]){string.Join(@"[^A-Za-z0-9]+", sourceWords.Select(Regex.Escape))}(?![A-Za-z0-9])";
+        var replaced = Regex.Replace(
+            value,
+            pattern,
+            targetLocationName,
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+        if (!string.Equals(replaced, value, StringComparison.Ordinal))
+            return replaced;
+
+        return Regex.Replace(
+            value,
+            Regex.Escape(sourceLocationName),
+            targetLocationName,
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+    }
+
+    private static bool ContainsLocationToken(string keyword, string locationName)
+    {
+        var normalizedKeyword = NormalizeForKeywordComparison(keyword);
+        var normalizedLocation = NormalizeForKeywordComparison(locationName);
+        if (string.IsNullOrWhiteSpace(normalizedKeyword) || string.IsNullOrWhiteSpace(normalizedLocation))
+            return false;
+        return $" {normalizedKeyword} ".Contains($" {normalizedLocation} ", StringComparison.Ordinal);
+    }
+
+    private static List<string> TokenizeWords(string? value)
+    {
+        return NormalizeForKeywordComparison(value)
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .ToList();
+    }
+
+    private static string NormalizeForKeywordComparison(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return string.Empty;
+        var chars = value
+            .Select(ch => char.IsLetterOrDigit(ch) ? char.ToLowerInvariant(ch) : ' ')
+            .ToArray();
+        return CompactSpaces(new string(chars));
+    }
+
+    private static string CompactSpaces(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return string.Empty;
+        return string.Join(' ', value.Split(' ', StringSplitOptions.RemoveEmptyEntries));
     }
 
     private async Task<string?> ValidateSuggestionSelectionAsync(string? categoryId, int countyId, int townId, CancellationToken ct)

@@ -142,6 +142,10 @@
                     <i class="bi bi-stars" aria-hidden="true"></i>
                     Add with AI
                 </button>
+                <button type="button" id="search-add-tab-other-locations" class="details-tab-button" role="tab" aria-selected="false" aria-controls="search-add-other-locations-panel">
+                    <i class="bi bi-geo-alt" aria-hidden="true"></i>
+                    Add Based On Other Locations
+                </button>
                 <button type="button" id="search-add-tab-manual" class="details-tab-button" role="tab" aria-selected="false" aria-controls="search-add-manual-panel">
                     Add Manually
                 </button>
@@ -176,6 +180,33 @@
                         </div>
                         <p id="ai-suggestions-status" class="muted"></p>
                     </div>
+                </div>
+            </div>
+
+            <div id="search-add-other-locations-panel" class="search-add-panel is-hidden" role="tabpanel" aria-labelledby="search-add-tab-other-locations">
+                <p class="muted">Select a previously searched location for this category and copy its keyphrases into the current location.</p>
+                <div id="other-locations-error" class="form-help form-help-error is-hidden"></div>
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Select</th>
+                                <th>Location</th>
+                                <th>County</th>
+                                <th>Keywords</th>
+                                <th>Last Updated</th>
+                            </tr>
+                        </thead>
+                        <tbody id="other-locations-body">
+                            <tr>
+                                <td colspan="5" class="muted">No locations loaded yet.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <p id="other-locations-status" class="muted"></p>
+                <div class="toolbar">
+                    <button type="button" id="other-locations-add-btn" class="btn btn-secondary" disabled>Add Keyphrases To This Location</button>
                 </div>
             </div>
 
@@ -430,6 +461,31 @@
     </div>
 </div>
 
+<div id="other-location-keyphrases-overlay" class="loading-overlay is-hidden" role="dialog" aria-live="polite" aria-modal="true" aria-label="Other location keyphrases">
+    <div class="other-location-modal">
+        <div class="toolbar">
+            <h3 id="other-location-keyphrases-title" class="card-title">Source keyphrases</h3>
+            <button type="button" id="other-location-keyphrases-close" class="btn btn-secondary">Close</button>
+        </div>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Keyword</th>
+                        <th>Keyword Type</th>
+                        <th>Synonym Of</th>
+                        <th>Avg Search Volume</th>
+                        <th>Data</th>
+                        <th>Search Volume (Last 12 Months)</th>
+                    </tr>
+                </thead>
+                <tbody id="other-location-keyphrases-body"></tbody>
+            </table>
+        </div>
+        <p id="other-location-keyphrases-status" class="muted"></p>
+    </div>
+</div>
+
 <script>
     (() => {
         const kmSlider = document.getElementById("RadiusKm");
@@ -461,9 +517,20 @@
         const selectAllButton = document.getElementById("ai-select-all-btn");
         const clearButton = document.getElementById("ai-clear-btn");
         const addWithAiTabButton = document.getElementById("search-add-tab-ai");
+        const addOtherLocationsTabButton = document.getElementById("search-add-tab-other-locations");
         const addManuallyTabButton = document.getElementById("search-add-tab-manual");
         const addWithAiPanel = document.getElementById("search-add-ai-panel");
+        const addOtherLocationsPanel = document.getElementById("search-add-other-locations-panel");
         const addManuallyPanel = document.getElementById("search-add-manual-panel");
+        const otherLocationsBody = document.getElementById("other-locations-body");
+        const otherLocationsError = document.getElementById("other-locations-error");
+        const otherLocationsStatus = document.getElementById("other-locations-status");
+        const otherLocationsAddButton = document.getElementById("other-locations-add-btn");
+        const otherLocationDetailsOverlay = document.getElementById("other-location-keyphrases-overlay");
+        const otherLocationDetailsTitle = document.getElementById("other-location-keyphrases-title");
+        const otherLocationDetailsBody = document.getElementById("other-location-keyphrases-body");
+        const otherLocationDetailsStatus = document.getElementById("other-location-keyphrases-status");
+        const otherLocationDetailsCloseButton = document.getElementById("other-location-keyphrases-close");
         const bulkAddOverlay = document.getElementById("bulk-add-progress-overlay");
         const bulkAddSummary = document.getElementById("bulk-add-progress-summary");
         const bulkAddFill = document.getElementById("bulk-add-progress-fill");
@@ -474,6 +541,8 @@
         const rerunId = "@(Model.RerunSourceRunId?.ToString() ?? string.Empty)";
         let bulkAddPollTimer = null;
         let bulkAddActiveJobId = "";
+        let bulkAddSource = "";
+        let otherLocationListLoadedKey = "";
         if (!kmSlider || !metersInput || !kmDisplay) return;
 
         const syncFromKm = () => {
@@ -520,21 +589,46 @@
             suggestionsStatus.textContent = message || "";
         };
 
+        const setOtherLocationsError = (message) => {
+            if (!(otherLocationsError instanceof HTMLElement)) return;
+            if (!message) {
+                otherLocationsError.textContent = "";
+                otherLocationsError.classList.add("is-hidden");
+                return;
+            }
+            otherLocationsError.textContent = message;
+            otherLocationsError.classList.remove("is-hidden");
+        };
+
+        const setOtherLocationsStatus = (message) => {
+            if (!(otherLocationsStatus instanceof HTMLElement)) return;
+            otherLocationsStatus.textContent = message || "";
+        };
+
         const setAddKeyphraseMode = (mode) => {
             const isAi = mode === "ai";
+            const isOther = mode === "other";
+            const isManual = mode === "manual";
             if (addWithAiTabButton instanceof HTMLButtonElement) {
                 addWithAiTabButton.classList.toggle("is-active", isAi);
                 addWithAiTabButton.setAttribute("aria-selected", isAi ? "true" : "false");
             }
+            if (addOtherLocationsTabButton instanceof HTMLButtonElement) {
+                addOtherLocationsTabButton.classList.toggle("is-active", isOther);
+                addOtherLocationsTabButton.setAttribute("aria-selected", isOther ? "true" : "false");
+            }
             if (addManuallyTabButton instanceof HTMLButtonElement) {
-                addManuallyTabButton.classList.toggle("is-active", !isAi);
-                addManuallyTabButton.setAttribute("aria-selected", isAi ? "false" : "true");
+                addManuallyTabButton.classList.toggle("is-active", isManual);
+                addManuallyTabButton.setAttribute("aria-selected", isManual ? "true" : "false");
             }
             if (addWithAiPanel instanceof HTMLElement) {
                 addWithAiPanel.classList.toggle("is-hidden", !isAi);
             }
+            if (addOtherLocationsPanel instanceof HTMLElement) {
+                addOtherLocationsPanel.classList.toggle("is-hidden", !isOther);
+            }
             if (addManuallyPanel instanceof HTMLElement) {
-                addManuallyPanel.classList.toggle("is-hidden", isAi);
+                addManuallyPanel.classList.toggle("is-hidden", !isManual);
             }
         };
 
@@ -545,10 +639,14 @@
             }
         };
 
-        const resetAddSelectedButton = () => {
+        const resetBulkActionButtons = () => {
             if (addSelectedButton instanceof HTMLButtonElement) {
                 addSelectedButton.disabled = false;
                 addSelectedButton.textContent = "Add selected";
+            }
+            if (otherLocationsAddButton instanceof HTMLButtonElement) {
+                otherLocationsAddButton.disabled = false;
+                otherLocationsAddButton.textContent = "Add Keyphrases To This Location";
             }
         };
 
@@ -602,9 +700,18 @@
                 bulkAddCloseButton.classList.remove("is-hidden");
             }
 
-            setSuggestionsStatus(`Add selected completed. Added: ${snapshot.addedCount || 0}, Skipped: ${snapshot.skippedCount || 0}, Errors: ${snapshot.errorCount || 0}.`);
+            const summaryText = `Added: ${snapshot.addedCount || 0}, Skipped: ${snapshot.skippedCount || 0}, Errors: ${snapshot.errorCount || 0}.`;
+            if (bulkAddSource === "other") {
+                setOtherLocationsStatus(`Add from other location completed. ${summaryText}`);
+            } else {
+                setSuggestionsStatus(`Add selected completed. ${summaryText}`);
+            }
             if (isFailed) {
-                setSuggestionsError("Bulk add failed. Please try again.");
+                if (bulkAddSource === "other") {
+                    setOtherLocationsError("Bulk add failed. Please try again.");
+                } else {
+                    setSuggestionsError("Bulk add failed. Please try again.");
+                }
                 window.setTimeout(() => {
                     closeBulkAddModal();
                 }, 1200);
@@ -635,7 +742,7 @@
                     }
                     stopBulkAddPolling();
                     bulkAddActiveJobId = "";
-                    resetAddSelectedButton();
+                    resetBulkActionButtons();
                     return { isCompleted: true, isFailed: true };
                 }
                 if (!response.ok) {
@@ -647,7 +754,7 @@
                     }
                     stopBulkAddPolling();
                     bulkAddActiveJobId = "";
-                    resetAddSelectedButton();
+                    resetBulkActionButtons();
                     return { isCompleted: true, isFailed: true };
                 }
 
@@ -661,12 +768,38 @@
                     stopBulkAddPolling();
                     finishBulkAddModal(snapshot);
                     bulkAddActiveJobId = "";
-                    resetAddSelectedButton();
+                    resetBulkActionButtons();
                 }
                 return snapshot;
             } catch {
                 // Keep polling; temporary network issues can recover.
                 return null;
+            }
+        };
+
+        const startBulkAddProgress = async (jobId, totalCount) => {
+            bulkAddActiveJobId = String(jobId || "");
+            if (!bulkAddActiveJobId) {
+                throw new Error("Failed to start bulk add job.");
+            }
+
+            openBulkAddModal();
+            if (bulkAddSummary instanceof HTMLElement) {
+                bulkAddSummary.textContent = `0 / ${Number(totalCount || 0)} processed`;
+            }
+            if (bulkAddFill instanceof HTMLElement) {
+                bulkAddFill.style.width = "0%";
+            }
+            if (bulkAddText instanceof HTMLElement) {
+                bulkAddText.textContent = "0%";
+            }
+            if (bulkAddStatus instanceof HTMLElement) {
+                bulkAddStatus.textContent = "Queued...";
+            }
+
+            await pollBulkAddStatus();
+            if (!bulkAddPollTimer && bulkAddActiveJobId) {
+                bulkAddPollTimer = window.setInterval(pollBulkAddStatus, 1250);
             }
         };
 
@@ -743,6 +876,232 @@
             suggestionsCard.dataset.categoryId = payload.categoryId;
             suggestionsCard.dataset.countyId = String(payload.countyId);
             suggestionsCard.dataset.townId = String(payload.townId);
+        };
+
+        const formatNumber = (value) => {
+            const parsed = Number(value);
+            if (!Number.isFinite(parsed)) return "N/A";
+            return parsed.toLocaleString("en-GB");
+        };
+
+        const normalizeMonthlyPoints = (points) => {
+            if (!Array.isArray(points)) {
+                return [];
+            }
+
+            return [...points]
+                .map((point) => ({
+                    year: Number(point.year || 0),
+                    month: Number(point.month || 0),
+                    searchVolume: Number(point.searchVolume || 0)
+                }))
+                .filter((point) => point.year > 0 && point.month >= 1 && point.month <= 12)
+                .sort((a, b) => (a.year - b.year) || (a.month - b.month));
+        };
+
+        const renderMonthlySparkline = (container, points) => {
+            if (!(container instanceof HTMLElement)) {
+                return;
+            }
+
+            container.innerHTML = "";
+            if (!Array.isArray(points) || points.length === 0) {
+                const empty = document.createElement("span");
+                empty.className = "muted";
+                empty.textContent = "No monthly data";
+                container.appendChild(empty);
+                return;
+            }
+
+            const maxVolume = Math.max(...points.map((point) => point.searchVolume), 0);
+            const sparkline = document.createElement("div");
+            sparkline.className = "sparkline";
+            for (const point of points) {
+                const bar = document.createElement("span");
+                const heightPercent = maxVolume <= 0
+                    ? 0
+                    : Math.max(5, Math.round((point.searchVolume * 100) / maxVolume));
+                bar.className = "sparkline-bar";
+                bar.style.height = `${heightPercent}%`;
+                bar.title = `${point.year}-${String(point.month).padStart(2, "0")}: ${formatNumber(point.searchVolume)}`;
+                sparkline.appendChild(bar);
+            }
+            container.appendChild(sparkline);
+
+            const latestPoint = points[points.length - 1];
+            if (latestPoint) {
+                const asOf = document.createElement("div");
+                asOf.className = "muted";
+                const asOfDate = new Date(latestPoint.year, latestPoint.month - 1, 1);
+                asOf.textContent = `Data as of: ${asOfDate.toLocaleDateString("en-GB", { month: "short", year: "numeric" })}`;
+                container.appendChild(asOf);
+            }
+        };
+
+        const renderOtherLocations = (items) => {
+            if (!(otherLocationsBody instanceof HTMLElement)) return;
+
+            otherLocationsBody.innerHTML = "";
+            if (otherLocationsAddButton instanceof HTMLButtonElement) {
+                otherLocationsAddButton.disabled = true;
+            }
+
+            if (!Array.isArray(items) || items.length === 0) {
+                otherLocationsBody.innerHTML = `<tr><td colspan="5" class="muted">No other locations with keyphrases were found for this category.</td></tr>`;
+                return;
+            }
+
+            for (const item of items) {
+                const locationId = Number(item.locationId || 0);
+                const locationName = (item.locationName || "").trim();
+                const countyName = (item.countyName || "").trim();
+                const keywordCount = Number(item.keywordCount || 0);
+                const updatedRaw = item.lastUpdatedUtc ? new Date(item.lastUpdatedUtc) : null;
+                const updatedText = updatedRaw instanceof Date && !Number.isNaN(updatedRaw.valueOf())
+                    ? updatedRaw.toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })
+                    : "N/A";
+
+                const row = document.createElement("tr");
+                row.dataset.locationId = String(locationId);
+                row.dataset.locationName = locationName;
+                row.dataset.countyName = countyName;
+                row.innerHTML = `
+                    <td><input type="radio" name="other-location-choice" class="other-location-radio" value="${locationId}" /></td>
+                    <td>${locationName}</td>
+                    <td>${countyName}</td>
+                    <td><button type="button" class="btn btn-secondary other-location-details-btn">${formatNumber(keywordCount)} keyphrases</button></td>
+                    <td>${updatedText}</td>
+                `;
+                otherLocationsBody.appendChild(row);
+            }
+        };
+
+        const loadOtherLocations = async (forceReload = false) => {
+            const payload = getSelectionPayload();
+            if (!payload.categoryId || payload.countyId <= 0 || payload.townId <= 0) {
+                setOtherLocationsError("Select category, county, and town first.");
+                renderOtherLocations([]);
+                return;
+            }
+
+            const cacheKey = `${payload.categoryId}|${payload.countyId}|${payload.townId}`;
+            if (!forceReload && otherLocationListLoadedKey === cacheKey) {
+                return;
+            }
+
+            setOtherLocationsError("");
+            setOtherLocationsStatus("Loading source locations...");
+            try {
+                const response = await postJson("/search/keyphrases/other-locations/list", payload);
+                if (response.status === 401 || response.status === 403) {
+                    setOtherLocationsError("Your session expired. Please sign in again.");
+                    return;
+                }
+
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok) {
+                    setOtherLocationsError(data.message || "Unable to load locations right now.");
+                    renderOtherLocations([]);
+                    return;
+                }
+
+                renderOtherLocations(Array.isArray(data.items) ? data.items : []);
+                setOtherLocationsStatus("");
+                otherLocationListLoadedKey = cacheKey;
+            } catch {
+                setOtherLocationsError("Network error. Please try again.");
+            }
+        };
+
+        const closeOtherLocationDetailsModal = () => {
+            if (!(otherLocationDetailsOverlay instanceof HTMLElement)) return;
+            otherLocationDetailsOverlay.classList.add("is-hidden");
+            document.body.classList.remove("modal-open");
+        };
+
+        const openOtherLocationDetailsModal = async (sourceTownId, sourceLocationName, sourceCountyName) => {
+            if (!(otherLocationDetailsOverlay instanceof HTMLElement)
+                || !(otherLocationDetailsTitle instanceof HTMLElement)
+                || !(otherLocationDetailsBody instanceof HTMLElement)
+                || !(otherLocationDetailsStatus instanceof HTMLElement)) {
+                return;
+            }
+
+            const payload = getSelectionPayload();
+            if (!payload.categoryId || payload.countyId <= 0 || payload.townId <= 0) {
+                setOtherLocationsError("Select category, county, and town first.");
+                return;
+            }
+
+            otherLocationDetailsOverlay.classList.remove("is-hidden");
+            document.body.classList.add("modal-open");
+            otherLocationDetailsTitle.textContent = `Keyphrases from ${sourceLocationName}, ${sourceCountyName}`;
+            otherLocationDetailsBody.innerHTML = `<tr><td colspan="6" class="muted">Loading keyphrases...</td></tr>`;
+            otherLocationDetailsStatus.textContent = "";
+
+            try {
+                const response = await postJson("/search/keyphrases/other-locations/details", {
+                    categoryId: payload.categoryId,
+                    countyId: payload.countyId,
+                    townId: payload.townId,
+                    sourceTownId
+                });
+                if (response.status === 401 || response.status === 403) {
+                    otherLocationDetailsBody.innerHTML = `<tr><td colspan="6" class="muted">Your session expired. Please sign in again.</td></tr>`;
+                    return;
+                }
+
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok) {
+                    otherLocationDetailsBody.innerHTML = `<tr><td colspan="6" class="muted">${data.message || "Unable to load keyphrases."}</td></tr>`;
+                    return;
+                }
+
+                const rows = Array.isArray(data.rows) ? data.rows : [];
+                if (rows.length === 0) {
+                    otherLocationDetailsBody.innerHTML = `<tr><td colspan="6" class="muted">No keyphrases were found for this location.</td></tr>`;
+                    return;
+                }
+
+                otherLocationDetailsBody.innerHTML = "";
+                for (const row of rows) {
+                    const keywordTypeValue = Number(row.keywordType || 0);
+                    let keywordTypeText = "Unknown";
+                    if (keywordTypeValue === 1) keywordTypeText = "MainTerm";
+                    else if (keywordTypeValue === 2) keywordTypeText = "Synonym";
+                    else if (keywordTypeValue === 3) keywordTypeText = "Modifier";
+                    else if (keywordTypeValue === 4) keywordTypeText = "Adjacent";
+                    const monthlyPoints = normalizeMonthlyPoints(row.last12Months);
+                    const hasData = !row.noData && row.avgSearchVolume != null;
+
+                    const tableRow = document.createElement("tr");
+                    tableRow.innerHTML = `
+                        <td></td>
+                        <td>${keywordTypeText}</td>
+                        <td>${row.synonymOfKeyword || "-"}</td>
+                        <td>${row.avgSearchVolume == null ? "N/A" : formatNumber(row.avgSearchVolume)}</td>
+                        <td></td>
+                        <td></td>
+                    `;
+                    const keywordCell = tableRow.children[0];
+                    if (keywordCell instanceof HTMLElement) {
+                        keywordCell.textContent = row.keyword || "";
+                    }
+                    const dataCell = tableRow.children[4];
+                    if (dataCell instanceof HTMLElement) {
+                        dataCell.innerHTML = hasData
+                            ? `<span class="data-indicator data-indicator-yes" aria-label="Data available">&#10003;</span>`
+                            : `<span class="data-indicator data-indicator-no" aria-label="No data">&#10007;</span>`;
+                    }
+                    const monthlyCell = tableRow.children[5];
+                    renderMonthlySparkline(monthlyCell, monthlyPoints);
+                    otherLocationDetailsBody.appendChild(tableRow);
+                }
+
+                otherLocationDetailsStatus.textContent = `${formatNumber(rows.length)} keyphrases`;
+            } catch {
+                otherLocationDetailsBody.innerHTML = `<tr><td colspan="6" class="muted">Network error. Please try again.</td></tr>`;
+            }
         };
 
         const buildTownOption = (town, selectedTownId) => {
@@ -863,6 +1222,13 @@
             });
         }
 
+        if (addOtherLocationsTabButton instanceof HTMLButtonElement) {
+            addOtherLocationsTabButton.addEventListener("click", async () => {
+                setAddKeyphraseMode("other");
+                await loadOtherLocations();
+            });
+        }
+
         if (addManuallyTabButton instanceof HTMLButtonElement) {
             addManuallyTabButton.addEventListener("click", () => {
                 setAddKeyphraseMode("manual");
@@ -871,6 +1237,92 @@
 
         if (addWithAiPanel instanceof HTMLElement && addManuallyPanel instanceof HTMLElement) {
             setAddKeyphraseMode("ai");
+        }
+
+        if (otherLocationsBody instanceof HTMLElement) {
+            otherLocationsBody.addEventListener("change", (event) => {
+                const target = event.target;
+                if (!(target instanceof HTMLInputElement) || target.type !== "radio" || target.name !== "other-location-choice") {
+                    return;
+                }
+                if (otherLocationsAddButton instanceof HTMLButtonElement) {
+                    otherLocationsAddButton.disabled = false;
+                }
+                setOtherLocationsError("");
+                setOtherLocationsStatus("");
+            });
+
+            otherLocationsBody.addEventListener("click", async (event) => {
+                const target = event.target;
+                if (!(target instanceof HTMLElement)) {
+                    return;
+                }
+                const button = target.closest(".other-location-details-btn");
+                if (!(button instanceof HTMLButtonElement)) {
+                    return;
+                }
+                const row = button.closest("tr");
+                if (!(row instanceof HTMLTableRowElement)) {
+                    return;
+                }
+                const sourceTownId = Number(row.dataset.locationId || "0");
+                const sourceLocationName = row.dataset.locationName || "Location";
+                const sourceCountyName = row.dataset.countyName || "";
+                if (sourceTownId <= 0) {
+                    return;
+                }
+                await openOtherLocationDetailsModal(sourceTownId, sourceLocationName, sourceCountyName);
+            });
+        }
+
+        if (otherLocationsAddButton instanceof HTMLButtonElement) {
+            otherLocationsAddButton.addEventListener("click", async () => {
+                const selected = document.querySelector("input[name='other-location-choice']:checked");
+                if (!(selected instanceof HTMLInputElement)) {
+                    setOtherLocationsError("Select a source location first.");
+                    return;
+                }
+
+                const payload = getSelectionPayload();
+                const sourceTownId = Number(selected.value || "0");
+                if (!payload.categoryId || payload.countyId <= 0 || payload.townId <= 0 || sourceTownId <= 0) {
+                    setOtherLocationsError("Select category, county, town, and source location.");
+                    return;
+                }
+
+                setOtherLocationsError("");
+                setOtherLocationsStatus("");
+                otherLocationsAddButton.disabled = true;
+                otherLocationsAddButton.textContent = "Starting...";
+                bulkAddSource = "other";
+
+                try {
+                    const startResponse = await postJson("/search/keyphrases/other-locations/add-bulk/start", {
+                        categoryId: payload.categoryId,
+                        countyId: payload.countyId,
+                        townId: payload.townId,
+                        sourceTownId
+                    });
+                    if (startResponse.status === 401 || startResponse.status === 403) {
+                        setOtherLocationsError("Your session expired. Please sign in again.");
+                        resetBulkActionButtons();
+                        return;
+                    }
+
+                    const data = await startResponse.json().catch(() => ({}));
+                    if (!startResponse.ok) {
+                        setOtherLocationsError(data.message || "Unable to copy keyphrases right now.");
+                        resetBulkActionButtons();
+                        return;
+                    }
+
+                    otherLocationsAddButton.textContent = "Adding...";
+                    await startBulkAddProgress(data.jobId, data.totalCount);
+                } catch {
+                    setOtherLocationsError("Network error. Please try again.");
+                    resetBulkActionButtons();
+                }
+            });
         }
 
         if (suggestKeyphrasesButton instanceof HTMLButtonElement) {
@@ -951,6 +1403,20 @@
             });
         }
 
+        if (otherLocationDetailsCloseButton instanceof HTMLButtonElement) {
+            otherLocationDetailsCloseButton.addEventListener("click", () => {
+                closeOtherLocationDetailsModal();
+            });
+        }
+
+        if (otherLocationDetailsOverlay instanceof HTMLElement) {
+            otherLocationDetailsOverlay.addEventListener("click", (event) => {
+                if (event.target === otherLocationDetailsOverlay) {
+                    closeOtherLocationDetailsModal();
+                }
+            });
+        }
+
         if (addSelectedButton instanceof HTMLButtonElement) {
             addSelectedButton.addEventListener("click", async () => {
                 if (!(suggestionsCard instanceof HTMLElement)) return;
@@ -981,6 +1447,7 @@
                 addSelectedButton.disabled = true;
                 const originalText = addSelectedButton.textContent;
                 addSelectedButton.textContent = "Starting...";
+                bulkAddSource = "ai";
 
                 try {
                     const startResponse = await postJson("/search/keyphrases/add-bulk/start", {
@@ -1004,34 +1471,16 @@
                         return;
                     }
 
-                    bulkAddActiveJobId = String(data.jobId || "");
-                    if (!bulkAddActiveJobId) {
+                    const jobId = String(data.jobId || "");
+                    if (!jobId) {
                         setSuggestionsError("Failed to start bulk add job.");
                         addSelectedButton.disabled = false;
                         addSelectedButton.textContent = originalText;
                         return;
                     }
 
-                    openBulkAddModal();
-                    if (bulkAddSummary instanceof HTMLElement) {
-                        const totalCount = Number(data.totalCount || items.length);
-                        bulkAddSummary.textContent = `0 / ${totalCount} processed`;
-                    }
-                    if (bulkAddFill instanceof HTMLElement) {
-                        bulkAddFill.style.width = "0%";
-                    }
-                    if (bulkAddText instanceof HTMLElement) {
-                        bulkAddText.textContent = "0%";
-                    }
-                    if (bulkAddStatus instanceof HTMLElement) {
-                        bulkAddStatus.textContent = "Queued...";
-                    }
-
                     addSelectedButton.textContent = "Adding...";
-                    await pollBulkAddStatus();
-                    if (!bulkAddPollTimer && bulkAddActiveJobId) {
-                        bulkAddPollTimer = window.setInterval(pollBulkAddStatus, 1250);
-                    }
+                    await startBulkAddProgress(jobId, Number(data.totalCount || items.length));
                 } catch {
                     setSuggestionsError("Network error. Please try again.");
                     addSelectedButton.disabled = false;

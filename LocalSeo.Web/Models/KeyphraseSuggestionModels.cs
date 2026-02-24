@@ -70,3 +70,35 @@ public sealed class AddBulkKeyphraseJobStatusResponse
     public string Message { get; set; } = string.Empty;
     public List<AddBulkKeyphraseItemResult> Results { get; set; } = [];
 }
+
+public sealed class OtherLocationKeyphrasesRequest
+{
+    public string CategoryId { get; set; } = string.Empty;
+    public int CountyId { get; set; }
+    public int TownId { get; set; }
+}
+
+public sealed class OtherLocationKeyphraseDetailsRequest
+{
+    public string CategoryId { get; set; } = string.Empty;
+    public int CountyId { get; set; }
+    public int TownId { get; set; }
+    public int SourceTownId { get; set; }
+}
+
+public sealed class CopyFromOtherLocationRequest
+{
+    public string CategoryId { get; set; } = string.Empty;
+    public int CountyId { get; set; }
+    public int TownId { get; set; }
+    public int SourceTownId { get; set; }
+}
+
+public sealed class OtherLocationKeyphraseSourceSummary
+{
+    public long LocationId { get; set; }
+    public string LocationName { get; set; } = string.Empty;
+    public string CountyName { get; set; } = string.Empty;
+    public int KeywordCount { get; set; }
+    public DateTime? LastUpdatedUtc { get; set; }
+}

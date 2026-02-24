@@ -17,6 +17,7 @@ public interface ICategoryLocationKeywordService
 {
     Task<LocationCategoryListViewModel> GetLocationCategoriesAsync(long locationId, CancellationToken ct);
     Task<CategoryKeyphrasesViewModel> GetKeyphrasesAsync(long locationId, string categoryId, CancellationToken ct);
+    Task<IReadOnlyList<OtherLocationKeyphraseSourceSummary>> GetRecentCategoryLocationsWithKeyphrasesAsync(string categoryId, long excludeLocationId, int take, CancellationToken ct);
     Task<CategoryLocationKeywordRefreshSummary> AddKeywordAndRefreshAsync(long locationId, string categoryId, CategoryLocationKeywordCreateModel model, CancellationToken ct);
     Task<CategoryLocationKeywordRefreshSummary> RefreshKeywordAsync(long locationId, string categoryId, int keywordId, CancellationToken ct);
     Task<CategoryLocationKeywordRefreshSummary> RefreshEligibleKeywordsAsync(long locationId, string categoryId, CancellationToken ct);
@@ -84,6 +85,51 @@ ORDER BY c.DisplayName, c.CategoryId;", new { LocationId = locationId }, cancell
             CountyName = location.CountyName,
             Rows = rows
         };
+    }
+
+    public async Task<IReadOnlyList<OtherLocationKeyphraseSourceSummary>> GetRecentCategoryLocationsWithKeyphrasesAsync(
+        string categoryId,
+        long excludeLocationId,
+        int take,
+        CancellationToken ct)
+    {
+        var normalizedCategoryId = NormalizeCategoryId(categoryId);
+        if (string.IsNullOrWhiteSpace(normalizedCategoryId))
+            throw new InvalidOperationException("Category is required.");
+
+        var clampedTake = Math.Clamp(take, 1, 50);
+        await using var conn = (SqlConnection)await connectionFactory.OpenConnectionAsync(ct);
+        var rows = (await conn.QueryAsync<SourceLocationSummaryRow>(new CommandDefinition(@"
+SELECT TOP (@Take)
+  t.TownId AS LocationId,
+  t.Name AS LocationName,
+  county.Name AS CountyName,
+  COUNT(k.Id) AS KeywordCount,
+  MAX(COALESCE(k.UpdatedUtc, k.CreatedUtc)) AS LastUpdatedUtc
+FROM dbo.CategoryLocationKeyword k
+JOIN dbo.GbTown t ON t.TownId = k.LocationId
+JOIN dbo.GbCounty county ON county.CountyId = t.CountyId
+WHERE k.CategoryId = @CategoryId
+  AND (@ExcludeLocationId <= 0 OR k.LocationId <> @ExcludeLocationId)
+GROUP BY t.TownId, t.Name, county.Name
+ORDER BY
+  MAX(COALESCE(k.UpdatedUtc, k.CreatedUtc)) DESC,
+  COUNT(k.Id) DESC,
+  t.Name ASC;", new
+        {
+            Take = clampedTake,
+            CategoryId = normalizedCategoryId,
+            ExcludeLocationId = excludeLocationId
+        }, cancellationToken: ct))).ToList();
+
+        return rows.Select(x => new OtherLocationKeyphraseSourceSummary
+        {
+            LocationId = x.LocationId,
+            LocationName = x.LocationName,
+            CountyName = x.CountyName,
+            KeywordCount = x.KeywordCount,
+            LastUpdatedUtc = x.LastUpdatedUtc
+        }).ToList();
     }
 
     public async Task<CategoryKeyphrasesViewModel> GetKeyphrasesAsync(long locationId, string categoryId, CancellationToken ct)
@@ -1232,6 +1278,7 @@ WHERE t.TownId = @LocationId
         int? LastStatusCode,
         string? LastStatusMessage);
     private sealed record SearchVolumeMonthlyRow(int CategoryLocationKeywordId, int Year, int Month, int SearchVolume);
+    private sealed record SourceLocationSummaryRow(long LocationId, string LocationName, string CountyName, int KeywordCount, DateTime? LastUpdatedUtc);
     private sealed record KeyphraseTypeCheckRow(int Id, int KeywordType);
     private sealed record KeywordRefreshRow(int Id, string Keyword, int KeywordType, string? Fingerprint, bool NoData, DateTime? LastAttemptedUtc);
     private sealed record KeywordClassificationRow(int Id, int KeywordType, int? CanonicalKeywordId, string? Fingerprint, bool NoData);

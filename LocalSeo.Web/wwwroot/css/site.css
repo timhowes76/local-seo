@@ -2078,6 +2078,29 @@ tbody tr:hover {
     margin-bottom: var(--space-2);
 }
 
+.other-location-details-btn {
+    min-width: 140px;
+}
+
+.other-location-modal {
+    width: min(1240px, calc(100vw - 32px));
+    max-height: calc(100vh - 32px);
+    overflow: auto;
+    background: var(--bg-card);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-soft);
+    padding: 16px;
+}
+
+.other-location-modal .card-title {
+    margin: 0;
+}
+
+.other-location-modal .table-wrap {
+    margin-top: var(--space-2);
+}
+
 .help-panel {
     margin: var(--space-2) 0;
     padding: 12px 14px;
@@ -2301,6 +2324,11 @@ code {
 }
 
 .theme-dark .search-ai-suggestions {
+    border-color: #334155;
+    background: #0f172a;
+}
+
+.theme-dark .other-location-modal {
     border-color: #334155;
     background: #0f172a;
 }
