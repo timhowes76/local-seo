@@ -8,10 +8,13 @@ namespace LocalSeo.Web.Controllers;
 [ApiController]
 public class PlacesApiController(IReviewVelocityService reviewVelocityService) : ControllerBase
 {
+    private static readonly int[] AllowedTakeOptions = [25, 50, 100, 500, 1000];
+
     [HttpGet("/api/places")]
-    public async Task<IActionResult> GetPlaces([FromQuery] string? sort, [FromQuery] string? direction, [FromQuery] string? placeName, [FromQuery] string? keyword, [FromQuery] string? location, CancellationToken ct)
+    public async Task<IActionResult> GetPlaces([FromQuery] string? sort, [FromQuery] string? direction, [FromQuery] string? placeName, [FromQuery] string? keyword, [FromQuery] string? location, [FromQuery] int? take, CancellationToken ct)
     {
-        var rows = await reviewVelocityService.GetPlaceVelocityListAsync(sort, direction, placeName, keyword, location, ct);
+        var normalizedTake = NormalizeTake(take);
+        var rows = await reviewVelocityService.GetPlaceVelocityListAsync(sort, direction, placeName, keyword, location, normalizedTake, ct);
         return Ok(rows);
     }
 
@@ -23,5 +26,13 @@ public class PlacesApiController(IReviewVelocityService reviewVelocityService) :
             return NotFound();
 
         return Ok(details);
+    }
+
+    private static int NormalizeTake(int? value)
+    {
+        if (!value.HasValue)
+            return 100;
+
+        return AllowedTakeOptions.Contains(value.Value) ? value.Value : 100;
     }
 }

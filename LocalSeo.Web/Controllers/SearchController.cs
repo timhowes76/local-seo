@@ -764,8 +764,11 @@ public class SearchController(
     {
         var categories = await googleBusinessProfileCategoryService.GetActiveLookupAsync("GB", "en-GB", ct);
         model.CategoryOptions = categories;
-        if (string.IsNullOrWhiteSpace(model.CategoryId))
-            model.CategoryId = categories.FirstOrDefault()?.CategoryId ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(model.CategoryId)
+            || categories.All(x => !string.Equals(x.CategoryId, model.CategoryId, StringComparison.OrdinalIgnoreCase)))
+        {
+            model.CategoryId = string.Empty;
+        }
 
         var counties = await gbLocationDataListService.GetCountyLookupAsync(includeInactiveSelections, ct);
         model.CountyOptions = counties;

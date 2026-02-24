@@ -27,85 +27,93 @@
 
     <section class="card">
         <h2 class="card-title">Filters</h2>
-        <form method="get" action="/admin/logs/login-log" class="places-filter-line">
-            <label for="login-log-search">Search</label>
-            <input id="login-log-search" name="q" type="text" value="@currentSearch" maxlength="200" placeholder="Email or IP address" />
+        <form method="get" action="/admin/logs/login-log" class="inline-filter-line login-log-filter-line">
+            <div class="filter-field">
+                <label for="login-log-search">Search</label>
+                <input id="login-log-search" name="q" type="text" value="@currentSearch" maxlength="200" placeholder="Email or IP address" />
+            </div>
 
-            <label for="login-log-succeeded">Succeeded</label>
-            <select id="login-log-succeeded" name="succeeded" class="js-searchable" data-placeholder="Search">
-                @if (currentSucceeded == "all")
-                {
-                    <option value="all" selected>All</option>
-                }
-                else
-                {
-                    <option value="all">All</option>
-                }
-                @if (currentSucceeded == "succeeded")
-                {
-                    <option value="succeeded" selected>Succeeded</option>
-                }
-                else
-                {
-                    <option value="succeeded">Succeeded</option>
-                }
-                @if (currentSucceeded == "failed")
-                {
-                    <option value="failed" selected>Failed</option>
-                }
-                else
-                {
-                    <option value="failed">Failed</option>
-                }
-            </select>
+            <div class="filter-field">
+                <label for="login-log-succeeded">Succeeded</label>
+                <select id="login-log-succeeded" name="succeeded" class="js-searchable" data-placeholder="Search">
+                    @if (currentSucceeded == "all")
+                    {
+                        <option value="all" selected>All</option>
+                    }
+                    else
+                    {
+                        <option value="all">All</option>
+                    }
+                    @if (currentSucceeded == "succeeded")
+                    {
+                        <option value="succeeded" selected>Succeeded</option>
+                    }
+                    else
+                    {
+                        <option value="succeeded">Succeeded</option>
+                    }
+                    @if (currentSucceeded == "failed")
+                    {
+                        <option value="failed" selected>Failed</option>
+                    }
+                    else
+                    {
+                        <option value="failed">Failed</option>
+                    }
+                </select>
+            </div>
 
-            <label for="login-log-page-size">Page Size</label>
-            <select id="login-log-page-size" name="pageSize" class="js-searchable" data-placeholder="Search">
-                @if (currentPageSize == 25)
-                {
-                    <option value="25" selected>25</option>
-                }
-                else
-                {
-                    <option value="25">25</option>
-                }
-                @if (currentPageSize == 50)
-                {
-                    <option value="50" selected>50</option>
-                }
-                else
-                {
-                    <option value="50">50</option>
-                }
-                @if (currentPageSize == 100)
-                {
-                    <option value="100" selected>100</option>
-                }
-                else
-                {
-                    <option value="100">100</option>
-                }
-                @if (currentPageSize == 500)
-                {
-                    <option value="500" selected>500</option>
-                }
-                else
-                {
-                    <option value="500">500</option>
-                }
-                @if (currentPageSize == 1000)
-                {
-                    <option value="1000" selected>1000</option>
-                }
-                else
-                {
-                    <option value="1000">1000</option>
-                }
-            </select>
+            <div class="filter-field">
+                <label for="login-log-page-size">Page Size</label>
+                <select id="login-log-page-size" name="pageSize" class="js-searchable" data-placeholder="Search">
+                    @if (currentPageSize == 25)
+                    {
+                        <option value="25" selected>25</option>
+                    }
+                    else
+                    {
+                        <option value="25">25</option>
+                    }
+                    @if (currentPageSize == 50)
+                    {
+                        <option value="50" selected>50</option>
+                    }
+                    else
+                    {
+                        <option value="50">50</option>
+                    }
+                    @if (currentPageSize == 100)
+                    {
+                        <option value="100" selected>100</option>
+                    }
+                    else
+                    {
+                        <option value="100">100</option>
+                    }
+                    @if (currentPageSize == 500)
+                    {
+                        <option value="500" selected>500</option>
+                    }
+                    else
+                    {
+                        <option value="500">500</option>
+                    }
+                    @if (currentPageSize == 1000)
+                    {
+                        <option value="1000" selected>1000</option>
+                    }
+                    else
+                    {
+                        <option value="1000">1000</option>
+                    }
+                </select>
+            </div>
 
-            <input type="hidden" name="page" value="1" />
-            <button type="submit" class="btn btn-secondary">Apply</button>
-            <a href="/admin/logs/login-log" class="btn btn-secondary">Clear</a>
+            <div class="filter-actions">
+                <input type="hidden" name="page" value="1" />
+                <button type="submit" class="btn btn-secondary">Apply</button>
+                <a href="/admin/logs/login-log" class="btn btn-secondary">Clear</a>
+            </div>
         </form>
     </section>
 

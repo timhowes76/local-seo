@@ -1196,24 +1196,52 @@ button:disabled,
 }
 
 .places-filter-line {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    flex-wrap: nowrap;
+    display: grid;
+    grid-template-columns: minmax(220px, 1.4fr) minmax(180px, 1fr) minmax(180px, 1fr) minmax(120px, auto) auto;
+    align-items: end;
+    gap: 10px 12px;
     margin-bottom: var(--space-3);
-    overflow-x: auto;
 }
 
-.places-filter-line label {
-    white-space: nowrap;
+.places-filter-item {
+    display: grid;
+    gap: 6px;
+    min-width: 0;
 }
 
-.places-filter-line input[type="text"] {
-    min-width: 220px;
+.places-filter-item-name input[type="text"] {
+    min-width: 0;
 }
 
-.places-filter-line select {
-    min-width: 220px;
+.places-filter-item select,
+.places-filter-item input[type="text"] {
+    min-width: 0;
+}
+
+.places-filter-item-take select {
+    min-width: 110px;
+}
+
+.places-filter-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.places-list-logo {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    object-fit: contain;
+    border: 1px solid #dbe4f1;
+    background: #fff;
+}
+
+.places-name-meta {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
 }
 
 .email-log-filters {
@@ -1221,6 +1249,47 @@ button:disabled,
     grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
     gap: 12px;
     align-items: end;
+}
+
+.settings-header {
+    margin-bottom: var(--space-3);
+}
+
+.admin-nav-grid {
+    margin-top: var(--space-2);
+}
+
+.inline-filter-line {
+    display: grid;
+    align-items: end;
+    gap: 10px 12px;
+    margin-bottom: var(--space-3);
+}
+
+.users-filter-line {
+    grid-template-columns: minmax(260px, 1.4fr) minmax(180px, 220px) auto;
+}
+
+.login-log-filter-line {
+    grid-template-columns: minmax(240px, 1.5fr) minmax(170px, 220px) minmax(140px, 180px) auto;
+}
+
+.filter-field {
+    display: grid;
+    gap: 6px;
+    min-width: 0;
+}
+
+.filter-field input,
+.filter-field select {
+    min-width: 0;
+}
+
+.filter-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
 }
 
 .email-filter-item {
@@ -2316,6 +2385,23 @@ code {
     background: #111b2e;
 }
 
+.theme-dark .places-list-logo {
+    border-color: #334155;
+    background: #0f172a;
+}
+
+.theme-dark .run-indicator.is-yes {
+    color: #bbf7d0;
+    background: #064e3b;
+    border-color: #10b981;
+}
+
+.theme-dark .run-indicator.is-no {
+    color: #fecaca;
+    background: #7f1d1d;
+    border-color: #ef4444;
+}
+
 .theme-dark .help-panel {
     border-color: #334155;
     border-left-color: #7da0ff;
@@ -2668,6 +2754,14 @@ code {
     .financial-search-row {
         flex-direction: column;
         align-items: stretch;
+    }
+
+    .places-filter-line {
+        grid-template-columns: 1fr;
+    }
+
+    .inline-filter-line {
+        grid-template-columns: 1fr;
     }
 }
 

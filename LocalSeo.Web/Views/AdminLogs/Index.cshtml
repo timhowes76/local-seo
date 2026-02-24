@@ -10,20 +10,26 @@
     }
 
     <section class="card">
-        <div class="toolbar">
+        <div class="card-header settings-header">
+            <h2 class="card-title">Logs</h2>
             <a href="/admin" class="btn btn-secondary">Back to Admin</a>
         </div>
-    </section>
-
-    <section class="card">
-        <h2 class="card-title">Login Log</h2>
-        <p class="muted">Review successful and failed login attempts by email and IP address.</p>
-        <a href="/admin/logs/login-log" class="btn btn-secondary">Open Login Log</a>
-    </section>
-
-    <section class="card">
-        <h2 class="card-title">Email Log</h2>
-        <p class="muted">Review outbound emails, provider events, and delivery failures.</p>
-        <a href="/admin/logs/emails" class="btn btn-secondary">Open Email Log</a>
+        <div class="home-nav-grid admin-nav-grid">
+            <a href="/admin/logs/login-log" class="home-nav-card">
+                <i class="bi bi-shield-lock home-nav-icon"></i>
+                <span class="home-nav-title">Login Log</span>
+                <span class="home-nav-subtitle">Review successful and failed login attempts by email and IP.</span>
+            </a>
+            <a href="/admin/logs/emails" class="home-nav-card">
+                <i class="bi bi-envelope-open home-nav-icon"></i>
+                <span class="home-nav-title">Email Log</span>
+                <span class="home-nav-subtitle">Review outbound emails, provider events, and failures.</span>
+            </a>
+            <a href="/admin/dataforseo-tasks" class="home-nav-card">
+                <i class="bi bi-list-task home-nav-icon"></i>
+                <span class="home-nav-title">DataForSEO Tasks</span>
+                <span class="home-nav-subtitle">Monitor async task lifecycle and import status.</span>
+            </a>
+        </div>
     </section>
 </div>

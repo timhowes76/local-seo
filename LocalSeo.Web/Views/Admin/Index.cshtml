@@ -10,39 +10,33 @@
     }
 
     <section class="card">
-        <h2 class="card-title">Data Lists</h2>
-        <p class="muted">Manage admin-maintained data lists and category dictionaries.</p>
-        <a href="/admin/data-lists" class="btn btn-secondary">Open Data Lists</a>
+        <h2 class="card-title">Admin</h2>
+        <div class="home-nav-grid admin-nav-grid">
+            <a href="/admin/data-lists" class="home-nav-card">
+                <i class="bi bi-table home-nav-icon"></i>
+                <span class="home-nav-title">Data Lists</span>
+                <span class="home-nav-subtitle">Manage admin-maintained data lists and category dictionaries.</span>
+            </a>
+            <a href="/admin/settings" class="home-nav-card">
+                <i class="bi bi-sliders home-nav-icon"></i>
+                <span class="home-nav-title">Settings</span>
+                <span class="home-nav-subtitle">Configure site, collection windows, map pack CTR model, and defaults.</span>
+            </a>
+            <a href="/admin/users" class="home-nav-card">
+                <i class="bi bi-people home-nav-icon"></i>
+                <span class="home-nav-title">Users</span>
+                <span class="home-nav-subtitle">Review user accounts and account status.</span>
+            </a>
+            <a href="/admin/logs" class="home-nav-card">
+                <i class="bi bi-journal-text home-nav-icon"></i>
+                <span class="home-nav-title">Logs</span>
+                <span class="home-nav-subtitle">Review login logs, email logs, and DataForSEO task logs.</span>
+            </a>
+            <a href="/admin/email-templates" class="home-nav-card">
+                <i class="bi bi-envelope-paper home-nav-icon"></i>
+                <span class="home-nav-title">Email Templates</span>
+                <span class="home-nav-subtitle">Manage tokenized templates used for outbound emails.</span>
+            </a>
+        </div>
     </section>
-
-    <section class="card">
-        <h2 class="card-title">DataForSEO</h2>
-        <p class="muted">Monitor async task lifecycle and import status.</p>
-        <a href="/admin/dataforseo-tasks" class="btn btn-secondary">Open DataForSEO Tasks</a>
-    </section>
-
-    <section class="card">
-        <h2 class="card-title">Settings</h2>
-        <p class="muted">Configure site, collection windows, map pack CTR model, and Zoho lead defaults.</p>
-        <a href="/admin/settings" class="btn btn-secondary">Open Settings</a>
-    </section>
-
-    <section class="card">
-        <h2 class="card-title">Users</h2>
-        <p class="muted">Review user accounts and account status.</p>
-        <a href="/admin/users" class="btn btn-secondary">Open Users</a>
-    </section>
-
-    <section class="card">
-        <h2 class="card-title">Logs</h2>
-        <p class="muted">Inspect authentication activity and audit login attempts.</p>
-        <a href="/admin/logs" class="btn btn-secondary">Open Logs</a>
-    </section>
-
-    <section class="card">
-        <h2 class="card-title">Email Templates</h2>
-        <p class="muted">Manage tokenized templates used for outbound system emails.</p>
-        <a href="/admin/email-templates" class="btn btn-secondary">Open Email Templates</a>
-    </section>
-
 </div>

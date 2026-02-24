@@ -383,6 +383,9 @@ public sealed record PlaceVelocityListItemDto(
     string PlaceId,
     int? RankPosition,
     string? DisplayName,
+    string? LogoUrl,
+    bool HasFinancialInfo,
+    bool IsZohoConnected,
     string? PrimaryCategory,
     decimal? Rating,
     int? UserRatingCount,
@@ -407,6 +410,8 @@ public sealed class PlacesIndexViewModel
     public IReadOnlyList<PlaceVelocityListItemDto> Rows { get; init; } = [];
     public IReadOnlyList<string> KeywordOptions { get; init; } = [];
     public IReadOnlyList<string> LocationOptions { get; init; } = [];
+    public IReadOnlyList<int> TakeOptions { get; init; } = [25, 50, 100, 500, 1000];
+    public int SelectedTake { get; init; } = 100;
     public string? SelectedKeyword { get; init; }
     public string? SelectedLocation { get; init; }
     public string? PlaceNameQuery { get; init; }

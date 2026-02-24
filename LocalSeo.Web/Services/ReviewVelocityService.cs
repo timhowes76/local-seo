@@ -7,7 +7,7 @@ namespace LocalSeo.Web.Services;
 public interface IReviewVelocityService
 {
     Task RecomputePlaceStatsAsync(string placeId, CancellationToken ct);
-    Task<IReadOnlyList<PlaceVelocityListItemDto>> GetPlaceVelocityListAsync(string? sort, string? direction, string? placeName, string? keyword, string? location, CancellationToken ct);
+    Task<IReadOnlyList<PlaceVelocityListItemDto>> GetPlaceVelocityListAsync(string? sort, string? direction, string? placeName, string? keyword, string? location, int take, CancellationToken ct);
     Task<PlacesRunFilterOptions> GetRunFilterOptionsAsync(CancellationToken ct);
     Task<PlaceReviewVelocityDetailsDto?> GetPlaceReviewVelocityAsync(string placeId, CancellationToken ct);
     Task<PlaceUpdateVelocityDetailsDto?> GetPlaceUpdateVelocityAsync(string placeId, CancellationToken ct);
@@ -53,13 +53,14 @@ public sealed class ReviewVelocityService(
             cancellationToken: ct));
     }
 
-    public async Task<IReadOnlyList<PlaceVelocityListItemDto>> GetPlaceVelocityListAsync(string? sort, string? direction, string? placeName, string? keyword, string? location, CancellationToken ct)
+    public async Task<IReadOnlyList<PlaceVelocityListItemDto>> GetPlaceVelocityListAsync(string? sort, string? direction, string? placeName, string? keyword, string? location, int take, CancellationToken ct)
     {
         var sortKey = (sort ?? "rank").Trim();
         var dir = string.Equals(direction, "asc", StringComparison.OrdinalIgnoreCase) ? "ASC" : "DESC";
         var normalizedPlaceName = string.IsNullOrWhiteSpace(placeName) ? null : placeName.Trim();
         var normalizedKeyword = string.IsNullOrWhiteSpace(keyword) ? null : keyword.Trim();
         var normalizedLocation = string.IsNullOrWhiteSpace(location) ? null : location.Trim();
+        var normalizedTake = Math.Clamp(take, 1, 1000);
         var orderBy = sortKey.ToLowerInvariant() switch
         {
             "name" => $"p.DisplayName {dir}, COALESCE(latest.RankPosition, 999999) ASC",
@@ -73,10 +74,13 @@ public sealed class ReviewVelocityService(
         };
 
         var sql = $@"
-SELECT
+SELECT TOP (@Take)
   p.PlaceId,
   latest.RankPosition,
   p.DisplayName,
+  p.LogoUrl,
+  CAST(CASE WHEN pf.PlaceId IS NULL THEN 0 ELSE 1 END AS bit) AS HasFinancialInfo,
+  CAST(COALESCE(p.ZohoLeadCreated, 0) AS bit) AS IsZohoConnected,
   p.PrimaryCategory,
   latest.Rating,
   latest.UserRatingCount,
@@ -103,6 +107,7 @@ SELECT
   p.PhotoCount,
   p.QuestionAnswerCount
 FROM dbo.Place p
+LEFT JOIN dbo.PlacesFinancial pf ON pf.PlaceId = p.PlaceId
 OUTER APPLY (
   SELECT TOP 1 s.SearchRunId, s.RankPosition, s.Rating, s.UserRatingCount
   FROM dbo.PlaceSnapshot s
@@ -177,7 +182,8 @@ ORDER BY {orderBy};";
             {
                 PlaceName = normalizedPlaceName,
                 Keyword = normalizedKeyword,
-                Location = normalizedLocation
+                Location = normalizedLocation,
+                Take = normalizedTake
             },
             cancellationToken: ct));
         return rows.ToList();

@@ -10,26 +10,26 @@
     }
 
     <section class="card">
-        <div class="toolbar">
+        <div class="card-header settings-header">
+            <h2 class="card-title">Data Lists</h2>
             <a href="/admin" class="btn btn-secondary">Back to Admin</a>
         </div>
-    </section>
-
-    <section class="card">
-        <h2 class="card-title">Counties (GB)</h2>
-        <p class="muted">Manage UK counties used for local targeting lists.</p>
-        <a href="/admin/data-lists/counties-gb" class="btn btn-secondary">Open Counties</a>
-    </section>
-
-    <section class="card">
-        <h2 class="card-title">Towns (GB)</h2>
-        <p class="muted">Manage UK towns linked to counties, including optional coordinates.</p>
-        <a href="/admin/data-lists/towns-gb" class="btn btn-secondary">Open Towns</a>
-    </section>
-
-    <section class="card">
-        <h2 class="card-title">Google Business Profile Categories</h2>
-        <p class="muted">Manage canonical GBP category IDs and localized display names.</p>
-        <a href="/admin/data-lists/google-business-profile-categories" class="btn btn-secondary">Open Categories</a>
+        <div class="home-nav-grid admin-nav-grid">
+            <a href="/admin/data-lists/counties-gb" class="home-nav-card">
+                <i class="bi bi-map home-nav-icon"></i>
+                <span class="home-nav-title">Counties (GB)</span>
+                <span class="home-nav-subtitle">Manage UK counties used for local targeting lists.</span>
+            </a>
+            <a href="/admin/data-lists/towns-gb" class="home-nav-card">
+                <i class="bi bi-geo-alt home-nav-icon"></i>
+                <span class="home-nav-title">Towns (GB)</span>
+                <span class="home-nav-subtitle">Manage UK towns linked to counties, including coordinates.</span>
+            </a>
+            <a href="/admin/data-lists/google-business-profile-categories" class="home-nav-card">
+                <i class="bi bi-tags home-nav-icon"></i>
+                <span class="home-nav-title">GBP Categories</span>
+                <span class="home-nav-subtitle">Manage canonical GBP category IDs and display names.</span>
+            </a>
+        </div>
     </section>
 </div>

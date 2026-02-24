@@ -6,6 +6,7 @@
     var placeNameQuery = (Model.PlaceNameQuery ?? string.Empty).Trim();
     var selectedKeyword = (Model.SelectedKeyword ?? string.Empty).Trim();
     var selectedLocation = (Model.SelectedLocation ?? string.Empty).Trim();
+    var selectedTake = Model.SelectedTake;
 
     string StatusCss(string? value, string fallback)
     {
@@ -21,55 +22,81 @@
             <input type="hidden" name="sort" value="@currentSort" />
             <input type="hidden" name="direction" value="@currentDirection" />
 
-            <label for="placeNameFilter">Place Name</label>
-            <input id="placeNameFilter" name="placeName" type="text" value="@placeNameQuery" placeholder="Search place name" />
+            <div class="places-filter-item places-filter-item-name">
+                <label for="placeNameFilter">Place Name</label>
+                <input id="placeNameFilter" name="placeName" type="text" value="@placeNameQuery" placeholder="Search place name" />
+            </div>
 
-            <label for="keywordFilter">Keyword</label>
-            <select id="keywordFilter" name="keyword" class="js-searchable" data-placeholder="Search">
-                <option value="">All Keywords</option>
-                @foreach (var keyword in Model.KeywordOptions)
-                {
-                    if (string.Equals(selectedKeyword, keyword, StringComparison.OrdinalIgnoreCase))
+            <div class="places-filter-item">
+                <label for="keywordFilter">Keyword</label>
+                <select id="keywordFilter" name="keyword" class="js-searchable" data-placeholder="Search">
+                    <option value="">All Keywords</option>
+                    @foreach (var keyword in Model.KeywordOptions)
                     {
-                        <option value="@keyword" selected>@keyword</option>
+                        if (string.Equals(selectedKeyword, keyword, StringComparison.OrdinalIgnoreCase))
+                        {
+                            <option value="@keyword" selected>@keyword</option>
+                        }
+                        else
+                        {
+                            <option value="@keyword">@keyword</option>
+                        }
                     }
-                    else
-                    {
-                        <option value="@keyword">@keyword</option>
-                    }
-                }
-            </select>
+                </select>
+            </div>
 
-            <label for="locationFilter">Location</label>
-            <select id="locationFilter" name="location" class="js-searchable" data-placeholder="Search">
-                <option value="">All Locations</option>
-                @foreach (var location in Model.LocationOptions)
-                {
-                    if (string.Equals(selectedLocation, location, StringComparison.OrdinalIgnoreCase))
+            <div class="places-filter-item">
+                <label for="locationFilter">Location</label>
+                <select id="locationFilter" name="location" class="js-searchable" data-placeholder="Search">
+                    <option value="">All Locations</option>
+                    @foreach (var location in Model.LocationOptions)
                     {
-                        <option value="@location" selected>@location</option>
+                        if (string.Equals(selectedLocation, location, StringComparison.OrdinalIgnoreCase))
+                        {
+                            <option value="@location" selected>@location</option>
+                        }
+                        else
+                        {
+                            <option value="@location">@location</option>
+                        }
                     }
-                    else
-                    {
-                        <option value="@location">@location</option>
-                    }
-                }
-            </select>
+                </select>
+            </div>
 
-            <button type="submit" class="btn btn-secondary">Apply</button>
-            <a href="/places" class="btn btn-secondary">Clear</a>
+            <div class="places-filter-item places-filter-item-take">
+                <label for="takeFilter">Show</label>
+                <select id="takeFilter" name="take">
+                    @foreach (var option in Model.TakeOptions)
+                    {
+                        if (selectedTake == option)
+                        {
+                            <option value="@option" selected>@option</option>
+                        }
+                        else
+                        {
+                            <option value="@option">@option</option>
+                        }
+                    }
+                </select>
+            </div>
+
+            <div class="places-filter-actions">
+                <button type="submit" class="btn btn-secondary">Apply</button>
+                <a href="/places" class="btn btn-secondary">Clear</a>
+            </div>
         </form>
 
         <div class="table-wrap">
             <table>
                 <thead>
                     <tr>
-                        <th>Rank</th>
+                        <th>Logo</th>
                         <th>Name</th>
+                        <th class="run-indicator-cell" title="Financial Information"><i class="bi bi-bank2" aria-hidden="true"></i></th>
+                        <th class="run-indicator-cell" title="Zoho"><i class="bi bi-person-vcard-fill" aria-hidden="true"></i></th>
                         <th>Primary Category</th>
                         <th>Avg Rating</th>
                         <th>Total Reviews</th>
-                        <th>Reviews 90d</th>
                         <th>Days last review</th>
                         <th>Review Status</th>
                         <th>Number of Updates</th>
@@ -80,7 +107,6 @@
                         <th>Other Categories</th>
                         <th>Photos</th>
                         <th>Number of Q&amp;As</th>
-                        <th>Details</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -97,12 +123,58 @@
                             : "status-healthy";
 
                     <tr>
-                        <td>@(row.RankPosition?.ToString() ?? "N/A")</td>
-                        <td>@(row.DisplayName ?? row.PlaceId)</td>
+                        <td>
+                            @if (!string.IsNullOrWhiteSpace(row.LogoUrl))
+                            {
+                                <img class="places-list-logo" src="@row.LogoUrl" alt="@(row.DisplayName ?? "Business") logo" loading="lazy" onerror="this.style.display='none';" />
+                            }
+                            else
+                            {
+                                <span class="muted">-</span>
+                            }
+                        </td>
+                        <td>
+                            <a href="/places/@row.PlaceId">@(row.DisplayName ?? row.PlaceId)</a>
+                        </td>
+                        <td class="run-indicator-cell">
+                            <span class="run-indicator @(row.HasFinancialInfo ? "is-yes" : "is-no")" title="@(row.HasFinancialInfo ? "Financial information available" : "No financial information")">
+                                <i class="bi bi-bank2" aria-hidden="true"></i>
+                            </span>
+                        </td>
+                        <td class="run-indicator-cell">
+                            <span class="run-indicator @(row.IsZohoConnected ? "is-yes" : "is-no")" title="@(row.IsZohoConnected ? "Connected to Zoho" : "Not connected to Zoho")">
+                                <i class="bi bi-person-vcard-fill" aria-hidden="true"></i>
+                            </span>
+                        </td>
                         <td>@(string.IsNullOrWhiteSpace(row.PrimaryCategory) ? "N/A" : row.PrimaryCategory)</td>
-                        <td>@(row.Rating?.ToString("0.0") ?? "N/A")</td>
+                        <td>
+                            @if (row.Rating.HasValue)
+                            {
+                                var clampedRating = Math.Clamp(row.Rating.Value, 0m, 5m);
+                                var fullStars = (int)Math.Floor(clampedRating);
+                                var hasHalfStar = (clampedRating - fullStars) >= 0.5m;
+                                var emptyStars = 5 - fullStars - (hasHalfStar ? 1 : 0);
+                                <span class="rating-stars" title="@clampedRating.ToString("0.0")">
+                                    @for (var i = 0; i < fullStars; i++)
+                                    {
+                                        <i class="bi bi-star-fill" aria-hidden="true"></i>
+                                    }
+                                    @if (hasHalfStar)
+                                    {
+                                        <i class="bi bi-star-half" aria-hidden="true"></i>
+                                    }
+                                    @for (var i = 0; i < emptyStars; i++)
+                                    {
+                                        <i class="bi bi-star" aria-hidden="true"></i>
+                                    }
+                                </span>
+                            }
+                            else
+                            {
+                                <span class="muted">N/A</span>
+                            }
+                        </td>
                         <td>@(row.UserRatingCount?.ToString() ?? "N/A")</td>
-                        <td>@(row.ReviewsLast90?.ToString() ?? "0")</td>
                         <td>@(row.DaysSinceLastReview?.ToString() ?? "N/A")</td>
                         <td><span class="status-pill @StatusCss(row.StatusLabel, "noreviews")">@(row.StatusLabel ?? "NoReviews")</span></td>
                         <td>@(row.UpdateCount?.ToString() ?? "0")</td>
@@ -113,7 +185,6 @@
                         <td><span class="status-pill @(hasOtherCategories ? "status-healthy" : "status-nodata")">@(hasOtherCategories ? "Yes" : "No")</span></td>
                         <td>@(row.PhotoCount?.ToString() ?? "N/A")</td>
                         <td>@(row.QuestionAnswerCount?.ToString() ?? "0")</td>
-                        <td><a href="/places/@row.PlaceId">View</a></td>
                     </tr>
                 }
                 </tbody>

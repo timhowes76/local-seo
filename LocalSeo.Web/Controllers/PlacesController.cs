@@ -14,16 +14,20 @@ public class PlacesController(
     IZohoLeadSyncService zohoLeadSyncService,
     IReportsService reportsService) : Controller
 {
+    private static readonly int[] AllowedTakeOptions = [25, 50, 100, 500, 1000];
+
     [HttpGet("/places")]
-    public async Task<IActionResult> Index([FromQuery] string? sort, [FromQuery] string? direction, [FromQuery] string? placeName, [FromQuery] string? keyword, [FromQuery] string? location, CancellationToken ct)
+    public async Task<IActionResult> Index([FromQuery] string? sort, [FromQuery] string? direction, [FromQuery] string? placeName, [FromQuery] string? keyword, [FromQuery] string? location, [FromQuery] int? take, CancellationToken ct)
     {
-        var rows = await reviewVelocityService.GetPlaceVelocityListAsync(sort, direction, placeName, keyword, location, ct);
+        var normalizedTake = NormalizeTake(take);
+        var rows = await reviewVelocityService.GetPlaceVelocityListAsync(sort, direction, placeName, keyword, location, normalizedTake, ct);
         var filters = await reviewVelocityService.GetRunFilterOptionsAsync(ct);
         var model = new PlacesIndexViewModel
         {
             Rows = rows,
             KeywordOptions = filters.Keywords,
             LocationOptions = filters.Locations,
+            SelectedTake = normalizedTake,
             SelectedKeyword = keyword,
             SelectedLocation = location,
             PlaceNameQuery = placeName,
@@ -31,6 +35,14 @@ public class PlacesController(
             Direction = direction
         };
         return View(model);
+    }
+
+    private static int NormalizeTake(int? value)
+    {
+        if (!value.HasValue)
+            return 100;
+
+        return AllowedTakeOptions.Contains(value.Value) ? value.Value : 100;
     }
 
     [HttpGet("/places/{id}")]

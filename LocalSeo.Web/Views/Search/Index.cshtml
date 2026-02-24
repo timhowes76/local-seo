@@ -37,7 +37,7 @@
             <div class="form-row">
                 <label asp-for="CategoryId">Google Business Profile Category</label>
                 <select asp-for="CategoryId" class="js-searchable" data-placeholder="Search" required>
-                    <option value=""></option>
+                    <option value="">Please select</option>
                     @foreach (var category in Model.CategoryOptions)
                     {
                         if (string.Equals(category.CategoryId, Model.CategoryId, StringComparison.OrdinalIgnoreCase))
