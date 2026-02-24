@@ -528,6 +528,11 @@ public sealed class AdminSettingsModel
     public int GoogleQuestionsAndAnswersRefreshHours { get; set; } = 24;
     public int GoogleSocialProfilesRefreshHours { get; set; } = 24;
     public int SearchVolumeRefreshCooldownDays { get; set; } = 30;
+    public int MaxSuggestedKeyphrases { get; set; } = 20;
+    public string OpenAiApiKeyProtected { get; set; } = string.Empty;
+    public string OpenAiApiKey { get; set; } = string.Empty;
+    public string OpenAiModel { get; set; } = "gpt-4.1-mini";
+    public int OpenAiTimeoutSeconds { get; set; } = 20;
     public int MapPackClickSharePercent { get; set; } = 50;
     public int MapPackCtrPosition1Percent { get; set; } = 38;
     public int MapPackCtrPosition2Percent { get; set; } = 23;
@@ -575,6 +580,16 @@ public sealed class AdminSiteSettingsModel
 {
     public string SiteUrl { get; set; } = "https://briskly-viceless-kayleen.ngrok-free.dev/";
     public string SendGridEventWebhookUrl { get; set; } = "https://briskly-viceless-kayleen.ngrok-free.dev/api/webhooks/sendgrid/events";
+}
+
+public sealed class AdminSearchSettingsModel
+{
+    public int MaxSuggestedKeyphrases { get; set; } = 20;
+    public string OpenAiApiKey { get; set; } = string.Empty;
+    public string OpenAiApiKeyMasked { get; set; } = string.Empty;
+    public string OpenAiModel { get; set; } = "gpt-4.1-mini";
+    public int OpenAiTimeoutSeconds { get; set; } = 20;
+    public IReadOnlyList<string> OpenAiModelOptions { get; set; } = [];
 }
 
 public sealed class AdminEmailSignatureSettingsModel

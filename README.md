@@ -51,6 +51,10 @@ Set via `appsettings.json` and/or environment variables:
 - `DataForSeo__SortBy` (default `newest`)
 - `DataForSeo__MaxPollAttempts` (default `10`)
 - `DataForSeo__PollDelayMs` (default `1000`)
+- `OpenAi__ApiBaseUrl` (default `https://api.openai.com/v1/responses`)
+- `OpenAi__ApiKey` (optional fallback; prefer Admin > Settings > Search)
+- `OpenAi__DefaultModel` (default `gpt-4.1-mini`)
+- `OpenAi__TimeoutSeconds` (default `20`)
 - `ZohoOAuth__AccountsBaseUrl` (EU: `https://accounts.zoho.eu`, US: `https://accounts.zoho.com`)
 - `ZohoOAuth__CrmApiBaseUrl` (EU: `https://www.zohoapis.eu/crm/v2`, US: `https://www.zohoapis.com/crm/v2`)
 - `ZohoOAuth__ClientId`
@@ -83,6 +87,13 @@ Set via `appsettings.json` and/or environment variables:
 - Create a new client secret in Zoho and update only `ZohoOAuth__ClientSecret` in your secret store/environment.
 - Restart the app instances so new config is loaded.
 - Existing refresh tokens stay valid unless revoked; if revoked, rerun `/integrations/zoho/connect`.
+
+### OpenAI keyphrase suggestions setup
+- Development: store the fallback key with user-secrets instead of committing it:
+  ```bash
+  dotnet user-secrets set "OpenAi:ApiKey" "<your-api-key>" --project LocalSeo.Web
+  ```
+- Production: configure and rotate key via `Admin > Settings > Search` (`OpenAI API Key` field is encrypted at rest and masked in UI).
 
 ## Run
 1. Create SQL DB and set `ConnectionStrings__Sql`.

@@ -30,6 +30,7 @@ builder.Services.Configure<ChangePasswordOptions>(builder.Configuration.GetSecti
 builder.Services.Configure<EmailTemplatePathOptions>(builder.Configuration.GetSection("EmailTemplate"));
 builder.Services.Configure<BrandSettings>(builder.Configuration.GetSection("Brand"));
 builder.Services.Configure<ReportsOptions>(builder.Configuration.GetSection("Reports"));
+builder.Services.Configure<OpenAiOptions>(builder.Configuration.GetSection("OpenAi"));
 
 builder.Services.AddControllersWithViews();
 builder.Services.AddHttpClient();
@@ -149,6 +150,8 @@ builder.Services.AddScoped<IAdminSettingsService, AdminSettingsService>();
 builder.Services.AddScoped<ISecuritySettingsProvider, SecuritySettingsProvider>();
 builder.Services.AddScoped<IGbLocationDataListService, GbLocationDataListService>();
 builder.Services.AddScoped<ICategoryLocationKeywordService, CategoryLocationKeywordService>();
+builder.Services.AddScoped<IKeyphraseSuggestionService, KeyphraseSuggestionService>();
+builder.Services.AddSingleton<IKeyphraseBulkAddJobService, KeyphraseBulkAddJobService>();
 builder.Services.AddScoped<IGoogleBusinessProfileRefreshTokenStore, LocalSecureGoogleRefreshTokenStore>();
 builder.Services.AddScoped<IGoogleBusinessProfileOAuthService, GoogleBusinessProfileOAuthService>();
 builder.Services.AddScoped<IZohoTokenStore, SqlZohoTokenStore>();

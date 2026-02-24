@@ -1,0 +1,64 @@
+@model AdminSearchSettingsModel
+@{
+    ViewData["Title"] = "Search Settings";
+    var statusMessage = TempData["Status"] as string;
+}
+
+<div class="page-stack">
+    @if (!string.IsNullOrWhiteSpace(statusMessage))
+    {
+        <div class="notice">@statusMessage</div>
+    }
+
+    <section class="card">
+        <div class="card-header">
+            <h2 class="card-title">Search</h2>
+            <a class="btn btn-secondary" href="/admin/settings">Back to Settings</a>
+        </div>
+
+        <form method="post" action="/admin/settings/search" class="form-grid">
+            @Html.AntiForgeryToken()
+
+            <div class="form-row">
+                <label for="MaxSuggestedKeyphrases">Max Suggested Keyphrases</label>
+                <input id="MaxSuggestedKeyphrases" name="MaxSuggestedKeyphrases" type="number" min="5" max="100" step="1" value="@Model.MaxSuggestedKeyphrases" />
+                @Html.ValidationMessage(nameof(Model.MaxSuggestedKeyphrases))
+            </div>
+
+            <div class="form-row">
+                <label for="OpenAiApiKey">OpenAI API Key</label>
+                <input id="OpenAiApiKey" name="OpenAiApiKey" type="password" autocomplete="new-password" />
+                <p class="muted">Current value: @(string.IsNullOrWhiteSpace(Model.OpenAiApiKeyMasked) ? "(not configured)" : Model.OpenAiApiKeyMasked). Leave blank to keep existing.</p>
+                @Html.ValidationMessage(nameof(Model.OpenAiApiKey))
+            </div>
+
+            <div class="form-row">
+                <label for="OpenAiModel">OpenAI Model</label>
+                <select id="OpenAiModel" name="OpenAiModel" class="js-searchable" data-placeholder="Search">
+                    @foreach (var modelName in Model.OpenAiModelOptions)
+                    {
+                        if (string.Equals(modelName, Model.OpenAiModel, StringComparison.OrdinalIgnoreCase))
+                        {
+                            <option value="@modelName" selected>@modelName</option>
+                        }
+                        else
+                        {
+                            <option value="@modelName">@modelName</option>
+                        }
+                    }
+                </select>
+                @Html.ValidationMessage(nameof(Model.OpenAiModel))
+            </div>
+
+            <div class="form-row">
+                <label for="OpenAiTimeoutSeconds">OpenAI Timeout Seconds</label>
+                <input id="OpenAiTimeoutSeconds" name="OpenAiTimeoutSeconds" type="number" min="5" max="120" step="1" value="@Model.OpenAiTimeoutSeconds" />
+                @Html.ValidationMessage(nameof(Model.OpenAiTimeoutSeconds))
+            </div>
+
+            <div class="toolbar">
+                <button type="submit">Save Settings</button>
+            </div>
+        </form>
+    </section>
+</div>

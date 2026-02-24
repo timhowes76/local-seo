@@ -17,6 +17,13 @@ public class AdminController(
 {
     private const string UkRegionCode = "GB";
     private const string UkLanguageCode = "en-GB";
+    private static readonly string[] OpenAiModelOptions =
+    [
+        "gpt-4.1-mini",
+        "gpt-4.1",
+        "gpt-4o-mini",
+        "gpt-4o"
+    ];
 
     [HttpGet("/admin")]
     public IActionResult Index() => View();
@@ -54,6 +61,53 @@ public class AdminController(
         await adminSettingsService.SaveAsync(settings, ct);
         TempData["Status"] = "Site settings saved.";
         return RedirectToAction(nameof(SettingsSite));
+    }
+
+    [HttpGet("/admin/settings/search")]
+    public async Task<IActionResult> SettingsSearch(CancellationToken ct)
+    {
+        var settings = await adminSettingsService.GetAsync(ct);
+        return View(new AdminSearchSettingsModel
+        {
+            MaxSuggestedKeyphrases = settings.MaxSuggestedKeyphrases,
+            OpenAiApiKeyMasked = MaskApiKey(settings.OpenAiApiKey),
+            OpenAiModel = settings.OpenAiModel,
+            OpenAiTimeoutSeconds = settings.OpenAiTimeoutSeconds,
+            OpenAiModelOptions = OpenAiModelOptions
+        });
+    }
+
+    [HttpPost("/admin/settings/search")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> SaveSettingsSearch(AdminSearchSettingsModel model, CancellationToken ct)
+    {
+        if (model.MaxSuggestedKeyphrases < 5 || model.MaxSuggestedKeyphrases > 100)
+            ModelState.AddModelError(nameof(model.MaxSuggestedKeyphrases), "Value must be between 5 and 100.");
+        if (model.OpenAiTimeoutSeconds < 5 || model.OpenAiTimeoutSeconds > 120)
+            ModelState.AddModelError(nameof(model.OpenAiTimeoutSeconds), "Value must be between 5 and 120 seconds.");
+        if (string.IsNullOrWhiteSpace(model.OpenAiModel))
+            ModelState.AddModelError(nameof(model.OpenAiModel), "Model is required.");
+        else if (!OpenAiModelOptions.Contains(model.OpenAiModel.Trim(), StringComparer.OrdinalIgnoreCase))
+            ModelState.AddModelError(nameof(model.OpenAiModel), "Selected model is not supported.");
+
+        var settings = await adminSettingsService.GetAsync(ct);
+        if (!ModelState.IsValid)
+        {
+            model.OpenAiApiKey = string.Empty;
+            model.OpenAiApiKeyMasked = MaskApiKey(settings.OpenAiApiKey);
+            model.OpenAiModelOptions = OpenAiModelOptions;
+            return View("SettingsSearch", model);
+        }
+
+        settings.MaxSuggestedKeyphrases = model.MaxSuggestedKeyphrases;
+        settings.OpenAiModel = model.OpenAiModel.Trim();
+        settings.OpenAiTimeoutSeconds = model.OpenAiTimeoutSeconds;
+        if (!string.IsNullOrWhiteSpace(model.OpenAiApiKey))
+            settings.OpenAiApiKey = model.OpenAiApiKey.Trim();
+
+        await adminSettingsService.SaveAsync(settings, ct);
+        TempData["Status"] = "Search settings saved.";
+        return RedirectToAction(nameof(SettingsSearch));
     }
 
     [HttpGet("/admin/settings/email-signature")]
@@ -1079,6 +1133,17 @@ public class AdminController(
 
         var root = baseUri.GetLeftPart(UriPartial.Authority).TrimEnd('/');
         return $"{root}/api/webhooks/sendgrid/events";
+    }
+
+    private static string MaskApiKey(string? apiKey)
+    {
+        var normalized = (apiKey ?? string.Empty).Trim();
+        if (normalized.Length == 0)
+            return string.Empty;
+
+        var suffixLength = Math.Min(5, normalized.Length);
+        var suffix = normalized[^suffixLength..];
+        return $"********{suffix}";
     }
 
     private static string? NormalizeTaskTypeFilter(string? taskType)

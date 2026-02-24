@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
+using System.Security.Claims;
 using System.Text.Json;
 
 namespace LocalSeo.Web.Controllers;
@@ -16,6 +17,9 @@ public class SearchController(
     IGoogleBusinessProfileCategoryService googleBusinessProfileCategoryService,
     IGbLocationDataListService gbLocationDataListService,
     ICategoryLocationKeywordService categoryLocationKeywordService,
+    IAdminSettingsService adminSettingsService,
+    IKeyphraseSuggestionService keyphraseSuggestionService,
+    IKeyphraseBulkAddJobService keyphraseBulkAddJobService,
     IOptions<PlacesOptions> placesOptions) : Controller
 {
     [HttpGet("/search")]
@@ -276,6 +280,224 @@ public class SearchController(
         });
     }
 
+    [HttpPost("/search/keyphrases/suggest")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> SuggestKeyphrases([FromBody] SuggestKeyphrasesRequest? request, CancellationToken ct)
+    {
+        if (request is null)
+            return BadRequest(new { message = "Request body is required." });
+
+        var validationError = await ValidateSuggestionSelectionAsync(request.CategoryId, request.CountyId, request.TownId, ct);
+        if (!string.IsNullOrWhiteSpace(validationError))
+            return BadRequest(new { message = validationError });
+
+        try
+        {
+            var settings = await adminSettingsService.GetAsync(ct);
+            var maxSuggestions = Math.Clamp(settings.MaxSuggestedKeyphrases, 5, 100);
+            var response = await keyphraseSuggestionService.SuggestAsync(
+                request.CategoryId,
+                request.CountyId,
+                request.TownId,
+                maxSuggestions,
+                ct);
+
+            return Json(new
+            {
+                mainKeyword = response.MainKeyword,
+                requiredLocationName = response.RequiredLocationName,
+                suggestions = response.Suggestions.Select(x => new
+                {
+                    keyword = x.Keyword,
+                    keywordType = x.KeywordType,
+                    confidence = x.Confidence
+                })
+            });
+        }
+        catch (KeyphraseSuggestionException ex) when (ex.ErrorCode == KeyphraseSuggestionErrorCodes.OpenAiNotConfigured)
+        {
+            return BadRequest(new { message = ex.Message, code = ex.ErrorCode });
+        }
+        catch (KeyphraseSuggestionException ex)
+        {
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, new { message = ex.Message, code = ex.ErrorCode });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            return StatusCode(StatusCodes.Status504GatewayTimeout, new { message = "AI suggestions timed out. Please try again." });
+        }
+        catch
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, new { message = "Unable to generate suggestions right now. Please try again." });
+        }
+    }
+
+    [HttpPost("/search/keyphrases/add-bulk")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> AddBulkKeyphrases([FromBody] AddBulkKeyphrasesRequest? request, CancellationToken ct)
+    {
+        if (request is null)
+            return BadRequest(new { message = "Request body is required." });
+
+        var validationError = await ValidateSuggestionSelectionAsync(request.CategoryId, request.CountyId, request.TownId, ct);
+        if (!string.IsNullOrWhiteSpace(validationError))
+            return BadRequest(new { message = validationError });
+
+        if (request.Items is null || request.Items.Count == 0)
+            return BadRequest(new { message = "At least one keyphrase is required." });
+
+        var response = new AddBulkKeyphrasesResponse();
+        var existing = await categoryLocationKeywordService.GetKeyphrasesAsync(request.TownId, request.CategoryId, ct);
+        var seen = existing.Rows
+            .Select(x => KeyphraseSuggestionRules.Normalize(x.Keyword))
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .ToHashSet(StringComparer.Ordinal);
+
+        foreach (var item in request.Items)
+        {
+            var keyword = (item.Keyword ?? string.Empty).Trim();
+            if (keyword.Length == 0)
+            {
+                response.ErrorCount++;
+                response.Results.Add(new AddBulkKeyphraseItemResult
+                {
+                    Keyword = keyword,
+                    KeywordType = item.KeywordType,
+                    Status = "error",
+                    Message = "Keyword is required."
+                });
+                continue;
+            }
+
+            if (keyword.Length > 255)
+                keyword = keyword[..255].Trim();
+            if (keyword.Length == 0)
+            {
+                response.ErrorCount++;
+                response.Results.Add(new AddBulkKeyphraseItemResult
+                {
+                    Keyword = keyword,
+                    KeywordType = item.KeywordType,
+                    Status = "error",
+                    Message = "Keyword is invalid."
+                });
+                continue;
+            }
+
+            if (item.KeywordType is not (CategoryLocationKeywordTypes.Modifier or CategoryLocationKeywordTypes.Adjacent))
+            {
+                response.ErrorCount++;
+                response.Results.Add(new AddBulkKeyphraseItemResult
+                {
+                    Keyword = keyword,
+                    KeywordType = item.KeywordType,
+                    Status = "error",
+                    Message = "Only Modifier or Adjacent keyphrase types are allowed."
+                });
+                continue;
+            }
+
+            var normalizedKeyword = KeyphraseSuggestionRules.Normalize(keyword);
+            if (seen.Contains(normalizedKeyword))
+            {
+                response.SkippedCount++;
+                response.Results.Add(new AddBulkKeyphraseItemResult
+                {
+                    Keyword = keyword,
+                    KeywordType = item.KeywordType,
+                    Status = "skipped",
+                    Message = "Duplicate keyphrase skipped."
+                });
+                continue;
+            }
+
+            try
+            {
+                var summary = await categoryLocationKeywordService.AddKeywordAndRefreshAsync(
+                    request.TownId,
+                    request.CategoryId,
+                    new CategoryLocationKeywordCreateModel
+                    {
+                        Keyword = keyword,
+                        KeywordType = item.KeywordType
+                    },
+                    ct);
+
+                seen.Add(normalizedKeyword);
+                response.AddedCount++;
+                response.Results.Add(new AddBulkKeyphraseItemResult
+                {
+                    Keyword = keyword,
+                    KeywordType = item.KeywordType,
+                    Status = "added",
+                    Message = $"Added. Refreshed: {summary.RefreshedCount}, Errors: {summary.ErrorCount}."
+                });
+            }
+            catch (InvalidOperationException ex) when (ex.Message.Contains("already exists", StringComparison.OrdinalIgnoreCase))
+            {
+                seen.Add(normalizedKeyword);
+                response.SkippedCount++;
+                response.Results.Add(new AddBulkKeyphraseItemResult
+                {
+                    Keyword = keyword,
+                    KeywordType = item.KeywordType,
+                    Status = "skipped",
+                    Message = "Duplicate keyphrase skipped."
+                });
+            }
+            catch (Exception)
+            {
+                response.ErrorCount++;
+                response.Results.Add(new AddBulkKeyphraseItemResult
+                {
+                    Keyword = keyword,
+                    KeywordType = item.KeywordType,
+                    Status = "error",
+                    Message = "Failed to add keyphrase."
+                });
+            }
+        }
+
+        return Json(response);
+    }
+
+    [HttpPost("/search/keyphrases/add-bulk/start")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> StartBulkAddKeyphrases([FromBody] AddBulkKeyphrasesRequest? request, CancellationToken ct)
+    {
+        if (request is null)
+            return BadRequest(new { message = "Request body is required." });
+
+        var validationError = await ValidateSuggestionSelectionAsync(request.CategoryId, request.CountyId, request.TownId, ct);
+        if (!string.IsNullOrWhiteSpace(validationError))
+            return BadRequest(new { message = validationError });
+
+        if (request.Items is null || request.Items.Count == 0)
+            return BadRequest(new { message = "At least one keyphrase is required." });
+
+        var ownerKey = GetCurrentUserIdentityKey();
+        var jobId = keyphraseBulkAddJobService.Start(request, ownerKey);
+        return Json(new AddBulkKeyphraseJobStartResponse
+        {
+            JobId = jobId,
+            TotalCount = request.Items.Count
+        });
+    }
+
+    [HttpGet("/search/keyphrases/add-bulk/status/{jobId}")]
+    public IActionResult GetBulkAddKeyphrasesStatus(string jobId)
+    {
+        var ownerKey = GetCurrentUserIdentityKey();
+        if (!keyphraseBulkAddJobService.TryGetStatus(jobId, ownerKey, out var status))
+            return NotFound(new { message = "Bulk add job was not found." });
+
+        return Json(status);
+    }
+
     [HttpPost("/search/keyphrases/refresh-eligible")]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> RefreshEligibleKeyphrases(
@@ -429,5 +651,36 @@ public class SearchController(
             return false;
         return status.Equals("Completed", StringComparison.OrdinalIgnoreCase)
                || status.Equals("Failed", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private string GetCurrentUserIdentityKey()
+    {
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (!string.IsNullOrWhiteSpace(userId))
+            return userId;
+        if (!string.IsNullOrWhiteSpace(User.Identity?.Name))
+            return User.Identity.Name;
+        return "unknown";
+    }
+
+    private async Task<string?> ValidateSuggestionSelectionAsync(string? categoryId, int countyId, int townId, CancellationToken ct)
+    {
+        var normalizedCategoryId = (categoryId ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(normalizedCategoryId))
+            return "Category is required.";
+        if (countyId <= 0)
+            return "County is required.";
+        if (townId <= 0)
+            return "Town is required.";
+
+        var categories = await googleBusinessProfileCategoryService.GetActiveLookupAsync("GB", "en-GB", ct);
+        if (!categories.Any(x => string.Equals(x.CategoryId, normalizedCategoryId, StringComparison.OrdinalIgnoreCase)))
+            return "Category was not found.";
+
+        var towns = await gbLocationDataListService.GetTownLookupByCountyAsync(countyId, includeInactive: true, ct);
+        if (!towns.Any(x => x.TownId == townId))
+            return "Town does not belong to the selected county.";
+
+        return null;
     }
 }

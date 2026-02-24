@@ -121,8 +121,7 @@
                 <label asp-for="FetchGoogleSocialProfiles">Get Social Profiles</label>
             </div>
             <div>
-                <button type="submit" id="run-search-btn">Run Search</button>
-                <button type="button" id="view-keyphrases-btn" class="btn btn-secondary">View Keyphrases for Selection</button>
+                <button type="button" id="view-keyphrases-btn" class="btn btn-secondary">Refresh with Current Selection</button>
             </div>
         </form>
     </section>
@@ -137,78 +136,109 @@
     else if (keyphrases is not null)
     {
         <section class="card">
-            <div class="toolbar">
-                <h2 class="card-title">Keyphrases for @keyphrases.LocationName, @keyphrases.CountyName</h2>
-                <form method="post" action="/search/keyphrases/refresh-eligible">
+            <h2 class="card-title">Add New Keyphrases To Calculate Search Volume</h2>
+            <div class="details-tab-buttons search-add-tabs" role="tablist" aria-label="Add keyphrase mode">
+                <button type="button" id="search-add-tab-ai" class="details-tab-button is-active" role="tab" aria-selected="true" aria-controls="search-add-ai-panel">
+                    <i class="bi bi-stars" aria-hidden="true"></i>
+                    Add with AI
+                </button>
+                <button type="button" id="search-add-tab-manual" class="details-tab-button" role="tab" aria-selected="false" aria-controls="search-add-manual-panel">
+                    Add Manually
+                </button>
+            </div>
+
+            <div id="search-add-ai-panel" class="search-add-panel" role="tabpanel" aria-labelledby="search-add-tab-ai">
+                <div class="toolbar search-ai-actions">
+                    <button type="button" id="suggest-keyphrases-btn" class="btn btn-secondary">Suggest Keyphrases (AI)</button>
+                </div>
+                <div id="ai-suggestions-card" class="search-ai-suggestions is-hidden">
+                    <h3 class="card-title">AI Suggestions</h3>
+                    <p class="muted">Main Term (locked): <strong id="ai-main-keyword"></strong></p>
+                    <div id="ai-suggestions-error" class="form-help form-help-error is-hidden"></div>
+                    <div id="ai-suggestions-content" class="is-hidden">
+                        <div class="toolbar ai-suggestions-toolbar">
+                            <button type="button" id="ai-add-selected-btn">Add selected</button>
+                            <button type="button" id="ai-select-all-btn" class="btn btn-secondary">Select all</button>
+                            <button type="button" id="ai-clear-btn" class="btn btn-secondary">Clear</button>
+                        </div>
+                        <div class="table-wrap">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Select</th>
+                                        <th>Keyword</th>
+                                        <th>Type</th>
+                                        <th>Confidence</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="ai-suggestions-body"></tbody>
+                            </table>
+                        </div>
+                        <p id="ai-suggestions-status" class="muted"></p>
+                    </div>
+                </div>
+            </div>
+
+            <div id="search-add-manual-panel" class="search-add-panel is-hidden" role="tabpanel" aria-labelledby="search-add-tab-manual">
+                <form id="SearchKeyphraseAddForm" method="post" action="/search/keyphrases/add" class="form-grid">
                     @Html.AntiForgeryToken()
                     <input type="hidden" name="categoryId" value="@Model.CategoryId" />
                     <input type="hidden" name="countyId" value="@(Model.CountyId ?? 0)" />
                     <input type="hidden" name="townId" value="@(Model.TownId ?? 0)" />
-                    <button type="submit" class="btn btn-secondary">Refresh Eligible</button>
+                    <input id="SearchExpectedMainKeyword" type="hidden" value="@keyphrases.ExpectedMainKeyword" />
+                    <input id="SearchRequiredLocationName" type="hidden" value="@keyphrases.LocationName" />
+                    <div class="form-row">
+                        <label for="SearchKeyphraseKeyword">Keyword</label>
+                        <input id="SearchKeyphraseKeyword" name="Keyword" type="text" value="@keyphrases.AddForm.Keyword" maxlength="255" required />
+                        <div id="SearchKeywordValidationMessage" class="form-help form-help-error is-hidden"></div>
+                    </div>
+                    <div class="form-row">
+                        <label>Keyword Type</label>
+                        <div class="inline-group">
+                            <input id="SearchKeywordTypeMain" name="KeywordType" type="radio" value="@CategoryLocationKeywordTypes.MainTerm" @(keyphrases.AddForm.KeywordType == CategoryLocationKeywordTypes.MainTerm ? "checked" : null) />
+                            <label for="SearchKeywordTypeMain">Main Term</label>
+                        </div>
+                        <div class="inline-group">
+                            <input id="SearchKeywordTypeModifier" name="KeywordType" type="radio" value="@CategoryLocationKeywordTypes.Modifier" @(keyphrases.AddForm.KeywordType == CategoryLocationKeywordTypes.Modifier ? "checked" : null) />
+                            <label for="SearchKeywordTypeModifier">Modifier</label>
+                        </div>
+                        <div class="inline-group">
+                            <input id="SearchKeywordTypeAdjacent" name="KeywordType" type="radio" value="@CategoryLocationKeywordTypes.Adjacent" @(keyphrases.AddForm.KeywordType == CategoryLocationKeywordTypes.Adjacent ? "checked" : null) />
+                            <label for="SearchKeywordTypeAdjacent">Adjacent</label>
+                        </div>
+                        <p id="SearchMainTermRuleText" class="form-help">Main Term is only available when the keyword exactly matches "@keyphrases.ExpectedMainKeyword".</p>
+                        <details class="help-panel-collapsible">
+                            <summary>Search Term Modelling</summary>
+                            <div class="help-panel">
+                                <p>We estimate total local search demand by combining different types of search phrases people use when looking for your service.</p>
+                                <p>We group terms into three types:</p>
+                                <p><strong>Main Term</strong><br />Your core service + location.<br />Example: Hairdresser Yeovil</p>
+                                <p>This is the primary phrase most directly describing your business.</p>
+                                <p><strong>Modifiers</strong><br />Variations that show specific intent or preferences.<br />Examples:</p>
+                                <ul>
+                                    <li>cheap hairdresser yeovil</li>
+                                    <li>best hairdresser yeovil</li>
+                                    <li>walk in hairdresser yeovil</li>
+                                    <li>ladies hairdresser yeovil</li>
+                                </ul>
+                                <p>These often indicate higher buying intent and can represent significant additional demand.</p>
+                                <p><strong>Adjacent Terms</strong><br />Closely related services customers may also consider.<br />Examples:</p>
+                                <ul>
+                                    <li>barber yeovil</li>
+                                    <li>beauty salon yeovil</li>
+                                    <li>nail salon yeovil</li>
+                                </ul>
+                                <p>These show nearby commercial demand and potential crossover opportunities.</p>
+                                <p><strong>Why this matters</strong></p>
+                                <p>Customers do not all search using the same phrase. By combining core, modified, and related terms, we create a more realistic estimate of total market opportunity in your area.</p>
+                            </div>
+                        </details>
+                    </div>
+                    <div class="toolbar">
+                        <button type="submit">Add Keyphrase + Fetch Volume</button>
+                    </div>
                 </form>
             </div>
-            <p class="muted">Category: @keyphrases.CategoryDisplayName</p>
-            <p class="muted">Refresh cooldown: @keyphrases.SearchVolumeRefreshCooldownDays day(s)</p>
-        </section>
-
-        <section class="card">
-            <h2 class="card-title">Add New Keyphrase</h2>
-            <form id="SearchKeyphraseAddForm" method="post" action="/search/keyphrases/add" class="form-grid">
-                @Html.AntiForgeryToken()
-                <input type="hidden" name="categoryId" value="@Model.CategoryId" />
-                <input type="hidden" name="countyId" value="@(Model.CountyId ?? 0)" />
-                <input type="hidden" name="townId" value="@(Model.TownId ?? 0)" />
-                <input id="SearchExpectedMainKeyword" type="hidden" value="@keyphrases.ExpectedMainKeyword" />
-                <input id="SearchRequiredLocationName" type="hidden" value="@keyphrases.LocationName" />
-                <div class="form-row">
-                    <label for="SearchKeyphraseKeyword">Keyword</label>
-                    <input id="SearchKeyphraseKeyword" name="Keyword" type="text" value="@keyphrases.AddForm.Keyword" maxlength="255" required />
-                    <div id="SearchKeywordValidationMessage" class="form-help form-help-error is-hidden"></div>
-                </div>
-                <div class="form-row">
-                    <label>Keyword Type</label>
-                    <div class="inline-group">
-                        <input id="SearchKeywordTypeMain" name="KeywordType" type="radio" value="@CategoryLocationKeywordTypes.MainTerm" @(keyphrases.AddForm.KeywordType == CategoryLocationKeywordTypes.MainTerm ? "checked" : null) />
-                        <label for="SearchKeywordTypeMain">Main Term</label>
-                    </div>
-                    <div class="inline-group">
-                        <input id="SearchKeywordTypeModifier" name="KeywordType" type="radio" value="@CategoryLocationKeywordTypes.Modifier" @(keyphrases.AddForm.KeywordType == CategoryLocationKeywordTypes.Modifier ? "checked" : null) />
-                        <label for="SearchKeywordTypeModifier">Modifier</label>
-                    </div>
-                    <div class="inline-group">
-                        <input id="SearchKeywordTypeAdjacent" name="KeywordType" type="radio" value="@CategoryLocationKeywordTypes.Adjacent" @(keyphrases.AddForm.KeywordType == CategoryLocationKeywordTypes.Adjacent ? "checked" : null) />
-                        <label for="SearchKeywordTypeAdjacent">Adjacent</label>
-                    </div>
-                    <p id="SearchMainTermRuleText" class="form-help">Main Term is only available when the keyword exactly matches "@keyphrases.ExpectedMainKeyword".</p>
-                    <div class="help-panel">
-                        <p class="help-panel-title">Search Term Modelling</p>
-                        <p>We estimate total local search demand by combining different types of search phrases people use when looking for your service.</p>
-                        <p>We group terms into three types:</p>
-                        <p><strong>Main Term</strong><br />Your core service + location.<br />Example: Hairdresser Yeovil</p>
-                        <p>This is the primary phrase most directly describing your business.</p>
-                        <p><strong>Modifiers</strong><br />Variations that show specific intent or preferences.<br />Examples:</p>
-                        <ul>
-                            <li>cheap hairdresser yeovil</li>
-                            <li>best hairdresser yeovil</li>
-                            <li>walk in hairdresser yeovil</li>
-                            <li>ladies hairdresser yeovil</li>
-                        </ul>
-                        <p>These often indicate higher buying intent and can represent significant additional demand.</p>
-                        <p><strong>Adjacent Terms</strong><br />Closely related services customers may also consider.<br />Examples:</p>
-                        <ul>
-                            <li>barber yeovil</li>
-                            <li>beauty salon yeovil</li>
-                            <li>nail salon yeovil</li>
-                        </ul>
-                        <p>These show nearby commercial demand and potential crossover opportunities.</p>
-                        <p><strong>Why this matters</strong></p>
-                        <p>Customers do not all search using the same phrase. By combining core, modified, and related terms, we create a more realistic estimate of total market opportunity in your area.</p>
-                    </div>
-                </div>
-                <div class="toolbar">
-                    <button type="submit">Add Keyphrase + Fetch Volume</button>
-                </div>
-            </form>
         </section>
 
         <section class="card">
@@ -331,7 +361,23 @@
         </section>
 
         <section class="card">
-            <h2 class="card-title">Total Search Volume (Last 12 Months)</h2>
+            <h2 class="card-title">Run Search</h2>
+            <div class="toolbar">
+                <button type="submit" id="run-search-btn" form="search-form">Run Search</button>
+            </div>
+        </section>
+
+        <section class="card">
+            <div class="toolbar">
+                <h2 class="card-title">Total Search Volume (Last 12 Months)</h2>
+                <form method="post" action="/search/keyphrases/refresh-eligible">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="categoryId" value="@Model.CategoryId" />
+                    <input type="hidden" name="countyId" value="@(Model.CountyId ?? 0)" />
+                    <input type="hidden" name="townId" value="@(Model.TownId ?? 0)" />
+                    <button type="submit" class="btn btn-secondary">Get Latest Search Volume</button>
+                </form>
+            </div>
             @if (keyphrases.WeightedTotalLast12Months.Count == 0)
             {
                 <p class="muted">No monthly data available yet.</p>
@@ -367,6 +413,23 @@
     </div>
 </div>
 
+<div id="bulk-add-progress-overlay" class="loading-overlay is-hidden" role="dialog" aria-live="polite" aria-modal="true" aria-label="Adding keyphrases">
+    <div class="loading-modal">
+        <h3>Adding Keyphrases</h3>
+        <p id="bulk-add-progress-summary" class="muted">0 / 0 processed</p>
+        <div class="task-progress-wrap" aria-live="polite">
+            <div class="task-progress-bar">
+                <div id="bulk-add-progress-fill" class="task-progress-fill" style="width:0%"></div>
+            </div>
+            <div id="bulk-add-progress-text" class="muted">0%</div>
+        </div>
+        <p id="bulk-add-progress-status" class="muted"></p>
+        <div class="toolbar">
+            <button type="button" id="bulk-add-progress-close" class="btn btn-secondary is-hidden">Close</button>
+        </div>
+    </div>
+</div>
+
 <script>
     (() => {
         const kmSlider = document.getElementById("RadiusKm");
@@ -379,6 +442,7 @@
         const townSelect = document.getElementById("TownId");
         const categorySelect = document.getElementById("CategoryId");
         const viewKeyphrasesButton = document.getElementById("view-keyphrases-btn");
+        const suggestKeyphrasesButton = document.getElementById("suggest-keyphrases-btn");
         const keyphraseAddForm = document.getElementById("SearchKeyphraseAddForm");
         const keyphraseInput = document.getElementById("SearchKeyphraseKeyword");
         const keyphraseMainType = document.getElementById("SearchKeywordTypeMain");
@@ -387,8 +451,29 @@
         const keyphraseRequiredLocation = document.getElementById("SearchRequiredLocationName")?.value ?? "";
         const keyphraseMainRuleText = document.getElementById("SearchMainTermRuleText");
         const keyphraseValidationMessage = document.getElementById("SearchKeywordValidationMessage");
+        const suggestionsCard = document.getElementById("ai-suggestions-card");
+        const suggestionsContent = document.getElementById("ai-suggestions-content");
+        const suggestionsBody = document.getElementById("ai-suggestions-body");
+        const suggestionsError = document.getElementById("ai-suggestions-error");
+        const suggestionsStatus = document.getElementById("ai-suggestions-status");
+        const mainKeywordLabel = document.getElementById("ai-main-keyword");
+        const addSelectedButton = document.getElementById("ai-add-selected-btn");
+        const selectAllButton = document.getElementById("ai-select-all-btn");
+        const clearButton = document.getElementById("ai-clear-btn");
+        const addWithAiTabButton = document.getElementById("search-add-tab-ai");
+        const addManuallyTabButton = document.getElementById("search-add-tab-manual");
+        const addWithAiPanel = document.getElementById("search-add-ai-panel");
+        const addManuallyPanel = document.getElementById("search-add-manual-panel");
+        const bulkAddOverlay = document.getElementById("bulk-add-progress-overlay");
+        const bulkAddSummary = document.getElementById("bulk-add-progress-summary");
+        const bulkAddFill = document.getElementById("bulk-add-progress-fill");
+        const bulkAddText = document.getElementById("bulk-add-progress-text");
+        const bulkAddStatus = document.getElementById("bulk-add-progress-status");
+        const bulkAddCloseButton = document.getElementById("bulk-add-progress-close");
         const initialTownId = "@(Model.TownId?.ToString() ?? string.Empty)";
         const rerunId = "@(Model.RerunSourceRunId?.ToString() ?? string.Empty)";
+        let bulkAddPollTimer = null;
+        let bulkAddActiveJobId = "";
         if (!kmSlider || !metersInput || !kmDisplay) return;
 
         const syncFromKm = () => {
@@ -413,6 +498,252 @@
                 showLoadingState();
             });
         }
+
+        const getAntiforgeryToken = () => {
+            const tokenInput = document.querySelector("#search-form input[name='__RequestVerificationToken']");
+            return tokenInput instanceof HTMLInputElement ? tokenInput.value : "";
+        };
+
+        const setSuggestionsError = (message) => {
+            if (!(suggestionsError instanceof HTMLElement)) return;
+            if (!message) {
+                suggestionsError.textContent = "";
+                suggestionsError.classList.add("is-hidden");
+                return;
+            }
+            suggestionsError.textContent = message;
+            suggestionsError.classList.remove("is-hidden");
+        };
+
+        const setSuggestionsStatus = (message) => {
+            if (!(suggestionsStatus instanceof HTMLElement)) return;
+            suggestionsStatus.textContent = message || "";
+        };
+
+        const setAddKeyphraseMode = (mode) => {
+            const isAi = mode === "ai";
+            if (addWithAiTabButton instanceof HTMLButtonElement) {
+                addWithAiTabButton.classList.toggle("is-active", isAi);
+                addWithAiTabButton.setAttribute("aria-selected", isAi ? "true" : "false");
+            }
+            if (addManuallyTabButton instanceof HTMLButtonElement) {
+                addManuallyTabButton.classList.toggle("is-active", !isAi);
+                addManuallyTabButton.setAttribute("aria-selected", isAi ? "false" : "true");
+            }
+            if (addWithAiPanel instanceof HTMLElement) {
+                addWithAiPanel.classList.toggle("is-hidden", !isAi);
+            }
+            if (addManuallyPanel instanceof HTMLElement) {
+                addManuallyPanel.classList.toggle("is-hidden", isAi);
+            }
+        };
+
+        const stopBulkAddPolling = () => {
+            if (bulkAddPollTimer) {
+                window.clearInterval(bulkAddPollTimer);
+                bulkAddPollTimer = null;
+            }
+        };
+
+        const resetAddSelectedButton = () => {
+            if (addSelectedButton instanceof HTMLButtonElement) {
+                addSelectedButton.disabled = false;
+                addSelectedButton.textContent = "Add selected";
+            }
+        };
+
+        const openBulkAddModal = () => {
+            if (!(bulkAddOverlay instanceof HTMLElement)) return;
+            bulkAddOverlay.classList.remove("is-hidden");
+            document.body.classList.add("modal-open");
+            if (bulkAddCloseButton instanceof HTMLElement) {
+                bulkAddCloseButton.classList.add("is-hidden");
+            }
+        };
+
+        const closeBulkAddModal = () => {
+            if (!(bulkAddOverlay instanceof HTMLElement)) return;
+            bulkAddOverlay.classList.add("is-hidden");
+            document.body.classList.remove("modal-open");
+            bulkAddActiveJobId = "";
+            stopBulkAddPolling();
+        };
+
+        const updateBulkAddModal = (snapshot) => {
+            const total = Number(snapshot.totalCount || 0);
+            const completed = Number(snapshot.completedCount || 0);
+            const added = Number(snapshot.addedCount || 0);
+            const skipped = Number(snapshot.skippedCount || 0);
+            const errors = Number(snapshot.errorCount || 0);
+            const percent = total > 0 ? Math.max(0, Math.min(100, Math.round((completed * 100) / total))) : (snapshot.isCompleted ? 100 : 0);
+
+            if (bulkAddSummary instanceof HTMLElement) {
+                bulkAddSummary.textContent = `${completed} / ${total} processed`;
+            }
+            if (bulkAddFill instanceof HTMLElement) {
+                bulkAddFill.style.width = `${percent}%`;
+            }
+            if (bulkAddText instanceof HTMLElement) {
+                bulkAddText.textContent = `${percent}%`;
+            }
+            if (bulkAddStatus instanceof HTMLElement) {
+                bulkAddStatus.textContent = `Added: ${added}, Skipped: ${skipped}, Errors: ${errors}.`;
+            }
+        };
+
+        const finishBulkAddModal = (snapshot) => {
+            const isFailed = !!snapshot.isFailed;
+            const message = (snapshot.message || "").trim();
+            if (bulkAddStatus instanceof HTMLElement && message.length > 0) {
+                bulkAddStatus.textContent = `${bulkAddStatus.textContent} ${message}`.trim();
+            }
+
+            if (bulkAddCloseButton instanceof HTMLButtonElement) {
+                bulkAddCloseButton.classList.remove("is-hidden");
+            }
+
+            setSuggestionsStatus(`Add selected completed. Added: ${snapshot.addedCount || 0}, Skipped: ${snapshot.skippedCount || 0}, Errors: ${snapshot.errorCount || 0}.`);
+            if (isFailed) {
+                setSuggestionsError("Bulk add failed. Please try again.");
+                window.setTimeout(() => {
+                    closeBulkAddModal();
+                }, 1200);
+                return;
+            }
+
+            if (bulkAddStatus instanceof HTMLElement) {
+                bulkAddStatus.textContent = `${bulkAddStatus.textContent} Refreshing results...`.trim();
+            }
+            window.setTimeout(() => {
+                window.location.reload();
+            }, 900);
+        };
+
+        const pollBulkAddStatus = async () => {
+            if (!bulkAddActiveJobId) return null;
+
+            try {
+                const response = await fetch(`/search/keyphrases/add-bulk/status/${encodeURIComponent(bulkAddActiveJobId)}`, {
+                    headers: { "Accept": "application/json" }
+                });
+                if (response.status === 401 || response.status === 403) {
+                    if (bulkAddStatus instanceof HTMLElement) {
+                        bulkAddStatus.textContent = "Your session expired. Please sign in again.";
+                    }
+                    if (bulkAddCloseButton instanceof HTMLButtonElement) {
+                        bulkAddCloseButton.classList.remove("is-hidden");
+                    }
+                    stopBulkAddPolling();
+                    bulkAddActiveJobId = "";
+                    resetAddSelectedButton();
+                    return { isCompleted: true, isFailed: true };
+                }
+                if (!response.ok) {
+                    if (bulkAddStatus instanceof HTMLElement) {
+                        bulkAddStatus.textContent = "Unable to read progress. Please try again.";
+                    }
+                    if (bulkAddCloseButton instanceof HTMLButtonElement) {
+                        bulkAddCloseButton.classList.remove("is-hidden");
+                    }
+                    stopBulkAddPolling();
+                    bulkAddActiveJobId = "";
+                    resetAddSelectedButton();
+                    return { isCompleted: true, isFailed: true };
+                }
+
+                const snapshot = await response.json().catch(() => null);
+                if (!snapshot) {
+                    return null;
+                }
+
+                updateBulkAddModal(snapshot);
+                if (snapshot.isCompleted) {
+                    stopBulkAddPolling();
+                    finishBulkAddModal(snapshot);
+                    bulkAddActiveJobId = "";
+                    resetAddSelectedButton();
+                }
+                return snapshot;
+            } catch {
+                // Keep polling; temporary network issues can recover.
+                return null;
+            }
+        };
+
+        const showSuggestionsCard = () => {
+            if (suggestionsCard instanceof HTMLElement) {
+                suggestionsCard.classList.remove("is-hidden");
+            }
+        };
+
+        const keywordTypeLabel = (keywordType) => keywordType === 4 ? "Adjacent" : "Modifier";
+
+        const keywordTypeBadgeClass = (keywordType) => keywordType === 4 ? "ai-type-badge ai-type-badge-adjacent" : "ai-type-badge ai-type-badge-modifier";
+
+        const getSelectionPayload = () => {
+            const categoryId = categorySelect instanceof HTMLSelectElement ? categorySelect.value : "";
+            const countyId = countySelect instanceof HTMLSelectElement ? Number(countySelect.value || "0") : 0;
+            const townId = townSelect instanceof HTMLSelectElement ? Number(townSelect.value || "0") : 0;
+            return { categoryId, countyId, townId };
+        };
+
+        const postJson = async (url, payload) => {
+            const token = getAntiforgeryToken();
+            return fetch(url, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Accept": "application/json",
+                    "RequestVerificationToken": token
+                },
+                body: JSON.stringify(payload)
+            });
+        };
+
+        const renderSuggestions = (data, payload) => {
+            if (!(suggestionsCard instanceof HTMLElement)
+                || !(suggestionsContent instanceof HTMLElement)
+                || !(suggestionsBody instanceof HTMLElement)
+                || !(mainKeywordLabel instanceof HTMLElement)) {
+                return;
+            }
+
+            suggestionsBody.innerHTML = "";
+            mainKeywordLabel.textContent = data.mainKeyword || "";
+            setSuggestionsError("");
+            setSuggestionsStatus("");
+
+            const suggestions = Array.isArray(data.suggestions) ? data.suggestions : [];
+            if (suggestions.length === 0) {
+                setSuggestionsStatus("No suggestions were returned. Try again with a different selection.");
+            } else {
+                for (const suggestion of suggestions) {
+                    const row = document.createElement("tr");
+                    const keyword = (suggestion.keyword || "").trim();
+                    const keywordType = Number(suggestion.keywordType || 0);
+                    const confidence = Number(suggestion.confidence || 0);
+                    row.innerHTML = `
+                        <td><input type="checkbox" class="ai-suggestion-checkbox" checked /></td>
+                        <td class="ai-suggestion-keyword"></td>
+                        <td><span class="${keywordTypeBadgeClass(keywordType)}">${keywordTypeLabel(keywordType)}</span></td>
+                        <td>${Math.round(Math.max(0, Math.min(1, confidence)) * 100)}%</td>
+                    `;
+                    row.dataset.keyword = keyword;
+                    row.dataset.keywordType = String(keywordType);
+                    const keywordCell = row.querySelector(".ai-suggestion-keyword");
+                    if (keywordCell instanceof HTMLElement) {
+                        keywordCell.textContent = keyword;
+                    }
+                    suggestionsBody.appendChild(row);
+                }
+            }
+
+            suggestionsCard.classList.remove("is-hidden");
+            suggestionsContent.classList.remove("is-hidden");
+            suggestionsCard.dataset.categoryId = payload.categoryId;
+            suggestionsCard.dataset.countyId = String(payload.countyId);
+            suggestionsCard.dataset.townId = String(payload.townId);
+        };
 
         const buildTownOption = (town, selectedTownId) => {
             const option = document.createElement("option");
@@ -495,6 +826,217 @@
                 if (countyId) query.set("countyId", countyId);
                 if (townId) query.set("townId", townId);
                 window.location.href = query.toString() ? `/search?${query}` : "/search";
+            });
+        }
+
+        const navigateToSelection = () => {
+            const categoryId = categorySelect instanceof HTMLSelectElement ? categorySelect.value : "";
+            const countyId = countySelect instanceof HTMLSelectElement ? countySelect.value : "";
+            const townId = townSelect instanceof HTMLSelectElement ? townSelect.value : "";
+            if (!categoryId || !countyId || !townId) {
+                return;
+            }
+
+            const query = new URLSearchParams();
+            if (rerunId) query.set("rerunId", rerunId);
+            query.set("categoryId", categoryId);
+            query.set("countyId", countyId);
+            query.set("townId", townId);
+            window.location.href = `/search?${query}`;
+        };
+
+        if (categorySelect instanceof HTMLSelectElement) {
+            categorySelect.addEventListener("change", () => {
+                navigateToSelection();
+            });
+        }
+
+        if (townSelect instanceof HTMLSelectElement) {
+            townSelect.addEventListener("change", () => {
+                navigateToSelection();
+            });
+        }
+
+        if (addWithAiTabButton instanceof HTMLButtonElement) {
+            addWithAiTabButton.addEventListener("click", () => {
+                setAddKeyphraseMode("ai");
+            });
+        }
+
+        if (addManuallyTabButton instanceof HTMLButtonElement) {
+            addManuallyTabButton.addEventListener("click", () => {
+                setAddKeyphraseMode("manual");
+            });
+        }
+
+        if (addWithAiPanel instanceof HTMLElement && addManuallyPanel instanceof HTMLElement) {
+            setAddKeyphraseMode("ai");
+        }
+
+        if (suggestKeyphrasesButton instanceof HTMLButtonElement) {
+            suggestKeyphrasesButton.addEventListener("click", async () => {
+                const payload = getSelectionPayload();
+                showSuggestionsCard();
+                if (!payload.categoryId || payload.countyId <= 0 || payload.townId <= 0) {
+                    setSuggestionsError("Select category, county, and town first.");
+                    return;
+                }
+
+                suggestKeyphrasesButton.disabled = true;
+                const originalText = suggestKeyphrasesButton.textContent;
+                suggestKeyphrasesButton.textContent = "Suggesting...";
+                setSuggestionsError("");
+                setSuggestionsStatus("");
+                try {
+                    const response = await postJson("/search/keyphrases/suggest", payload);
+                    if (response.status === 401 || response.status === 403) {
+                        setSuggestionsError("Your session expired. Please sign in again.");
+                        return;
+                    }
+
+                    const data = await response.json().catch(() => ({}));
+                    if (!response.ok) {
+                        const code = typeof data.code === "string" ? data.code : "";
+                        if (code === "openai_not_configured") {
+                            setSuggestionsError("Admin must configure OpenAI API key.");
+                            return;
+                        }
+                        setSuggestionsError(data.message || "Unable to generate suggestions right now.");
+                        return;
+                    }
+
+                    renderSuggestions(data, payload);
+                } catch {
+                    setSuggestionsError("Network error. Please try again.");
+                } finally {
+                    suggestKeyphrasesButton.disabled = false;
+                    suggestKeyphrasesButton.textContent = originalText;
+                }
+            });
+        }
+
+        if (selectAllButton instanceof HTMLButtonElement) {
+            selectAllButton.addEventListener("click", () => {
+                document.querySelectorAll(".ai-suggestion-checkbox").forEach((node) => {
+                    if (node instanceof HTMLInputElement) {
+                        node.checked = true;
+                    }
+                });
+            });
+        }
+
+        if (clearButton instanceof HTMLButtonElement) {
+            clearButton.addEventListener("click", () => {
+                document.querySelectorAll(".ai-suggestion-checkbox").forEach((node) => {
+                    if (node instanceof HTMLInputElement) {
+                        node.checked = false;
+                    }
+                });
+                setSuggestionsStatus("");
+                setSuggestionsError("");
+            });
+        }
+
+        if (bulkAddCloseButton instanceof HTMLButtonElement) {
+            bulkAddCloseButton.addEventListener("click", () => {
+                closeBulkAddModal();
+            });
+        }
+
+        if (bulkAddOverlay instanceof HTMLElement) {
+            bulkAddOverlay.addEventListener("click", (event) => {
+                if (event.target === bulkAddOverlay && bulkAddCloseButton instanceof HTMLElement && !bulkAddCloseButton.classList.contains("is-hidden")) {
+                    closeBulkAddModal();
+                }
+            });
+        }
+
+        if (addSelectedButton instanceof HTMLButtonElement) {
+            addSelectedButton.addEventListener("click", async () => {
+                if (!(suggestionsCard instanceof HTMLElement)) return;
+
+                showSuggestionsCard();
+                const categoryId = suggestionsCard.dataset.categoryId || "";
+                const countyId = Number(suggestionsCard.dataset.countyId || "0");
+                const townId = Number(suggestionsCard.dataset.townId || "0");
+                const items = [];
+                document.querySelectorAll("#ai-suggestions-body tr").forEach((row) => {
+                    const checkbox = row.querySelector(".ai-suggestion-checkbox");
+                    if (!(checkbox instanceof HTMLInputElement) || !checkbox.checked) {
+                        return;
+                    }
+
+                    const keyword = row.dataset.keyword || "";
+                    const keywordType = Number(row.dataset.keywordType || "0");
+                    if (!keyword || !keywordType) return;
+                    items.push({ keyword, keywordType });
+                });
+
+                if (items.length === 0) {
+                    setSuggestionsError("Select at least one suggestion.");
+                    return;
+                }
+
+                setSuggestionsError("");
+                addSelectedButton.disabled = true;
+                const originalText = addSelectedButton.textContent;
+                addSelectedButton.textContent = "Starting...";
+
+                try {
+                    const startResponse = await postJson("/search/keyphrases/add-bulk/start", {
+                        categoryId,
+                        countyId,
+                        townId,
+                        items
+                    });
+                    if (startResponse.status === 401 || startResponse.status === 403) {
+                        setSuggestionsError("Your session expired. Please sign in again.");
+                        addSelectedButton.disabled = false;
+                        addSelectedButton.textContent = originalText;
+                        return;
+                    }
+
+                    const data = await startResponse.json().catch(() => ({}));
+                    if (!startResponse.ok) {
+                        setSuggestionsError(data.message || "Unable to add keyphrases right now.");
+                        addSelectedButton.disabled = false;
+                        addSelectedButton.textContent = originalText;
+                        return;
+                    }
+
+                    bulkAddActiveJobId = String(data.jobId || "");
+                    if (!bulkAddActiveJobId) {
+                        setSuggestionsError("Failed to start bulk add job.");
+                        addSelectedButton.disabled = false;
+                        addSelectedButton.textContent = originalText;
+                        return;
+                    }
+
+                    openBulkAddModal();
+                    if (bulkAddSummary instanceof HTMLElement) {
+                        const totalCount = Number(data.totalCount || items.length);
+                        bulkAddSummary.textContent = `0 / ${totalCount} processed`;
+                    }
+                    if (bulkAddFill instanceof HTMLElement) {
+                        bulkAddFill.style.width = "0%";
+                    }
+                    if (bulkAddText instanceof HTMLElement) {
+                        bulkAddText.textContent = "0%";
+                    }
+                    if (bulkAddStatus instanceof HTMLElement) {
+                        bulkAddStatus.textContent = "Queued...";
+                    }
+
+                    addSelectedButton.textContent = "Adding...";
+                    await pollBulkAddStatus();
+                    if (!bulkAddPollTimer && bulkAddActiveJobId) {
+                        bulkAddPollTimer = window.setInterval(pollBulkAddStatus, 1250);
+                    }
+                } catch {
+                    setSuggestionsError("Network error. Please try again.");
+                    addSelectedButton.disabled = false;
+                    addSelectedButton.textContent = originalText;
+                }
             });
         }
 

@@ -929,6 +929,10 @@ BEGIN
     GoogleQuestionsAndAnswersRefreshHours int NOT NULL CONSTRAINT DF_AppSettings_GoogleQuestionsAndAnswersRefreshHours DEFAULT(24),
     GoogleSocialProfilesRefreshHours int NOT NULL CONSTRAINT DF_AppSettings_GoogleSocialProfilesRefreshHours DEFAULT(24),
     SearchVolumeRefreshCooldownDays int NOT NULL CONSTRAINT DF_AppSettings_SearchVolumeRefreshCooldownDays DEFAULT(30),
+    MaxSuggestedKeyphrases int NOT NULL CONSTRAINT DF_AppSettings_MaxSuggestedKeyphrases DEFAULT(20),
+    OpenAiApiKeyProtected nvarchar(max) NULL,
+    OpenAiModel nvarchar(120) NOT NULL CONSTRAINT DF_AppSettings_OpenAiModel DEFAULT(N'gpt-4.1-mini'),
+    OpenAiTimeoutSeconds int NOT NULL CONSTRAINT DF_AppSettings_OpenAiTimeoutSeconds DEFAULT(20),
     MapPackClickSharePercent int NOT NULL CONSTRAINT DF_AppSettings_MapPackClickSharePercent DEFAULT(50),
     MapPackCtrPosition1Percent int NOT NULL CONSTRAINT DF_AppSettings_MapPackCtrPosition1Percent DEFAULT(38),
     MapPackCtrPosition2Percent int NOT NULL CONSTRAINT DF_AppSettings_MapPackCtrPosition2Percent DEFAULT(23),
@@ -985,6 +989,14 @@ IF COL_LENGTH('dbo.AppSettings', 'GoogleSocialProfilesRefreshHours') IS NULL
   ALTER TABLE dbo.AppSettings ADD GoogleSocialProfilesRefreshHours int NOT NULL CONSTRAINT DF_AppSettings_GoogleSocialProfilesRefreshHours_Alt DEFAULT(24);
 IF COL_LENGTH('dbo.AppSettings', 'SearchVolumeRefreshCooldownDays') IS NULL
   ALTER TABLE dbo.AppSettings ADD SearchVolumeRefreshCooldownDays int NOT NULL CONSTRAINT DF_AppSettings_SearchVolumeRefreshCooldownDays_Alt DEFAULT(30);
+IF COL_LENGTH('dbo.AppSettings', 'MaxSuggestedKeyphrases') IS NULL
+  ALTER TABLE dbo.AppSettings ADD MaxSuggestedKeyphrases int NOT NULL CONSTRAINT DF_AppSettings_MaxSuggestedKeyphrases_Alt DEFAULT(20);
+IF COL_LENGTH('dbo.AppSettings', 'OpenAiApiKeyProtected') IS NULL
+  ALTER TABLE dbo.AppSettings ADD OpenAiApiKeyProtected nvarchar(max) NULL;
+IF COL_LENGTH('dbo.AppSettings', 'OpenAiModel') IS NULL
+  ALTER TABLE dbo.AppSettings ADD OpenAiModel nvarchar(120) NOT NULL CONSTRAINT DF_AppSettings_OpenAiModel_Alt DEFAULT(N'gpt-4.1-mini');
+IF COL_LENGTH('dbo.AppSettings', 'OpenAiTimeoutSeconds') IS NULL
+  ALTER TABLE dbo.AppSettings ADD OpenAiTimeoutSeconds int NOT NULL CONSTRAINT DF_AppSettings_OpenAiTimeoutSeconds_Alt DEFAULT(20);
 IF COL_LENGTH('dbo.AppSettings', 'MapPackClickSharePercent') IS NULL
   ALTER TABLE dbo.AppSettings ADD MapPackClickSharePercent int NOT NULL CONSTRAINT DF_AppSettings_MapPackClickSharePercent_Alt DEFAULT(50);
 IF COL_LENGTH('dbo.AppSettings', 'MapPackCtrPosition1Percent') IS NULL
@@ -1080,6 +1092,10 @@ WHEN MATCHED THEN UPDATE SET
   GoogleQuestionsAndAnswersRefreshHours = CASE WHEN target.GoogleQuestionsAndAnswersRefreshHours IS NULL OR target.GoogleQuestionsAndAnswersRefreshHours < 0 THEN 24 ELSE target.GoogleQuestionsAndAnswersRefreshHours END,
   GoogleSocialProfilesRefreshHours = CASE WHEN target.GoogleSocialProfilesRefreshHours IS NULL OR target.GoogleSocialProfilesRefreshHours < 0 THEN 24 ELSE target.GoogleSocialProfilesRefreshHours END,
   SearchVolumeRefreshCooldownDays = CASE WHEN target.SearchVolumeRefreshCooldownDays IS NULL OR target.SearchVolumeRefreshCooldownDays < 0 THEN 30 ELSE target.SearchVolumeRefreshCooldownDays END,
+  MaxSuggestedKeyphrases = CASE WHEN target.MaxSuggestedKeyphrases IS NULL OR target.MaxSuggestedKeyphrases < 5 THEN 20 WHEN target.MaxSuggestedKeyphrases > 100 THEN 100 ELSE target.MaxSuggestedKeyphrases END,
+  OpenAiApiKeyProtected = CASE WHEN target.OpenAiApiKeyProtected IS NULL OR LEN(LTRIM(RTRIM(target.OpenAiApiKeyProtected))) = 0 THEN NULL ELSE target.OpenAiApiKeyProtected END,
+  OpenAiModel = CASE WHEN target.OpenAiModel IS NULL OR LEN(LTRIM(RTRIM(target.OpenAiModel))) = 0 THEN N''gpt-4.1-mini'' ELSE LEFT(target.OpenAiModel, 120) END,
+  OpenAiTimeoutSeconds = CASE WHEN target.OpenAiTimeoutSeconds IS NULL OR target.OpenAiTimeoutSeconds < 5 THEN 20 WHEN target.OpenAiTimeoutSeconds > 120 THEN 120 ELSE target.OpenAiTimeoutSeconds END,
   MapPackClickSharePercent = CASE WHEN target.MapPackClickSharePercent IS NULL OR target.MapPackClickSharePercent < 0 OR target.MapPackClickSharePercent > 100 THEN 50 ELSE target.MapPackClickSharePercent END,
   MapPackCtrPosition1Percent = CASE WHEN target.MapPackCtrPosition1Percent IS NULL OR target.MapPackCtrPosition1Percent < 0 OR target.MapPackCtrPosition1Percent > 100 THEN 38 ELSE target.MapPackCtrPosition1Percent END,
   MapPackCtrPosition2Percent = CASE WHEN target.MapPackCtrPosition2Percent IS NULL OR target.MapPackCtrPosition2Percent < 0 OR target.MapPackCtrPosition2Percent > 100 THEN 23 ELSE target.MapPackCtrPosition2Percent END,
@@ -1122,8 +1138,8 @@ WHEN MATCHED THEN UPDATE SET
   ChangePasswordOtpMaxAttempts = CASE WHEN target.ChangePasswordOtpMaxAttempts IS NULL OR target.ChangePasswordOtpMaxAttempts < 1 THEN 5 ELSE target.ChangePasswordOtpMaxAttempts END,
   ChangePasswordOtpLockMinutes = CASE WHEN target.ChangePasswordOtpLockMinutes IS NULL OR target.ChangePasswordOtpLockMinutes < 1 THEN 15 ELSE target.ChangePasswordOtpLockMinutes END
 WHEN NOT MATCHED THEN
-  INSERT(AppSettingsId, EnhancedGoogleDataRefreshHours, GoogleReviewsRefreshHours, GoogleUpdatesRefreshHours, GoogleQuestionsAndAnswersRefreshHours, GoogleSocialProfilesRefreshHours, SearchVolumeRefreshCooldownDays, MapPackClickSharePercent, MapPackCtrPosition1Percent, MapPackCtrPosition2Percent, MapPackCtrPosition3Percent, MapPackCtrPosition4Percent, MapPackCtrPosition5Percent, MapPackCtrPosition6Percent, MapPackCtrPosition7Percent, MapPackCtrPosition8Percent, MapPackCtrPosition9Percent, MapPackCtrPosition10Percent, ZohoLeadOwnerName, ZohoLeadOwnerId, ZohoLeadNextAction, SiteUrl, MinimumPasswordLength, PasswordRequiresNumber, PasswordRequiresCapitalLetter, PasswordRequiresSpecialCharacter, LoginLockoutThreshold, LoginLockoutMinutes, EmailCodeCooldownSeconds, EmailCodeMaxPerHourPerEmail, EmailCodeMaxPerHourPerIp, EmailCodeExpiryMinutes, EmailCodeMaxFailedAttemptsPerCode, InviteExpiryHours, InviteOtpExpiryMinutes, InviteOtpCooldownSeconds, InviteOtpMaxPerHourPerInvite, InviteOtpMaxPerHourPerIp, InviteOtpMaxAttempts, InviteOtpLockMinutes, InviteMaxAttempts, InviteLockMinutes, ChangePasswordOtpExpiryMinutes, ChangePasswordOtpCooldownSeconds, ChangePasswordOtpMaxPerHourPerUser, ChangePasswordOtpMaxPerHourPerIp, ChangePasswordOtpMaxAttempts, ChangePasswordOtpLockMinutes, UpdatedAtUtc)
-  VALUES(1, 24, 24, 24, 24, 24, 30, 50, 38, 23, 16, 7, 5, 4, 3, 2, 1, 1, N''Richard Howes'', N''1108404000000068001'', N''Make first contact'', N''https://briskly-viceless-kayleen.ngrok-free.dev/'', 12, 1, 1, 1, 5, 15, 60, 10, 50, 10, 5, 24, 10, 60, 3, 25, 5, 15, 10, 15, 10, 60, 3, 25, 5, 15, SYSUTCDATETIME());
+  INSERT(AppSettingsId, EnhancedGoogleDataRefreshHours, GoogleReviewsRefreshHours, GoogleUpdatesRefreshHours, GoogleQuestionsAndAnswersRefreshHours, GoogleSocialProfilesRefreshHours, SearchVolumeRefreshCooldownDays, MaxSuggestedKeyphrases, OpenAiApiKeyProtected, OpenAiModel, OpenAiTimeoutSeconds, MapPackClickSharePercent, MapPackCtrPosition1Percent, MapPackCtrPosition2Percent, MapPackCtrPosition3Percent, MapPackCtrPosition4Percent, MapPackCtrPosition5Percent, MapPackCtrPosition6Percent, MapPackCtrPosition7Percent, MapPackCtrPosition8Percent, MapPackCtrPosition9Percent, MapPackCtrPosition10Percent, ZohoLeadOwnerName, ZohoLeadOwnerId, ZohoLeadNextAction, SiteUrl, MinimumPasswordLength, PasswordRequiresNumber, PasswordRequiresCapitalLetter, PasswordRequiresSpecialCharacter, LoginLockoutThreshold, LoginLockoutMinutes, EmailCodeCooldownSeconds, EmailCodeMaxPerHourPerEmail, EmailCodeMaxPerHourPerIp, EmailCodeExpiryMinutes, EmailCodeMaxFailedAttemptsPerCode, InviteExpiryHours, InviteOtpExpiryMinutes, InviteOtpCooldownSeconds, InviteOtpMaxPerHourPerInvite, InviteOtpMaxPerHourPerIp, InviteOtpMaxAttempts, InviteOtpLockMinutes, InviteMaxAttempts, InviteLockMinutes, ChangePasswordOtpExpiryMinutes, ChangePasswordOtpCooldownSeconds, ChangePasswordOtpMaxPerHourPerUser, ChangePasswordOtpMaxPerHourPerIp, ChangePasswordOtpMaxAttempts, ChangePasswordOtpLockMinutes, UpdatedAtUtc)
+  VALUES(1, 24, 24, 24, 24, 24, 30, 20, NULL, N''gpt-4.1-mini'', 20, 50, 38, 23, 16, 7, 5, 4, 3, 2, 1, 1, N''Richard Howes'', N''1108404000000068001'', N''Make first contact'', N''https://briskly-viceless-kayleen.ngrok-free.dev/'', 12, 1, 1, 1, 5, 15, 60, 10, 50, 10, 5, 24, 10, 60, 3, 25, 5, 15, 10, 15, 10, 60, 3, 25, 5, 15, SYSUTCDATETIME());
 ');
 IF OBJECT_ID('dbo.GoogleBusinessProfileCategory','U') IS NULL
 BEGIN
