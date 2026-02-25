@@ -2238,6 +2238,85 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_UserLogins_IpAddress_Att
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_UserLogins_Succeeded_AttemptedAtUtc' AND object_id = OBJECT_ID('dbo.UserLogins'))
   CREATE INDEX IX_UserLogins_Succeeded_AttemptedAtUtc ON dbo.UserLogins(Succeeded, AttemptedAtUtc DESC);
 
+IF OBJECT_ID('dbo.AppError','U') IS NULL
+BEGIN
+  CREATE TABLE dbo.AppError(
+    AppErrorId bigint IDENTITY(1,1) NOT NULL PRIMARY KEY,
+    CreatedUtc datetime2(3) NOT NULL CONSTRAINT DF_AppError_CreatedUtc DEFAULT SYSUTCDATETIME(),
+    UserId int NULL,
+    IpAddress nvarchar(64) NULL,
+    TraceId nvarchar(64) NULL,
+    HttpMethod nvarchar(16) NULL,
+    StatusCode int NOT NULL,
+    FullUrl nvarchar(2048) NULL,
+    Referrer nvarchar(2048) NULL,
+    UserAgentRaw nvarchar(512) NULL,
+    BrowserName nvarchar(64) NULL,
+    BrowserVersion nvarchar(32) NULL,
+    OsName nvarchar(64) NULL,
+    OsVersion nvarchar(32) NULL,
+    DeviceType nvarchar(32) NULL,
+    ExceptionType nvarchar(256) NULL,
+    ExceptionMessage nvarchar(max) NULL,
+    ExceptionDetail nvarchar(max) NULL
+  );
+END;
+IF COL_LENGTH('dbo.AppError', 'CreatedUtc') IS NULL
+  ALTER TABLE dbo.AppError ADD CreatedUtc datetime2(3) NOT NULL CONSTRAINT DF_AppError_CreatedUtc_Alt DEFAULT SYSUTCDATETIME();
+IF COL_LENGTH('dbo.AppError', 'UserId') IS NULL
+  ALTER TABLE dbo.AppError ADD UserId int NULL;
+IF COL_LENGTH('dbo.AppError', 'IpAddress') IS NULL
+  ALTER TABLE dbo.AppError ADD IpAddress nvarchar(64) NULL;
+IF COL_LENGTH('dbo.AppError', 'TraceId') IS NULL
+  ALTER TABLE dbo.AppError ADD TraceId nvarchar(64) NULL;
+IF COL_LENGTH('dbo.AppError', 'HttpMethod') IS NULL
+  ALTER TABLE dbo.AppError ADD HttpMethod nvarchar(16) NULL;
+IF COL_LENGTH('dbo.AppError', 'StatusCode') IS NULL
+  ALTER TABLE dbo.AppError ADD StatusCode int NOT NULL CONSTRAINT DF_AppError_StatusCode_Alt DEFAULT(500);
+IF COL_LENGTH('dbo.AppError', 'FullUrl') IS NULL
+  ALTER TABLE dbo.AppError ADD FullUrl nvarchar(2048) NULL;
+IF COL_LENGTH('dbo.AppError', 'Referrer') IS NULL
+  ALTER TABLE dbo.AppError ADD Referrer nvarchar(2048) NULL;
+IF COL_LENGTH('dbo.AppError', 'UserAgentRaw') IS NULL
+  ALTER TABLE dbo.AppError ADD UserAgentRaw nvarchar(512) NULL;
+IF COL_LENGTH('dbo.AppError', 'BrowserName') IS NULL
+  ALTER TABLE dbo.AppError ADD BrowserName nvarchar(64) NULL;
+IF COL_LENGTH('dbo.AppError', 'BrowserVersion') IS NULL
+  ALTER TABLE dbo.AppError ADD BrowserVersion nvarchar(32) NULL;
+IF COL_LENGTH('dbo.AppError', 'OsName') IS NULL
+  ALTER TABLE dbo.AppError ADD OsName nvarchar(64) NULL;
+IF COL_LENGTH('dbo.AppError', 'OsVersion') IS NULL
+  ALTER TABLE dbo.AppError ADD OsVersion nvarchar(32) NULL;
+IF COL_LENGTH('dbo.AppError', 'DeviceType') IS NULL
+  ALTER TABLE dbo.AppError ADD DeviceType nvarchar(32) NULL;
+IF COL_LENGTH('dbo.AppError', 'ExceptionType') IS NULL
+  ALTER TABLE dbo.AppError ADD ExceptionType nvarchar(256) NULL;
+IF COL_LENGTH('dbo.AppError', 'ExceptionMessage') IS NULL
+  ALTER TABLE dbo.AppError ADD ExceptionMessage nvarchar(max) NULL;
+IF COL_LENGTH('dbo.AppError', 'ExceptionDetail') IS NULL
+  ALTER TABLE dbo.AppError ADD ExceptionDetail nvarchar(max) NULL;
+
+IF NOT EXISTS (
+  SELECT 1
+  FROM sys.foreign_key_columns fkc
+  JOIN sys.columns pc ON pc.object_id = fkc.parent_object_id AND pc.column_id = fkc.parent_column_id
+  JOIN sys.columns rc ON rc.object_id = fkc.referenced_object_id AND rc.column_id = fkc.referenced_column_id
+  WHERE fkc.parent_object_id = OBJECT_ID('dbo.AppError')
+    AND fkc.referenced_object_id = OBJECT_ID('dbo.[User]')
+    AND pc.name = 'UserId'
+    AND rc.name = 'Id'
+)
+  ALTER TABLE dbo.AppError WITH CHECK ADD CONSTRAINT FK_AppError_User FOREIGN KEY (UserId) REFERENCES dbo.[User](Id) ON DELETE SET NULL;
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_AppError_CreatedUtc' AND object_id = OBJECT_ID('dbo.AppError'))
+  CREATE INDEX IX_AppError_CreatedUtc ON dbo.AppError(CreatedUtc DESC);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_AppError_UserId_CreatedUtc' AND object_id = OBJECT_ID('dbo.AppError'))
+  CREATE INDEX IX_AppError_UserId_CreatedUtc ON dbo.AppError(UserId, CreatedUtc DESC);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_AppError_ExceptionType_CreatedUtc' AND object_id = OBJECT_ID('dbo.AppError'))
+  CREATE INDEX IX_AppError_ExceptionType_CreatedUtc ON dbo.AppError(ExceptionType, CreatedUtc DESC);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_AppError_StatusCode_CreatedUtc' AND object_id = OBJECT_ID('dbo.AppError'))
+  CREATE INDEX IX_AppError_StatusCode_CreatedUtc ON dbo.AppError(StatusCode, CreatedUtc DESC);
+
 IF OBJECT_ID('dbo.EmailTemplate','U') IS NULL
 BEGIN
   CREATE TABLE dbo.EmailTemplate(

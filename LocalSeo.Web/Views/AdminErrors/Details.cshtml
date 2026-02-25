@@ -1,0 +1,137 @@
+@model AppErrorDetailViewModel
+@{
+    ViewData["Title"] = "Error Detail";
+
+    string DisplayOrNa(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value) ? "N/A" : value;
+    }
+
+    string BrowserLabel(AppErrorRow row)
+    {
+        var browserName = (row.BrowserName ?? string.Empty).Trim();
+        var browserVersion = (row.BrowserVersion ?? string.Empty).Trim();
+        if (browserName.Length == 0 && browserVersion.Length == 0)
+            return "N/A";
+        if (browserName.Length == 0)
+            return browserVersion;
+        if (browserVersion.Length == 0)
+            return browserName;
+        return $"{browserName} {browserVersion}";
+    }
+
+    string OsLabel(AppErrorRow row)
+    {
+        var osName = (row.OsName ?? string.Empty).Trim();
+        var osVersion = (row.OsVersion ?? string.Empty).Trim();
+        if (osName.Length == 0 && osVersion.Length == 0)
+            return "N/A";
+        if (osName.Length == 0)
+            return osVersion;
+        if (osVersion.Length == 0)
+            return osName;
+        return $"{osName} {osVersion}";
+    }
+
+    string UserLabel(AppErrorRow row)
+    {
+        var firstName = (row.UserFirstName ?? string.Empty).Trim();
+        var lastName = (row.UserLastName ?? string.Empty).Trim();
+        var fullName = $"{firstName} {lastName}".Trim();
+
+        if (fullName.Length > 0)
+            return fullName;
+        if (row.UserId.HasValue)
+            return $"User #{row.UserId.Value}";
+        return "N/A";
+    }
+}
+
+<div class="page-stack">
+    <section class="card">
+        <div class="toolbar">
+            <a href="/admin/errors" class="btn btn-secondary">Back to Errors</a>
+            <a href="/admin" class="btn btn-secondary">Back to Admin</a>
+            @if (Model.IsDevelopment)
+            {
+                <a href="/admin/errors/test/throw" class="btn btn-secondary">Test Throw</a>
+                <a href="/admin/errors/test/status-500" class="btn btn-secondary">Test StatusCode(500)</a>
+            }
+        </div>
+    </section>
+
+    <section class="card">
+        <h2 class="card-title">Error #@Model.Row.AppErrorId</h2>
+        <dl class="details-grid">
+            <dt>Created</dt>
+            <dd>@Model.Row.CreatedUtc.ToLocalTime().ToString("dd MMM yyyy HH:mm:ss")</dd>
+            <dt>User</dt>
+            <dd>
+                @if (Model.Row.UserId.HasValue)
+                {
+                    <a href="/admin/users/@Model.Row.UserId.Value">@UserLabel(Model.Row)</a>
+                }
+                else
+                {
+                    @UserLabel(Model.Row)
+                }
+            </dd>
+            <dt>IP Address</dt>
+            <dd>@DisplayOrNa(Model.Row.IpAddress)</dd>
+            <dt>Trace ID</dt>
+            <dd>@DisplayOrNa(Model.Row.TraceId)</dd>
+            <dt>HTTP Method</dt>
+            <dd>@DisplayOrNa(Model.Row.HttpMethod)</dd>
+            <dt>Status Code</dt>
+            <dd>@Model.Row.StatusCode</dd>
+            <dt>Full URL</dt>
+            <dd>@DisplayOrNa(Model.Row.FullUrl)</dd>
+            <dt>Referrer</dt>
+            <dd>@DisplayOrNa(Model.Row.Referrer)</dd>
+            <dt>User-Agent</dt>
+            <dd>@DisplayOrNa(Model.Row.UserAgentRaw)</dd>
+            <dt>Browser</dt>
+            <dd>@BrowserLabel(Model.Row)</dd>
+            <dt>OS</dt>
+            <dd>@OsLabel(Model.Row)</dd>
+            <dt>Device Type</dt>
+            <dd>@DisplayOrNa(Model.Row.DeviceType)</dd>
+            <dt>Exception Type</dt>
+            <dd>@DisplayOrNa(Model.Row.ExceptionType)</dd>
+            <dt>Exception Message</dt>
+            <dd>@DisplayOrNa(Model.Row.ExceptionMessage)</dd>
+        </dl>
+    </section>
+
+    <section class="card">
+        <div class="card-header">
+            <h2 class="card-title">Exception Detail</h2>
+            <button type="button" id="copy-error-detail-button" class="btn btn-secondary">Copy</button>
+        </div>
+        <pre id="error-detail-text" class="code-block">@DisplayOrNa(Model.Row.ExceptionDetail)</pre>
+    </section>
+</div>
+
+<script>
+    (() => {
+        const copyButton = document.getElementById("copy-error-detail-button");
+        const detailNode = document.getElementById("error-detail-text");
+        if (!copyButton || !detailNode) return;
+
+        copyButton.addEventListener("click", async () => {
+            const text = detailNode.textContent || "";
+            try {
+                await navigator.clipboard.writeText(text);
+                copyButton.textContent = "Copied";
+                setTimeout(() => {
+                    copyButton.textContent = "Copy";
+                }, 1500);
+            } catch {
+                copyButton.textContent = "Copy failed";
+                setTimeout(() => {
+                    copyButton.textContent = "Copy";
+                }, 1500);
+            }
+        });
+    })();
+</script>

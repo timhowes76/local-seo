@@ -194,6 +194,9 @@ builder.Services.AddScoped<IDataForSeoTaskTracker, DataForSeoReviewsProvider>();
 builder.Services.AddScoped<IReviewVelocityService, ReviewVelocityService>();
 builder.Services.AddScoped<ICompetitorVelocityAdapter, NullCompetitorVelocityAdapter>();
 builder.Services.AddScoped<IReportsService, ReportsService>();
+builder.Services.AddSingleton<IUserAgentInfoParser, UserAgentInfoParser>();
+builder.Services.AddScoped<IAppErrorRepository, AppErrorRepository>();
+builder.Services.AddScoped<IAppErrorLogger, AppErrorLogger>();
 
 var app = builder.Build();
 
@@ -215,6 +218,7 @@ app.UseWhen(
         && context.Request.Host.Port == 5000,
     branch => branch.UseDeveloperExceptionPage());
 
+app.UseMiddleware<AppErrorLoggingMiddleware>();
 app.UseHttpsRedirection();
 app.UseStaticFiles();
 

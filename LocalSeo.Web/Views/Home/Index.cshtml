@@ -68,13 +68,31 @@
             <p class="notice">@Model.AccountError</p>
         }
 
-        <h3>API Status</h3>
-        @if (Model.ApiStatuses.Count == 0)
-        {
-            <p class="muted">No API status data available.</p>
-        }
-        else
-        {
+        <p>
+            <strong>API Status:</strong>
+            @if (Model.ApiStatuses.Count == 0)
+            {
+                <span class="muted">No API status data available.</span>
+            }
+            else
+            {
+                <a href="#dataforseo-api-status-modal" id="open-dataforseo-api-status-modal-link">
+                    View all endpoint statuses (@Model.ApiStatuses.Count)
+                </a>
+            }
+        </p>
+    </section>
+</div>
+
+@if (Model.ApiStatuses.Count > 0)
+{
+    <div id="dataforseo-api-status-modal" class="financial-modal-overlay is-hidden" aria-hidden="true">
+        <div class="financial-modal-card" role="dialog" aria-modal="true" aria-labelledby="dataforseo-api-status-modal-title">
+            <div class="financial-modal-header">
+                <h3 id="dataforseo-api-status-modal-title">DataForSEO Endpoint Status</h3>
+                <button type="button" class="btn btn-secondary" id="close-dataforseo-api-status-modal-button">Close</button>
+            </div>
+            <p class="muted">Current status for all configured DataForSEO endpoints.</p>
             <div class="table-wrap">
                 <table>
                     <thead>
@@ -98,6 +116,45 @@
                     </tbody>
                 </table>
             </div>
-        }
-    </section>
-</div>
+        </div>
+    </div>
+
+    <script>
+        (() => {
+            const openLink = document.getElementById("open-dataforseo-api-status-modal-link");
+            const closeButton = document.getElementById("close-dataforseo-api-status-modal-button");
+            const modal = document.getElementById("dataforseo-api-status-modal");
+            if (!openLink || !closeButton || !modal) return;
+
+            const openModal = () => {
+                modal.classList.remove("is-hidden");
+                modal.setAttribute("aria-hidden", "false");
+                document.body.classList.add("modal-open");
+            };
+
+            const closeModal = () => {
+                modal.classList.add("is-hidden");
+                modal.setAttribute("aria-hidden", "true");
+                document.body.classList.remove("modal-open");
+                openLink.focus();
+            };
+
+            openLink.addEventListener("click", (event) => {
+                event.preventDefault();
+                openModal();
+            });
+
+            closeButton.addEventListener("click", closeModal);
+
+            modal.addEventListener("click", (event) => {
+                if (event.target === modal) closeModal();
+            });
+
+            document.addEventListener("keydown", (event) => {
+                if (event.key === "Escape" && !modal.classList.contains("is-hidden")) {
+                    closeModal();
+                }
+            });
+        })();
+    </script>
+}

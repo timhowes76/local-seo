@@ -1,0 +1,165 @@
+@model AppErrorListViewModel
+@{
+    ViewData["Title"] = "Errors";
+    var statusMessage = TempData["Status"] as string;
+    var currentPage = Math.Max(1, Model.PageNumber);
+    var totalPages = Math.Max(1, Model.TotalPages);
+    var pageSize = Model.PageSize;
+    var hasPrev = currentPage > 1;
+    var hasNext = currentPage < totalPages;
+
+    string BuildListUrl(int page) => $"/admin/errors?page={page}&pageSize={pageSize}";
+    string Truncate(string? value, int maxLength)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return "N/A";
+        var trimmed = value.Trim();
+        return trimmed.Length <= maxLength ? trimmed : $"{trimmed[..maxLength]}...";
+    }
+
+    string BrowserLabel(AppErrorRow row)
+    {
+        var browserName = (row.BrowserName ?? string.Empty).Trim();
+        var browserVersion = (row.BrowserVersion ?? string.Empty).Trim();
+        if (browserName.Length == 0 && browserVersion.Length == 0)
+            return "N/A";
+        if (browserName.Length == 0)
+            return browserVersion;
+        if (browserVersion.Length == 0)
+            return browserName;
+        return $"{browserName} {browserVersion}";
+    }
+
+    string OsLabel(AppErrorRow row)
+    {
+        var osName = (row.OsName ?? string.Empty).Trim();
+        var osVersion = (row.OsVersion ?? string.Empty).Trim();
+        if (osName.Length == 0 && osVersion.Length == 0)
+            return "N/A";
+        if (osName.Length == 0)
+            return osVersion;
+        if (osVersion.Length == 0)
+            return osName;
+        return $"{osName} {osVersion}";
+    }
+
+    string UserLabel(AppErrorRow row)
+    {
+        var firstName = (row.UserFirstName ?? string.Empty).Trim();
+        var lastName = (row.UserLastName ?? string.Empty).Trim();
+        var fullName = $"{firstName} {lastName}".Trim();
+
+        if (fullName.Length > 0)
+            return fullName;
+        if (row.UserId.HasValue)
+            return $"User #{row.UserId.Value}";
+        return "N/A";
+    }
+}
+
+<div class="page-stack">
+    @if (!string.IsNullOrWhiteSpace(statusMessage))
+    {
+        <div class="notice">@statusMessage</div>
+    }
+
+    <section class="card">
+        <div class="toolbar">
+            <a href="/admin" class="btn btn-secondary">Back to Admin</a>
+            @if (Model.IsDevelopment)
+            {
+                <a href="/admin/errors/test/throw" class="btn btn-secondary">Test Throw</a>
+                <a href="/admin/errors/test/status-500" class="btn btn-secondary">Test StatusCode(500)</a>
+            }
+        </div>
+    </section>
+
+    <section class="card">
+        <div class="card-header">
+            <h2 class="card-title">500 Error Log</h2>
+            <form method="post" action="/admin/errors/delete-all" onsubmit="return confirm('Delete all error logs? This action cannot be undone.');">
+                @Html.AntiForgeryToken()
+                <button type="submit" class="btn btn-secondary">Delete all</button>
+            </form>
+        </div>
+        <p class="muted">Total results: @Model.TotalCount</p>
+
+        @if (Model.Rows.Count == 0)
+        {
+            <p class="muted">No errors logged yet.</p>
+        }
+        else
+        {
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Created</th>
+                            <th>User</th>
+                            <th>IP</th>
+                            <th>Browser</th>
+                            <th>OS</th>
+                            <th>Device</th>
+                            <th>Method</th>
+                            <th>Status</th>
+                            <th>URL</th>
+                            <th>Exception Type</th>
+                            <th>Exception Message</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    @foreach (var row in Model.Rows)
+                    {
+                        <tr>
+                            <td>@row.CreatedUtc.ToLocalTime().ToString("dd MMM yyyy HH:mm:ss")</td>
+                            <td>
+                                @if (row.UserId.HasValue)
+                                {
+                                    <a href="/admin/users/@row.UserId.Value">@UserLabel(row)</a>
+                                }
+                                else
+                                {
+                                    @UserLabel(row)
+                                }
+                            </td>
+                            <td>@(string.IsNullOrWhiteSpace(row.IpAddress) ? "N/A" : row.IpAddress)</td>
+                            <td>@BrowserLabel(row)</td>
+                            <td>@OsLabel(row)</td>
+                            <td>@(string.IsNullOrWhiteSpace(row.DeviceType) ? "Unknown" : row.DeviceType)</td>
+                            <td>@(string.IsNullOrWhiteSpace(row.HttpMethod) ? "N/A" : row.HttpMethod)</td>
+                            <td>@row.StatusCode</td>
+                            <td title="@row.FullUrl">@Truncate(row.FullUrl, 90)</td>
+                            <td title="@row.ExceptionType">@Truncate(row.ExceptionType, 60)</td>
+                            <td title="@row.ExceptionMessage">@Truncate(row.ExceptionMessage, 120)</td>
+                            <td><a class="btn btn-secondary" href="/admin/errors/@row.AppErrorId">View</a></td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+        }
+
+        <div class="toolbar review-pager">
+            @if (hasPrev)
+            {
+                <a class="btn btn-secondary" href="@BuildListUrl(currentPage - 1)">Previous</a>
+            }
+            else
+            {
+                <button type="button" class="btn btn-secondary" disabled>Previous</button>
+            }
+
+            <span class="muted">Page @currentPage of @totalPages (@Model.TotalCount total)</span>
+
+            @if (hasNext)
+            {
+                <a class="btn btn-secondary" href="@BuildListUrl(currentPage + 1)">Next</a>
+            }
+            else
+            {
+                <button type="button" class="btn btn-secondary" disabled>Next</button>
+            }
+        </div>
+    </section>
+</div>

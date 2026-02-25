@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using LocalSeo.Web.Models;
 
 namespace LocalSeo.Web.Services;
 
@@ -43,6 +44,23 @@ public sealed class SearchRunExecutor(
             catch (Exception ex)
             {
                 logger.LogError(ex, "Background search run failed. RunId={RunId}", runId);
+                try
+                {
+                    using var scope = scopeFactory.CreateScope();
+                    var appErrorLogger = scope.ServiceProvider.GetRequiredService<IAppErrorLogger>();
+                    await appErrorLogger.LogExceptionAsync(
+                        ex,
+                        new BackgroundContext(
+                            JobName: "SearchRunExecutor",
+                            TraceId: null,
+                            UserId: null,
+                            ExtraText: $"RunId={runId}"),
+                        CancellationToken.None);
+                }
+                catch (Exception loggingEx)
+                {
+                    logger.LogError(loggingEx, "Failed to persist background exception for RunId={RunId}", runId);
+                }
             }
             finally
             {
