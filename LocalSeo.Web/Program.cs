@@ -197,6 +197,9 @@ builder.Services.AddScoped<IReportsService, ReportsService>();
 builder.Services.AddSingleton<IUserAgentInfoParser, UserAgentInfoParser>();
 builder.Services.AddScoped<IAppErrorRepository, AppErrorRepository>();
 builder.Services.AddScoped<IAppErrorLogger, AppErrorLogger>();
+builder.Services.AddSingleton<IAnnouncementHtmlSanitizer, AnnouncementHtmlSanitizer>();
+builder.Services.AddScoped<IAnnouncementRepository, AnnouncementRepository>();
+builder.Services.AddScoped<IAnnouncementService, AnnouncementService>();
 
 var app = builder.Build();
 

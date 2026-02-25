@@ -204,6 +204,59 @@ a:hover {
     position: relative;
 }
 
+.topbar-icon-button {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    border: 1px solid var(--border-soft);
+    background: var(--bg-card);
+    color: var(--text-primary);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    cursor: pointer;
+    box-shadow: 0 2px 6px rgba(15, 23, 42, 0.08);
+}
+
+.topbar-icon-button:hover {
+    background: var(--nav-hover-bg);
+}
+
+.topbar-icon-button:focus {
+    outline: 2px solid rgba(13, 110, 253, 0.22);
+    outline-offset: 2px;
+}
+
+.topbar-icon-button i {
+    font-size: 17px;
+    line-height: 1;
+}
+
+.announcements-bell-button.has-unread {
+    color: #92400e;
+    border-color: #fde68a;
+    background: #fffbeb;
+}
+
+.announcements-unread-badge {
+    position: absolute;
+    top: -4px;
+    right: -2px;
+    min-width: 18px;
+    min-height: 18px;
+    border-radius: 999px;
+    padding: 0 5px;
+    background: #dc2626;
+    color: #ffffff;
+    font-size: 11px;
+    font-weight: 700;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid #ffffff;
+}
+
 .topbar-user {
     color: var(--text-muted);
 }
@@ -2316,6 +2369,63 @@ body.modal-open {
     overflow: hidden;
 }
 
+.announcements-modal-card {
+    width: min(920px, calc(100vw - 32px));
+    max-height: calc(100vh - 32px);
+    display: grid;
+    gap: 12px;
+}
+
+.announcements-modal-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.announcement-modal-empty {
+    border: 1px solid var(--border-soft);
+    border-radius: 10px;
+    background: var(--bg-subtle);
+    padding: 14px;
+}
+
+.announcement-modal-item {
+    display: grid;
+    gap: 10px;
+}
+
+.announcement-modal-title {
+    margin: 0;
+    font-size: 20px;
+}
+
+.announcement-body-html {
+    border: 1px solid var(--border-soft);
+    border-radius: 10px;
+    background: var(--bg-subtle);
+    padding: 12px 14px;
+    max-height: 52vh;
+    overflow: auto;
+    color: var(--text-strong);
+}
+
+.announcement-body-html h1,
+.announcement-body-html h2,
+.announcement-body-html h3 {
+    margin-top: 0;
+}
+
+.announcement-body-html p:last-child,
+.announcement-body-html ul:last-child,
+.announcement-body-html ol:last-child {
+    margin-bottom: 0;
+}
+
+.announcements-modal-actions {
+    justify-content: space-between;
+}
+
 .notice {
     padding: 10px 12px;
     border-radius: var(--radius-sm);
@@ -2348,6 +2458,16 @@ code {
     background: #2c3d54;
     border-color: #4a5f7a;
     color: #f8fafc;
+}
+
+.theme-dark .announcements-bell-button.has-unread {
+    color: #fcd34d;
+    border-color: #92400e;
+    background: #3f2b10;
+}
+
+.theme-dark .announcements-unread-badge {
+    border-color: #0f172a;
 }
 
 .theme-dark .keyword-type-help-grid {

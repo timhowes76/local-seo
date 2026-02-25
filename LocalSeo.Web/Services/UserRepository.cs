@@ -187,6 +187,19 @@ WHERE EmailNormalized = @EmailNormalized;",
             tx,
             cancellationToken: ct));
 
+        await conn.ExecuteAsync(new CommandDefinition(@"
+UPDATE dbo.Announcements
+SET
+  CreatedByUserId = CASE WHEN CreatedByUserId = @UserId THEN NULL ELSE CreatedByUserId END,
+  UpdatedByUserId = CASE WHEN UpdatedByUserId = @UserId THEN NULL ELSE UpdatedByUserId END,
+  DeletedByUserId = CASE WHEN DeletedByUserId = @UserId THEN NULL ELSE DeletedByUserId END
+WHERE CreatedByUserId = @UserId
+   OR UpdatedByUserId = @UserId
+   OR DeletedByUserId = @UserId;",
+            new { UserId = userId },
+            tx,
+            cancellationToken: ct));
+
         var deleted = await conn.ExecuteAsync(new CommandDefinition(@"
 DELETE FROM dbo.[User]
 WHERE Id = @Id;",

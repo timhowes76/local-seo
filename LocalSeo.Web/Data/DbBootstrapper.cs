@@ -2317,6 +2317,142 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_AppError_ExceptionType_C
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_AppError_StatusCode_CreatedUtc' AND object_id = OBJECT_ID('dbo.AppError'))
   CREATE INDEX IX_AppError_StatusCode_CreatedUtc ON dbo.AppError(StatusCode, CreatedUtc DESC);
 
+IF OBJECT_ID('dbo.Announcements','U') IS NULL
+BEGIN
+  CREATE TABLE dbo.Announcements(
+    AnnouncementId bigint IDENTITY(1,1) NOT NULL PRIMARY KEY,
+    Title nvarchar(200) NOT NULL,
+    BodyHtml nvarchar(max) NOT NULL,
+    CreatedAtUtc datetime2(3) NOT NULL CONSTRAINT DF_Announcements_CreatedAtUtc DEFAULT SYSUTCDATETIME(),
+    CreatedByUserId int NULL,
+    UpdatedAtUtc datetime2(3) NULL,
+    UpdatedByUserId int NULL,
+    IsDeleted bit NOT NULL CONSTRAINT DF_Announcements_IsDeleted DEFAULT(0),
+    DeletedAtUtc datetime2(3) NULL,
+    DeletedByUserId int NULL
+  );
+END;
+IF COL_LENGTH('dbo.Announcements', 'Title') IS NULL
+  ALTER TABLE dbo.Announcements ADD Title nvarchar(200) NOT NULL CONSTRAINT DF_Announcements_Title_Alt DEFAULT(N'');
+IF COL_LENGTH('dbo.Announcements', 'BodyHtml') IS NULL
+  ALTER TABLE dbo.Announcements ADD BodyHtml nvarchar(max) NOT NULL CONSTRAINT DF_Announcements_BodyHtml_Alt DEFAULT(N'');
+IF COL_LENGTH('dbo.Announcements', 'CreatedAtUtc') IS NULL
+  ALTER TABLE dbo.Announcements ADD CreatedAtUtc datetime2(3) NOT NULL CONSTRAINT DF_Announcements_CreatedAtUtc_Alt DEFAULT SYSUTCDATETIME();
+IF COL_LENGTH('dbo.Announcements', 'CreatedByUserId') IS NULL
+  ALTER TABLE dbo.Announcements ADD CreatedByUserId int NULL;
+IF COL_LENGTH('dbo.Announcements', 'UpdatedAtUtc') IS NULL
+  ALTER TABLE dbo.Announcements ADD UpdatedAtUtc datetime2(3) NULL;
+IF COL_LENGTH('dbo.Announcements', 'UpdatedByUserId') IS NULL
+  ALTER TABLE dbo.Announcements ADD UpdatedByUserId int NULL;
+IF COL_LENGTH('dbo.Announcements', 'IsDeleted') IS NULL
+  ALTER TABLE dbo.Announcements ADD IsDeleted bit NOT NULL CONSTRAINT DF_Announcements_IsDeleted_Alt DEFAULT(0);
+IF COL_LENGTH('dbo.Announcements', 'DeletedAtUtc') IS NULL
+  ALTER TABLE dbo.Announcements ADD DeletedAtUtc datetime2(3) NULL;
+IF COL_LENGTH('dbo.Announcements', 'DeletedByUserId') IS NULL
+  ALTER TABLE dbo.Announcements ADD DeletedByUserId int NULL;
+
+IF EXISTS (
+  SELECT 1
+  FROM sys.foreign_keys
+  WHERE parent_object_id = OBJECT_ID('dbo.Announcements')
+    AND name = 'FK_Announcements_UpdatedByUser'
+    AND delete_referential_action <> 0
+)
+  ALTER TABLE dbo.Announcements DROP CONSTRAINT FK_Announcements_UpdatedByUser;
+IF EXISTS (
+  SELECT 1
+  FROM sys.foreign_keys
+  WHERE parent_object_id = OBJECT_ID('dbo.Announcements')
+    AND name = 'FK_Announcements_DeletedByUser'
+    AND delete_referential_action <> 0
+)
+  ALTER TABLE dbo.Announcements DROP CONSTRAINT FK_Announcements_DeletedByUser;
+
+IF NOT EXISTS (
+  SELECT 1
+  FROM sys.foreign_key_columns fkc
+  JOIN sys.columns pc ON pc.object_id = fkc.parent_object_id AND pc.column_id = fkc.parent_column_id
+  JOIN sys.columns rc ON rc.object_id = fkc.referenced_object_id AND rc.column_id = fkc.referenced_column_id
+  WHERE fkc.parent_object_id = OBJECT_ID('dbo.Announcements')
+    AND fkc.referenced_object_id = OBJECT_ID('dbo.[User]')
+    AND pc.name = 'CreatedByUserId'
+    AND rc.name = 'Id'
+)
+  ALTER TABLE dbo.Announcements WITH CHECK ADD CONSTRAINT FK_Announcements_CreatedByUser FOREIGN KEY (CreatedByUserId) REFERENCES dbo.[User](Id) ON DELETE SET NULL;
+IF NOT EXISTS (
+  SELECT 1
+  FROM sys.foreign_key_columns fkc
+  JOIN sys.columns pc ON pc.object_id = fkc.parent_object_id AND pc.column_id = fkc.parent_column_id
+  JOIN sys.columns rc ON rc.object_id = fkc.referenced_object_id AND rc.column_id = fkc.referenced_column_id
+  WHERE fkc.parent_object_id = OBJECT_ID('dbo.Announcements')
+    AND fkc.referenced_object_id = OBJECT_ID('dbo.[User]')
+    AND pc.name = 'UpdatedByUserId'
+    AND rc.name = 'Id'
+)
+  ALTER TABLE dbo.Announcements WITH CHECK ADD CONSTRAINT FK_Announcements_UpdatedByUser FOREIGN KEY (UpdatedByUserId) REFERENCES dbo.[User](Id);
+IF NOT EXISTS (
+  SELECT 1
+  FROM sys.foreign_key_columns fkc
+  JOIN sys.columns pc ON pc.object_id = fkc.parent_object_id AND pc.column_id = fkc.parent_column_id
+  JOIN sys.columns rc ON rc.object_id = fkc.referenced_object_id AND rc.column_id = fkc.referenced_column_id
+  WHERE fkc.parent_object_id = OBJECT_ID('dbo.Announcements')
+    AND fkc.referenced_object_id = OBJECT_ID('dbo.[User]')
+    AND pc.name = 'DeletedByUserId'
+    AND rc.name = 'Id'
+)
+  ALTER TABLE dbo.Announcements WITH CHECK ADD CONSTRAINT FK_Announcements_DeletedByUser FOREIGN KEY (DeletedByUserId) REFERENCES dbo.[User](Id);
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_Announcements_IsDeleted_CreatedAtUtc' AND object_id = OBJECT_ID('dbo.Announcements'))
+  CREATE INDEX IX_Announcements_IsDeleted_CreatedAtUtc ON dbo.Announcements(IsDeleted, CreatedAtUtc DESC, AnnouncementId DESC);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_Announcements_CreatedAtUtc' AND object_id = OBJECT_ID('dbo.Announcements'))
+  CREATE INDEX IX_Announcements_CreatedAtUtc ON dbo.Announcements(CreatedAtUtc DESC, AnnouncementId DESC);
+
+IF OBJECT_ID('dbo.AnnouncementReads','U') IS NULL
+BEGIN
+  CREATE TABLE dbo.AnnouncementReads(
+    AnnouncementReadId bigint IDENTITY(1,1) NOT NULL PRIMARY KEY,
+    AnnouncementId bigint NOT NULL,
+    UserId int NOT NULL,
+    ReadAtUtc datetime2(3) NOT NULL CONSTRAINT DF_AnnouncementReads_ReadAtUtc DEFAULT SYSUTCDATETIME()
+  );
+END;
+IF COL_LENGTH('dbo.AnnouncementReads', 'AnnouncementId') IS NULL
+  ALTER TABLE dbo.AnnouncementReads ADD AnnouncementId bigint NOT NULL CONSTRAINT DF_AnnouncementReads_AnnouncementId_Alt DEFAULT(0);
+IF COL_LENGTH('dbo.AnnouncementReads', 'UserId') IS NULL
+  ALTER TABLE dbo.AnnouncementReads ADD UserId int NOT NULL CONSTRAINT DF_AnnouncementReads_UserId_Alt DEFAULT(0);
+IF COL_LENGTH('dbo.AnnouncementReads', 'ReadAtUtc') IS NULL
+  ALTER TABLE dbo.AnnouncementReads ADD ReadAtUtc datetime2(3) NOT NULL CONSTRAINT DF_AnnouncementReads_ReadAtUtc_Alt DEFAULT SYSUTCDATETIME();
+
+IF NOT EXISTS (
+  SELECT 1
+  FROM sys.foreign_key_columns fkc
+  JOIN sys.columns pc ON pc.object_id = fkc.parent_object_id AND pc.column_id = fkc.parent_column_id
+  JOIN sys.columns rc ON rc.object_id = fkc.referenced_object_id AND rc.column_id = fkc.referenced_column_id
+  WHERE fkc.parent_object_id = OBJECT_ID('dbo.AnnouncementReads')
+    AND fkc.referenced_object_id = OBJECT_ID('dbo.Announcements')
+    AND pc.name = 'AnnouncementId'
+    AND rc.name = 'AnnouncementId'
+)
+  ALTER TABLE dbo.AnnouncementReads WITH CHECK ADD CONSTRAINT FK_AnnouncementReads_Announcements FOREIGN KEY (AnnouncementId) REFERENCES dbo.Announcements(AnnouncementId) ON DELETE CASCADE;
+IF NOT EXISTS (
+  SELECT 1
+  FROM sys.foreign_key_columns fkc
+  JOIN sys.columns pc ON pc.object_id = fkc.parent_object_id AND pc.column_id = fkc.parent_column_id
+  JOIN sys.columns rc ON rc.object_id = fkc.referenced_object_id AND rc.column_id = fkc.referenced_column_id
+  WHERE fkc.parent_object_id = OBJECT_ID('dbo.AnnouncementReads')
+    AND fkc.referenced_object_id = OBJECT_ID('dbo.[User]')
+    AND pc.name = 'UserId'
+    AND rc.name = 'Id'
+)
+  ALTER TABLE dbo.AnnouncementReads WITH CHECK ADD CONSTRAINT FK_AnnouncementReads_User FOREIGN KEY (UserId) REFERENCES dbo.[User](Id) ON DELETE CASCADE;
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='UX_AnnouncementReads_UserId_AnnouncementId' AND object_id = OBJECT_ID('dbo.AnnouncementReads'))
+  CREATE UNIQUE INDEX UX_AnnouncementReads_UserId_AnnouncementId ON dbo.AnnouncementReads(UserId, AnnouncementId);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_AnnouncementReads_AnnouncementId_ReadAtUtc' AND object_id = OBJECT_ID('dbo.AnnouncementReads'))
+  CREATE INDEX IX_AnnouncementReads_AnnouncementId_ReadAtUtc ON dbo.AnnouncementReads(AnnouncementId, ReadAtUtc DESC);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_AnnouncementReads_UserId_ReadAtUtc' AND object_id = OBJECT_ID('dbo.AnnouncementReads'))
+  CREATE INDEX IX_AnnouncementReads_UserId_ReadAtUtc ON dbo.AnnouncementReads(UserId, ReadAtUtc DESC);
+
 IF OBJECT_ID('dbo.EmailTemplate','U') IS NULL
 BEGIN
   CREATE TABLE dbo.EmailTemplate(

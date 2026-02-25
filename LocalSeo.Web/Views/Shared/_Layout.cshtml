@@ -1,5 +1,6 @@
 @inject LocalSeo.Web.Services.IUserRepository UserRepository
 @inject LocalSeo.Web.Services.IAvatarResolver AvatarResolver
+@inject LocalSeo.Web.Services.IAnnouncementService AnnouncementService
 @{
     var isAuthenticated = User.Identity?.IsAuthenticated == true;
     var isAdmin = User.HasClaim(LocalSeo.Web.Services.AuthClaimTypes.IsAdmin, "true");
@@ -10,28 +11,30 @@
     LocalSeo.Web.Models.UserRecord? topbarUser = null;
     var topbarDisplayName = User.Identity?.Name ?? "User";
     var topbarAvatar = AvatarResolver.Resolve(null, 40);
+    int? currentUserId = null;
+    var announcementUnreadCount = 0;
 
     if (isAuthenticated)
     {
+        var userIdRaw = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (int.TryParse(userIdRaw, out var parsedUserId) && parsedUserId > 0)
+            currentUserId = parsedUserId;
+
         if (Context.Items.TryGetValue("CurrentUserRecord", out var currentUserObject)
             && currentUserObject is LocalSeo.Web.Models.UserRecord resolvedUser)
         {
             topbarUser = resolvedUser;
             isDarkMode = resolvedUser.IsDarkMode;
         }
-        else
+        else if (currentUserId.HasValue)
         {
-            var userIdRaw = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
-            if (int.TryParse(userIdRaw, out var userId) && userId > 0)
+            try
             {
-                try
-                {
-                    topbarUser = await UserRepository.GetByIdAsync(userId, Context.RequestAborted);
-                }
-                catch
-                {
-                    // Keep rendering even if user lookup fails.
-                }
+                topbarUser = await UserRepository.GetByIdAsync(currentUserId.Value, Context.RequestAborted);
+            }
+            catch
+            {
+                // Keep rendering even if user lookup fails.
             }
         }
 
@@ -39,6 +42,18 @@
         {
             topbarDisplayName = $"{topbarUser.FirstName} {topbarUser.LastName}".Trim();
             topbarAvatar = AvatarResolver.Resolve(topbarUser, 40);
+        }
+
+        if (currentUserId.HasValue)
+        {
+            try
+            {
+                announcementUnreadCount = await AnnouncementService.GetUnreadCountAsync(currentUserId.Value, Context.RequestAborted);
+            }
+            catch
+            {
+                // Keep rendering if announcement count lookup fails.
+            }
         }
     }
     else
@@ -65,6 +80,7 @@
         ["settings"] = "Settings",
         ["logs"] = "Logs",
         ["errors"] = "Errors",
+        ["announcements"] = "Announcements",
         ["login-log"] = "Login Log",
         ["emails"] = "Emails",
         ["email-templates"] = "Email Templates",
@@ -163,6 +179,18 @@
                 <div class="topbar-main">
                     <h1 class="topbar-title">@pageTitle</h1>
                     <div class="topbar-actions">
+                        <button type="button"
+                                id="announcements-bell-button"
+                                class="topbar-icon-button announcements-bell-button @(announcementUnreadCount > 0 ? "has-unread" : null)"
+                                data-announcements-unread-count="@announcementUnreadCount"
+                                aria-label="Open announcements"
+                                title="Announcements">
+                            <i class="bi bi-bell"></i>
+                            <span id="announcements-unread-badge" class="announcements-unread-badge @(announcementUnreadCount > 0 ? null : "is-hidden")">@announcementUnreadCount</span>
+                        </button>
+                        <form id="announcements-antiforgery-form" class="is-hidden" method="post" action="/announcements/mark-read">
+                            @Html.AntiForgeryToken()
+                        </form>
                         <details class="avatar-menu">
                             <summary class="avatar-menu-toggle" aria-label="Open user menu">
                                 @if (!string.IsNullOrWhiteSpace(topbarAvatar.ImageUrl))
@@ -230,6 +258,31 @@
             </main>
         </div>
     </div>
+
+    <div id="announcements-modal-overlay" class="financial-modal-overlay is-hidden" aria-hidden="true">
+        <div class="financial-modal-card announcements-modal-card" role="dialog" aria-modal="true" aria-labelledby="announcements-modal-title">
+            <div class="financial-modal-header">
+                <h3 id="announcements-modal-title">Announcements</h3>
+                <button type="button" class="btn btn-secondary" id="close-announcements-modal-button">Close</button>
+            </div>
+            <div class="announcements-modal-meta">
+                <span id="announcements-modal-mode" class="muted">Loading...</span>
+                <span id="announcements-modal-position" class="muted"></span>
+            </div>
+            <section id="announcements-modal-empty" class="announcement-modal-empty is-hidden">
+                <p class="muted">No announcements are available right now.</p>
+            </section>
+            <article id="announcements-modal-item" class="announcement-modal-item is-hidden">
+                <h4 id="announcements-modal-item-title" class="announcement-modal-title"></h4>
+                <p id="announcements-modal-item-meta" class="muted"></p>
+                <div id="announcements-modal-item-body" class="announcement-body-html"></div>
+            </article>
+            <div class="toolbar announcements-modal-actions">
+                <button type="button" class="btn btn-secondary" id="announcements-modal-prev-button">Previous</button>
+                <button type="button" class="btn btn-secondary" id="announcements-modal-next-button">Next</button>
+            </div>
+        </div>
+    </div>
 }
 else
 {
@@ -240,5 +293,9 @@ else
 <script src="~/js/password-toggle.js" asp-append-version="true"></script>
 <script src="~/lib/tom-select/dist/js/tom-select.complete.min.js" asp-append-version="true"></script>
 <script src="~/js/site.js" asp-append-version="true"></script>
+@if (isAuthenticated)
+{
+    <script src="~/js/announcements.js" asp-append-version="true"></script>
+}
 </body>
 </html>

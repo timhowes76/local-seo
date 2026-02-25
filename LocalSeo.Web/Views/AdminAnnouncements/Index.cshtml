@@ -1,0 +1,83 @@
+@model AnnouncementAdminListViewModel
+@{
+    ViewData["Title"] = "Announcements";
+    var statusMessage = TempData["Status"] as string;
+}
+
+<div class="page-stack">
+    @if (!string.IsNullOrWhiteSpace(statusMessage))
+    {
+        <div class="notice">@statusMessage</div>
+    }
+
+    <section class="card">
+        <div class="toolbar">
+            <a href="/admin" class="btn btn-secondary">Back to Admin</a>
+            <a href="/admin/announcements/create" class="btn btn-primary">Create Announcement</a>
+        </div>
+    </section>
+
+    <section class="card">
+        <h2 class="card-title">Announcements</h2>
+        @if (Model.Rows.Count == 0)
+        {
+            <p class="muted">No announcements found.</p>
+        }
+        else
+        {
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Title</th>
+                            <th>Preview</th>
+                            <th>Created</th>
+                            <th>Created By</th>
+                            <th>Updated</th>
+                            <th>IsDeleted</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    @foreach (var row in Model.Rows)
+                    {
+                        <tr>
+                            <td>@row.Title</td>
+                            <td>@(string.IsNullOrWhiteSpace(row.BodyPreview) ? "N/A" : row.BodyPreview)</td>
+                            <td>@row.CreatedAtUtc.ToLocalTime().ToString("dd MMM yyyy HH:mm")</td>
+                            <td>
+                                @if (row.CreatedByUserId.HasValue && row.CreatedByUserId.Value > 0)
+                                {
+                                    <a href="/admin/users/@row.CreatedByUserId.Value">@(string.IsNullOrWhiteSpace(row.CreatedByName) ? $"User #{row.CreatedByUserId.Value}" : row.CreatedByName)</a>
+                                }
+                                else
+                                {
+                                    @(string.IsNullOrWhiteSpace(row.CreatedByName) ? "N/A" : row.CreatedByName)
+                                }
+                            </td>
+                            <td>@(row.UpdatedAtUtc.HasValue ? row.UpdatedAtUtc.Value.ToLocalTime().ToString("dd MMM yyyy HH:mm") : "N/A")</td>
+                            <td>@(row.IsDeleted ? "Yes" : "No")</td>
+                            <td>
+                                <div class="users-actions">
+                                    <a class="btn btn-secondary" href="/admin/announcements/@row.AnnouncementId">View</a>
+                                    @if (!row.IsDeleted)
+                                    {
+                                        <a class="btn btn-secondary" href="/admin/announcements/@row.AnnouncementId/edit">Edit</a>
+                                        <form method="post"
+                                              class="users-actions-form"
+                                              action="/admin/announcements/@row.AnnouncementId/delete"
+                                              onsubmit="return confirm('Soft delete this announcement?');">
+                                            @Html.AntiForgeryToken()
+                                            <button type="submit" class="btn btn-secondary">Delete</button>
+                                        </form>
+                                    }
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </section>
+</div>

@@ -1,0 +1,120 @@
+@model AnnouncementAdminDetailViewModel
+@{
+    ViewData["Title"] = $"Announcement #{Model.Announcement.AnnouncementId}";
+    var statusMessage = TempData["Status"] as string;
+    var row = Model.Announcement;
+}
+
+<div class="page-stack">
+    @if (!string.IsNullOrWhiteSpace(statusMessage))
+    {
+        <div class="notice">@statusMessage</div>
+    }
+
+    <section class="card">
+        <div class="toolbar">
+            <a href="/admin/announcements" class="btn btn-secondary">Back to Announcements</a>
+            @if (!row.IsDeleted)
+            {
+                <a href="/admin/announcements/@row.AnnouncementId/edit" class="btn btn-secondary">Edit</a>
+                <form method="post"
+                      action="/admin/announcements/@row.AnnouncementId/delete"
+                      onsubmit="return confirm('Soft delete this announcement?');">
+                    @Html.AntiForgeryToken()
+                    <button type="submit" class="btn btn-secondary">Delete</button>
+                </form>
+            }
+        </div>
+    </section>
+
+    <section class="card">
+        <h2 class="card-title">@row.Title</h2>
+        <dl class="details-grid">
+            <dt>Status</dt>
+            <dd>@(row.IsDeleted ? "Deleted" : "Active")</dd>
+            <dt>Created</dt>
+            <dd>@row.CreatedAtUtc.ToLocalTime().ToString("dd MMM yyyy HH:mm:ss")</dd>
+            <dt>Created By</dt>
+            <dd>
+                @if (row.CreatedByUserId.HasValue && row.CreatedByUserId.Value > 0)
+                {
+                    <a href="/admin/users/@row.CreatedByUserId.Value">@(string.IsNullOrWhiteSpace(row.CreatedByName) ? $"User #{row.CreatedByUserId.Value}" : row.CreatedByName)</a>
+                }
+                else
+                {
+                    @(string.IsNullOrWhiteSpace(row.CreatedByName) ? "N/A" : row.CreatedByName)
+                }
+                (@(string.IsNullOrWhiteSpace(row.CreatedByEmail) ? "N/A" : row.CreatedByEmail))
+            </dd>
+            <dt>Updated</dt>
+            <dd>@(row.UpdatedAtUtc.HasValue ? row.UpdatedAtUtc.Value.ToLocalTime().ToString("dd MMM yyyy HH:mm:ss") : "N/A")</dd>
+            <dt>Updated By</dt>
+            <dd>
+                @if (row.UpdatedByUserId.HasValue && row.UpdatedByUserId.Value > 0)
+                {
+                    <a href="/admin/users/@row.UpdatedByUserId.Value">@(string.IsNullOrWhiteSpace(row.UpdatedByName) ? $"User #{row.UpdatedByUserId.Value}" : row.UpdatedByName)</a>
+                }
+                else
+                {
+                    @(string.IsNullOrWhiteSpace(row.UpdatedByName) ? "N/A" : row.UpdatedByName)
+                }
+                (@(string.IsNullOrWhiteSpace(row.UpdatedByEmail) ? "N/A" : row.UpdatedByEmail))
+            </dd>
+            <dt>Deleted</dt>
+            <dd>@(row.DeletedAtUtc.HasValue ? row.DeletedAtUtc.Value.ToLocalTime().ToString("dd MMM yyyy HH:mm:ss") : "N/A")</dd>
+            <dt>Deleted By</dt>
+            <dd>
+                @if (row.DeletedByUserId.HasValue && row.DeletedByUserId.Value > 0)
+                {
+                    <a href="/admin/users/@row.DeletedByUserId.Value">@(string.IsNullOrWhiteSpace(row.DeletedByName) ? $"User #{row.DeletedByUserId.Value}" : row.DeletedByName)</a>
+                }
+                else
+                {
+                    @(string.IsNullOrWhiteSpace(row.DeletedByName) ? "N/A" : row.DeletedByName)
+                }
+                (@(string.IsNullOrWhiteSpace(row.DeletedByEmail) ? "N/A" : row.DeletedByEmail))
+            </dd>
+        </dl>
+    </section>
+
+    <section class="card">
+        <h2 class="card-title">Body</h2>
+        <div class="announcement-body-html">
+            @Html.Raw(row.BodyHtml)
+        </div>
+    </section>
+
+    <section class="card">
+        <h2 class="card-title">Read Log</h2>
+        <p class="muted">Read count: @Model.ReadCount</p>
+
+        @if (Model.ReadLogRows.Count == 0)
+        {
+            <p class="muted">No reads recorded yet.</p>
+        }
+        else
+        {
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>User</th>
+                            <th>Email</th>
+                            <th>Read At</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    @foreach (var read in Model.ReadLogRows)
+                    {
+                        <tr>
+                            <td><a href="/admin/users/@read.UserId">@read.UserName</a></td>
+                            <td>@(string.IsNullOrWhiteSpace(read.EmailAddress) ? "N/A" : read.EmailAddress)</td>
+                            <td>@read.ReadAtUtc.ToLocalTime().ToString("dd MMM yyyy HH:mm:ss")</td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </section>
+</div>

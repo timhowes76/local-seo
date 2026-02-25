@@ -1,0 +1,102 @@
+@model AnnouncementAdminEditViewModel
+@{
+    ViewData["Title"] = "Edit Announcement";
+    var statusMessage = TempData["Status"] as string;
+    var id = Model.Announcement.AnnouncementId ?? 0;
+}
+
+<div class="page-stack">
+    @if (!string.IsNullOrWhiteSpace(statusMessage))
+    {
+        <div class="notice">@statusMessage</div>
+    }
+    @if (!string.IsNullOrWhiteSpace(Model.Message))
+    {
+        <div class="notice">@Model.Message</div>
+    }
+
+    <section class="card">
+        <div class="toolbar">
+            <a href="/admin/announcements/@id" class="btn btn-secondary">Back to Announcement</a>
+            <a href="/admin/announcements" class="btn btn-secondary">Back to Announcements</a>
+        </div>
+    </section>
+
+    <section class="card">
+        <h2 class="card-title">Edit Announcement</h2>
+        <form method="post" action="/admin/announcements/@id/edit" class="form-grid">
+            @Html.AntiForgeryToken()
+
+            <label for="announcement-title">Title</label>
+            <input id="announcement-title" name="Title" type="text" maxlength="200" value="@Model.Announcement.Title" required />
+
+            <label for="announcement-body">Body HTML</label>
+            <div class="wysiwyg-wrap js-announcement-wysiwyg">
+                <div class="wysiwyg-toolbar">
+                    <button type="button" class="btn btn-secondary" data-cmd="bold"><strong>B</strong></button>
+                    <button type="button" class="btn btn-secondary" data-cmd="italic"><em>I</em></button>
+                    <button type="button" class="btn btn-secondary" data-cmd="insertUnorderedList">Bullets</button>
+                    <button type="button" class="btn btn-secondary" data-cmd="insertOrderedList">Numbers</button>
+                    <button type="button" class="btn btn-secondary" data-block="H1">H1</button>
+                    <button type="button" class="btn btn-secondary" data-block="H2">H2</button>
+                    <button type="button" class="btn btn-secondary" data-block="H3">H3</button>
+                    <button type="button" class="btn btn-secondary" data-cmd="createLink">Link</button>
+                    <button type="button" class="btn btn-secondary" data-cmd="removeFormat">Clear</button>
+                </div>
+                <div id="announcement-body-editor" class="wysiwyg-editor" contenteditable="true"></div>
+                <textarea id="announcement-body" name="BodyHtml" rows="14" class="wysiwyg-source" required>@Model.Announcement.BodyHtml</textarea>
+                <p class="muted">Allowed tags: p, br, ul, ol, li, strong, em, a, h1-h3.</p>
+            </div>
+
+            <div class="toolbar">
+                <button type="submit" class="btn btn-primary">Save Announcement</button>
+                <a class="btn btn-secondary" href="/admin/announcements/@id">Cancel</a>
+            </div>
+        </form>
+    </section>
+</div>
+
+<script>
+(() => {
+    const container = document.querySelector('.js-announcement-wysiwyg');
+    if (!container) return;
+    const editor = container.querySelector('.wysiwyg-editor');
+    const source = container.querySelector('.wysiwyg-source');
+    if (!editor || !source) return;
+
+    editor.innerHTML = source.value || '';
+    const sync = () => { source.value = editor.innerHTML; };
+
+    container.querySelectorAll('[data-cmd]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const cmd = btn.getAttribute('data-cmd');
+            if (!cmd) return;
+
+            if (cmd === 'createLink') {
+                const url = window.prompt('Enter the URL');
+                if (!url) return;
+                document.execCommand(cmd, false, url.trim());
+            } else {
+                document.execCommand(cmd, false, null);
+            }
+
+            sync();
+            editor.focus();
+        });
+    });
+
+    container.querySelectorAll('[data-block]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const blockTag = btn.getAttribute('data-block');
+            if (!blockTag) return;
+            document.execCommand('formatBlock', false, blockTag);
+            sync();
+            editor.focus();
+        });
+    });
+
+    editor.addEventListener('input', sync);
+    const form = container.closest('form');
+    if (form) form.addEventListener('submit', sync);
+})();
+</script>
