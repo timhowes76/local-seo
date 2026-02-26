@@ -91,6 +91,39 @@ IF NOT EXISTS (
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_ApiStatusCheckResult_DefinitionId_CheckedUtc' AND object_id=OBJECT_ID('dbo.ApiStatusCheckResult'))
   CREATE INDEX IX_ApiStatusCheckResult_DefinitionId_CheckedUtc ON dbo.ApiStatusCheckResult(DefinitionId, CheckedUtc DESC) INCLUDE([Status], LatencyMs, [Message]);
 
+IF OBJECT_ID('dbo.ExternalApiHealth','U') IS NULL
+BEGIN
+  CREATE TABLE dbo.ExternalApiHealth(
+    Id int IDENTITY(1,1) NOT NULL PRIMARY KEY,
+    [Name] nvarchar(64) NOT NULL,
+    IsUp bit NOT NULL CONSTRAINT DF_ExternalApiHealth_IsUp DEFAULT(0),
+    IsDegraded bit NOT NULL CONSTRAINT DF_ExternalApiHealth_IsDegraded DEFAULT(0),
+    CheckedAtUtc datetime2(3) NOT NULL CONSTRAINT DF_ExternalApiHealth_CheckedAtUtc DEFAULT SYSUTCDATETIME(),
+    LatencyMs int NOT NULL CONSTRAINT DF_ExternalApiHealth_LatencyMs DEFAULT(0),
+    EndpointCalled nvarchar(256) NOT NULL CONSTRAINT DF_ExternalApiHealth_EndpointCalled DEFAULT(N''),
+    HttpStatusCode int NULL,
+    [Error] nvarchar(512) NULL
+  );
+END;
+IF COL_LENGTH('dbo.ExternalApiHealth', 'Name') IS NULL
+  ALTER TABLE dbo.ExternalApiHealth ADD [Name] nvarchar(64) NOT NULL CONSTRAINT DF_ExternalApiHealth_Name_Alt DEFAULT(N'');
+IF COL_LENGTH('dbo.ExternalApiHealth', 'IsUp') IS NULL
+  ALTER TABLE dbo.ExternalApiHealth ADD IsUp bit NOT NULL CONSTRAINT DF_ExternalApiHealth_IsUp_Alt DEFAULT(0);
+IF COL_LENGTH('dbo.ExternalApiHealth', 'IsDegraded') IS NULL
+  ALTER TABLE dbo.ExternalApiHealth ADD IsDegraded bit NOT NULL CONSTRAINT DF_ExternalApiHealth_IsDegraded_Alt DEFAULT(0);
+IF COL_LENGTH('dbo.ExternalApiHealth', 'CheckedAtUtc') IS NULL
+  ALTER TABLE dbo.ExternalApiHealth ADD CheckedAtUtc datetime2(3) NOT NULL CONSTRAINT DF_ExternalApiHealth_CheckedAtUtc_Alt DEFAULT SYSUTCDATETIME();
+IF COL_LENGTH('dbo.ExternalApiHealth', 'LatencyMs') IS NULL
+  ALTER TABLE dbo.ExternalApiHealth ADD LatencyMs int NOT NULL CONSTRAINT DF_ExternalApiHealth_LatencyMs_Alt DEFAULT(0);
+IF COL_LENGTH('dbo.ExternalApiHealth', 'EndpointCalled') IS NULL
+  ALTER TABLE dbo.ExternalApiHealth ADD EndpointCalled nvarchar(256) NOT NULL CONSTRAINT DF_ExternalApiHealth_EndpointCalled_Alt DEFAULT(N'');
+IF COL_LENGTH('dbo.ExternalApiHealth', 'HttpStatusCode') IS NULL
+  ALTER TABLE dbo.ExternalApiHealth ADD HttpStatusCode int NULL;
+IF COL_LENGTH('dbo.ExternalApiHealth', 'Error') IS NULL
+  ALTER TABLE dbo.ExternalApiHealth ADD [Error] nvarchar(512) NULL;
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='UX_ExternalApiHealth_Name' AND object_id=OBJECT_ID('dbo.ExternalApiHealth'))
+  CREATE UNIQUE INDEX UX_ExternalApiHealth_Name ON dbo.ExternalApiHealth([Name]);
+
 IF OBJECT_ID('dbo.SearchRun','U') IS NULL
 BEGIN
   CREATE TABLE dbo.SearchRun(

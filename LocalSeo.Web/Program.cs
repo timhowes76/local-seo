@@ -12,6 +12,21 @@ using Microsoft.Extensions.DependencyInjection;
 using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
+var contentRootPath = builder.Environment.ContentRootPath;
+builder.Configuration.AddUserSecrets<Program>(optional: true, reloadOnChange: true);
+
+string ResolveContentRootPath(string? configuredPath)
+{
+    var raw = (configuredPath ?? string.Empty).Trim();
+    if (raw.Length == 0)
+        return string.Empty;
+
+    var normalized = raw.Replace("{ContentRoot}", contentRootPath, StringComparison.OrdinalIgnoreCase);
+    if (Path.IsPathRooted(normalized))
+        return Path.GetFullPath(normalized);
+
+    return Path.GetFullPath(Path.Combine(contentRootPath, normalized));
+}
 
 builder.Host.UseSerilog((ctx, lc) => lc
     .ReadFrom.Configuration(ctx.Configuration)
@@ -32,6 +47,37 @@ builder.Services.Configure<EmailTemplatePathOptions>(builder.Configuration.GetSe
 builder.Services.Configure<BrandSettings>(builder.Configuration.GetSection("Brand"));
 builder.Services.Configure<ReportsOptions>(builder.Configuration.GetSection("Reports"));
 builder.Services.Configure<OpenAiOptions>(builder.Configuration.GetSection("OpenAi"));
+builder.Services.AddOptions<AzureMapsOptions>()
+    .Bind(builder.Configuration.GetSection("Integrations:AzureMaps"))
+    .Validate(options => !string.IsNullOrWhiteSpace(options.PrimaryKey), "Integrations:AzureMaps:PrimaryKey is required.")
+    .Validate(options => !string.IsNullOrWhiteSpace(options.SecondaryKey), "Integrations:AzureMaps:SecondaryKey is required.")
+    .ValidateOnStart();
+builder.Services.AddOptions<AppleMapsOptions>()
+    .Bind(builder.Configuration.GetSection("Integrations:AppleMaps"))
+    .PostConfigure(options =>
+    {
+        options.TeamId = (options.TeamId ?? string.Empty).Trim();
+        options.KeyId = (options.KeyId ?? string.Empty).Trim();
+        options.P8Path = ResolveContentRootPath(options.P8Path);
+    })
+    .Validate(options => !string.IsNullOrWhiteSpace(options.TeamId), "Integrations:AppleMaps:TeamId is required.")
+    .Validate(options => !string.IsNullOrWhiteSpace(options.KeyId), "Integrations:AppleMaps:KeyId is required.")
+    .Validate(options =>
+    {
+        if (string.IsNullOrWhiteSpace(options.P8Path) || !File.Exists(options.P8Path))
+            return false;
+
+        try
+        {
+            using var stream = File.Open(options.P8Path, FileMode.Open, FileAccess.Read, FileShare.Read);
+            return stream.CanRead;
+        }
+        catch
+        {
+            return false;
+        }
+    }, "Integrations:AppleMaps:P8Path must point to an existing readable .p8 file.")
+    .ValidateOnStart();
 
 builder.Services.AddControllersWithViews();
 builder.Services.AddHttpClient();
@@ -204,6 +250,8 @@ builder.Services.AddScoped<IAnnouncementService, AnnouncementService>();
 builder.Services.AddScoped<IApiStatusRepository, ApiStatusRepository>();
 builder.Services.AddScoped<IApiStatusCheckRunner, ApiStatusCheckRunner>();
 builder.Services.AddScoped<IApiStatusService, ApiStatusService>();
+builder.Services.AddScoped<IExternalApiHealthRepository, ExternalApiHealthRepository>();
+builder.Services.AddScoped<IExternalApiHealthService, ExternalApiHealthService>();
 builder.Services.AddSingleton<IApiStatusLatestCache, ApiStatusLatestCache>();
 builder.Services.AddSingleton<IApiStatusRefreshRateLimiter, ApiStatusRefreshRateLimiter>();
 builder.Services.AddScoped<IApiStatusCheck, OpenAiConfiguredApiStatusCheck>();
@@ -212,7 +260,10 @@ builder.Services.AddScoped<IApiStatusCheck, GooglePlacesConfiguredApiStatusCheck
 builder.Services.AddScoped<IApiStatusCheck, GoogleOAuthApiStatusCheck>();
 builder.Services.AddScoped<IApiStatusCheck, SendGridProfileApiStatusCheck>();
 builder.Services.AddScoped<IApiStatusCheck, ZohoCrmPingApiStatusCheck>();
+builder.Services.AddSingleton<IExternalApiStatusChecker, AppleMapsStatusChecker>();
+builder.Services.AddSingleton<IExternalApiStatusChecker, AzureMapsStatusChecker>();
 builder.Services.AddHostedService<ApiStatusMonitorHostedService>();
+builder.Services.AddHostedService<ExternalApiHealthMonitorHostedService>();
 
 var app = builder.Build();
 
@@ -239,6 +290,16 @@ app.UseWhen(
 
 app.UseMiddleware<AppErrorLoggingMiddleware>();
 app.UseHttpsRedirection();
+app.Use(async (context, next) =>
+{
+    if (context.Request.Path.StartsWithSegments("/Private", StringComparison.OrdinalIgnoreCase))
+    {
+        context.Response.StatusCode = StatusCodes.Status404NotFound;
+        return;
+    }
+
+    await next();
+});
 app.UseStaticFiles();
 
 app.UseRouting();

@@ -55,6 +55,37 @@
     {
         return row.Key.Equals("dataforseo.appendix.status", StringComparison.OrdinalIgnoreCase);
     }
+
+    string ExternalStatusCss(ExternalApiHealthWidgetModel row)
+    {
+        if (!row.HasData)
+            return "status-nodata";
+        if (row.IsUp)
+            return "status-healthy";
+        if (row.IsDegraded)
+            return "status-pending";
+        return "status-error";
+    }
+
+    string ExternalStatusLabel(ExternalApiHealthWidgetModel row)
+    {
+        if (!row.HasData)
+            return "Unknown";
+        if (row.IsUp)
+            return "Up";
+        if (row.IsDegraded)
+            return "Degraded";
+        return "Down";
+    }
+
+    string Truncate(string? value, int maxLength = 160)
+    {
+        var text = (value ?? string.Empty).Trim();
+        if (text.Length == 0)
+            return "None";
+
+        return text.Length <= maxLength ? text : text[..maxLength] + "...";
+    }
 }
 
 <div class="page-stack">
@@ -129,13 +160,41 @@
             <span id="api-status-refresh-message" class="muted" aria-live="polite"></span>
         </div>
 
-        @if (Model.ApiStatusWidgets.Count == 0)
+        @if (Model.ApiStatusWidgets.Count == 0 && Model.ExternalApiHealthWidgets.Count == 0)
         {
             <p class="muted">No API status checks are configured yet.</p>
         }
         else
         {
             <div class="api-status-grid">
+            @foreach (var row in Model.ExternalApiHealthWidgets)
+            {
+                <article class="api-status-card">
+                    <div class="api-status-card-head">
+                        <h3>@row.Name</h3>
+                        <span class="status-pill @ExternalStatusCss(row)">@ExternalStatusLabel(row)</span>
+                    </div>
+                    <p class="muted">External Maps</p>
+                    <p class="api-status-card-meta">
+                        Checked:
+                        @if (row.CheckedAtUtc.HasValue)
+                        {
+                            <span title="@row.CheckedAtUtc.Value.ToString("yyyy-MM-dd HH:mm:ss 'UTC'")">@Relative(row.CheckedAtUtc)</span>
+                        }
+                        else
+                        {
+                            <span>Never</span>
+                        }
+                    </p>
+                    <p class="api-status-card-meta">Latency: @(row.LatencyMs.HasValue ? $"{row.LatencyMs.Value} ms" : "N/A")</p>
+                    <p class="api-status-card-message">
+                        @(string.IsNullOrWhiteSpace(row.LastError)
+                            ? $"HTTP: {(row.HttpStatusCode?.ToString() ?? "N/A")}"
+                            : $"Last error: {Truncate(row.LastError)}")
+                    </p>
+                </article>
+            }
+
             @foreach (var row in Model.ApiStatusWidgets)
             {
                 <article class="api-status-card">

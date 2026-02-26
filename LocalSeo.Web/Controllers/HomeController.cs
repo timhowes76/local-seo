@@ -7,7 +7,8 @@ namespace LocalSeo.Web.Controllers;
 
 public class HomeController(
     IDataForSeoAccountStatusService dataForSeoAccountStatusService,
-    IApiStatusService apiStatusService) : Controller
+    IApiStatusService apiStatusService,
+    IExternalApiHealthService externalApiHealthService) : Controller
 {
     private const string DataForSeoWidgetKey = "dataforseo.appendix.status";
     private const string DataForSeoWidgetDisplayName = "DataForSEO";
@@ -21,7 +22,13 @@ public class HomeController(
 
         var model = await dataForSeoAccountStatusService.GetDashboardAsync(ct);
         var apiStatusSnapshot = await apiStatusService.GetDashboardSnapshotAsync(ct);
-        model.ApiStatusRetrievedAtUtc = MaxUtc(model.RetrievedAtUtc, apiStatusSnapshot.RetrievedUtc);
+        model.ExternalApiHealthWidgets = await externalApiHealthService.GetDashboardWidgetsAsync(ct);
+        var externalRetrievedAtUtc = model.ExternalApiHealthWidgets
+            .Where(x => x.CheckedAtUtc.HasValue)
+            .Select(x => x.CheckedAtUtc!.Value)
+            .DefaultIfEmpty(DateTime.MinValue)
+            .Max();
+        model.ApiStatusRetrievedAtUtc = MaxUtc(MaxUtc(model.RetrievedAtUtc, apiStatusSnapshot.RetrievedUtc), externalRetrievedAtUtc);
         model.ApiStatusWidgets = BuildApiStatusWidgets(model.ApiStatuses, model.RetrievedAtUtc, apiStatusSnapshot.Widgets);
         return View(model);
     }
