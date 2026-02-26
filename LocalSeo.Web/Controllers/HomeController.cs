@@ -4,7 +4,9 @@ using LocalSeo.Web.Services;
 
 namespace LocalSeo.Web.Controllers;
 
-public class HomeController(IDataForSeoAccountStatusService dataForSeoAccountStatusService) : Controller
+public class HomeController(
+    IDataForSeoAccountStatusService dataForSeoAccountStatusService,
+    IApiStatusService apiStatusService) : Controller
 {
     [AllowAnonymous]
     public async Task<IActionResult> Index(CancellationToken ct)
@@ -13,6 +15,9 @@ public class HomeController(IDataForSeoAccountStatusService dataForSeoAccountSta
             return RedirectToAction("Index", "Login");
 
         var model = await dataForSeoAccountStatusService.GetDashboardAsync(ct);
+        var apiStatusSnapshot = await apiStatusService.GetDashboardSnapshotAsync(ct);
+        model.ApiStatusRetrievedAtUtc = apiStatusSnapshot.RetrievedUtc;
+        model.ApiStatusWidgets = apiStatusSnapshot.Widgets;
         return View(model);
     }
 

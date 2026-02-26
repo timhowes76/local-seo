@@ -1,6 +1,7 @@
 @model HomeDashboardViewModel
 @{
     ViewData["Title"] = "Home";
+
     string StatusCss(string? label)
     {
         var key = (label ?? string.Empty).Trim().ToLowerInvariant();
@@ -11,6 +12,43 @@
         if (key.Contains("error") || key.Contains("down") || key.Contains("unavailable"))
             return "status-error";
         return "status-nodata";
+    }
+
+    string ApiStatusCss(LocalSeo.Web.Services.ApiHealthStatus status)
+    {
+        return status switch
+        {
+            LocalSeo.Web.Services.ApiHealthStatus.Up => "status-healthy",
+            LocalSeo.Web.Services.ApiHealthStatus.Degraded => "status-pending",
+            LocalSeo.Web.Services.ApiHealthStatus.Down => "status-error",
+            _ => "status-nodata"
+        };
+    }
+
+    string ApiStatusLabel(LocalSeo.Web.Services.ApiHealthStatus status)
+    {
+        return status switch
+        {
+            LocalSeo.Web.Services.ApiHealthStatus.Up => "Up",
+            LocalSeo.Web.Services.ApiHealthStatus.Degraded => "Degraded",
+            LocalSeo.Web.Services.ApiHealthStatus.Down => "Down",
+            _ => "Unknown"
+        };
+    }
+
+    string Relative(DateTime? checkedUtc)
+    {
+        if (!checkedUtc.HasValue)
+            return "Never";
+
+        var span = DateTime.UtcNow - checkedUtc.Value;
+        if (span.TotalSeconds < 60)
+            return $"{Math.Max(1, (int)Math.Floor(span.TotalSeconds))}s ago";
+        if (span.TotalMinutes < 60)
+            return $"{Math.Max(1, (int)Math.Floor(span.TotalMinutes))}m ago";
+        if (span.TotalHours < 24)
+            return $"{Math.Max(1, (int)Math.Floor(span.TotalHours))}h ago";
+        return $"{Math.Max(1, (int)Math.Floor(span.TotalDays))}d ago";
     }
 }
 
@@ -81,6 +119,61 @@
                 </a>
             }
         </p>
+    </section>
+
+    <section class="card">
+        <div class="card-header">
+            <h2 class="card-title">API Status</h2>
+            <span class="muted">
+                Updated
+                @(Model.ApiStatusRetrievedAtUtc > DateTime.MinValue
+                    ? Model.ApiStatusRetrievedAtUtc.ToString("dd MMM yyyy HH:mm")
+                    : "N/A")
+            </span>
+        </div>
+
+        <div class="toolbar api-status-toolbar">
+            <a href="/api-status">View details</a>
+            <button type="button" class="btn btn-secondary" id="api-status-refresh-button">Refresh now</button>
+            <span id="api-status-refresh-message" class="muted" aria-live="polite"></span>
+        </div>
+
+        @if (Model.ApiStatusWidgets.Count == 0)
+        {
+            <p class="muted">No API status checks are configured yet.</p>
+        }
+        else
+        {
+            <div class="api-status-grid">
+            @foreach (var row in Model.ApiStatusWidgets)
+            {
+                <article class="api-status-card">
+                    <div class="api-status-card-head">
+                        <h3>@row.DisplayName</h3>
+                        <span class="status-pill @ApiStatusCss(row.Status)">@ApiStatusLabel(row.Status)</span>
+                    </div>
+                    <p class="muted">@row.Category</p>
+                    <p class="api-status-card-meta">
+                        Checked:
+                        @if (row.CheckedUtc.HasValue)
+                        {
+                            <span title="@row.CheckedUtc.Value.ToString("yyyy-MM-dd HH:mm:ss 'UTC'")">@Relative(row.CheckedUtc)</span>
+                        }
+                        else
+                        {
+                            <span>Never</span>
+                        }
+                    </p>
+                    <p class="api-status-card-meta">Latency: @(row.LatencyMs.HasValue ? $"{row.LatencyMs.Value} ms" : "N/A")</p>
+                    <p class="api-status-card-message">@(string.IsNullOrWhiteSpace(row.Message) ? "No message." : row.Message)</p>
+                </article>
+            }
+            </div>
+        }
+
+        <form id="api-status-refresh-form" method="post" action="/api-status/refresh" class="is-hidden">
+            @Html.AntiForgeryToken()
+        </form>
     </section>
 </div>
 
@@ -158,3 +251,44 @@
         })();
     </script>
 }
+
+<script>
+    (() => {
+        const refreshButton = document.getElementById("api-status-refresh-button");
+        const refreshForm = document.getElementById("api-status-refresh-form");
+        const message = document.getElementById("api-status-refresh-message");
+        if (!refreshButton || !refreshForm || !message) return;
+
+        const tokenInput = refreshForm.querySelector("input[name='__RequestVerificationToken']");
+        if (!tokenInput) return;
+
+        refreshButton.addEventListener("click", async () => {
+            refreshButton.disabled = true;
+            const originalText = refreshButton.textContent;
+            refreshButton.textContent = "Refreshing...";
+            message.textContent = "";
+
+            try {
+                const response = await fetch("/api-status/refresh", {
+                    method: "POST",
+                    headers: {
+                        "RequestVerificationToken": tokenInput.value
+                    }
+                });
+
+                const payload = await response.json();
+                if (!response.ok || payload?.success !== true) {
+                    message.textContent = payload?.message || "Refresh failed.";
+                    return;
+                }
+
+                window.location.reload();
+            } catch {
+                message.textContent = "Refresh failed.";
+            } finally {
+                refreshButton.disabled = false;
+                refreshButton.textContent = originalText || "Refresh now";
+            }
+        });
+    })();
+</script>

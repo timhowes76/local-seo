@@ -1,0 +1,75 @@
+@model AdminApiStatusDefinitionsViewModel
+@{
+    ViewData["Title"] = "API Status Checks";
+    var statusMessage = TempData["Status"] as string;
+}
+
+<div class="page-stack">
+    @if (!string.IsNullOrWhiteSpace(statusMessage))
+    {
+        <div class="notice">@statusMessage</div>
+    }
+
+    <section class="card">
+        <div class="card-header">
+            <h2 class="card-title">API Status Checks</h2>
+            <a class="btn btn-secondary" href="/admin/settings">Back to Settings</a>
+        </div>
+        <p class="muted">Enable checks and configure polling/timeout thresholds.</p>
+
+        <form method="post" action="/admin/settings/api-status-checks">
+            @Html.AntiForgeryToken()
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Category</th>
+                            <th>Name</th>
+                            <th>Enabled</th>
+                            <th>Interval (s)</th>
+                            <th>Timeout (s)</th>
+                            <th>Degraded (ms)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    @for (var i = 0; i < Model.Rows.Count; i++)
+                    {
+                        <tr>
+                            <td>
+                                @Model.Rows[i].Category
+                                <input type="hidden" asp-for="Rows[i].Id" />
+                                <input type="hidden" asp-for="Rows[i].Key" />
+                                <input type="hidden" asp-for="Rows[i].DisplayName" />
+                                <input type="hidden" asp-for="Rows[i].Category" />
+                            </td>
+                            <td>
+                                <div>@Model.Rows[i].DisplayName</div>
+                                <div class="muted"><code>@Model.Rows[i].Key</code></div>
+                            </td>
+                            <td>
+                                <input asp-for="Rows[i].IsEnabled" type="checkbox" />
+                            </td>
+                            <td>
+                                <input asp-for="Rows[i].IntervalSeconds" type="number" min="5" max="86400" />
+                                <span asp-validation-for="Rows[i].IntervalSeconds" class="form-help form-help-error"></span>
+                            </td>
+                            <td>
+                                <input asp-for="Rows[i].TimeoutSeconds" type="number" min="1" max="120" />
+                                <span asp-validation-for="Rows[i].TimeoutSeconds" class="form-help form-help-error"></span>
+                            </td>
+                            <td>
+                                <input asp-for="Rows[i].DegradedThresholdMs" type="number" min="1" max="300000" />
+                                <span asp-validation-for="Rows[i].DegradedThresholdMs" class="form-help form-help-error"></span>
+                            </td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+            <div class="toolbar">
+                <button type="submit">Save</button>
+            </div>
+        </form>
+    </section>
+</div>
+

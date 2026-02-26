@@ -4,6 +4,7 @@ using LocalSeo.Web.Data;
 using LocalSeo.Web.Models;
 using LocalSeo.Web.Options;
 using LocalSeo.Web.Services;
+using LocalSeo.Web.Services.ApiStatusChecks;
 using TransactionalEmails = LocalSeo.Web.Services.TransactionalEmails;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -200,6 +201,18 @@ builder.Services.AddScoped<IAppErrorLogger, AppErrorLogger>();
 builder.Services.AddSingleton<IAnnouncementHtmlSanitizer, AnnouncementHtmlSanitizer>();
 builder.Services.AddScoped<IAnnouncementRepository, AnnouncementRepository>();
 builder.Services.AddScoped<IAnnouncementService, AnnouncementService>();
+builder.Services.AddScoped<IApiStatusRepository, ApiStatusRepository>();
+builder.Services.AddScoped<IApiStatusCheckRunner, ApiStatusCheckRunner>();
+builder.Services.AddScoped<IApiStatusService, ApiStatusService>();
+builder.Services.AddSingleton<IApiStatusLatestCache, ApiStatusLatestCache>();
+builder.Services.AddSingleton<IApiStatusRefreshRateLimiter, ApiStatusRefreshRateLimiter>();
+builder.Services.AddScoped<IApiStatusCheck, OpenAiConfiguredApiStatusCheck>();
+builder.Services.AddScoped<IApiStatusCheck, CompaniesHousePingApiStatusCheck>();
+builder.Services.AddScoped<IApiStatusCheck, GooglePlacesConfiguredApiStatusCheck>();
+builder.Services.AddScoped<IApiStatusCheck, GoogleOAuthApiStatusCheck>();
+builder.Services.AddScoped<IApiStatusCheck, SendGridProfileApiStatusCheck>();
+builder.Services.AddScoped<IApiStatusCheck, ZohoCrmPingApiStatusCheck>();
+builder.Services.AddHostedService<ApiStatusMonitorHostedService>();
 
 var app = builder.Build();
 
@@ -207,6 +220,9 @@ using (var scope = app.Services.CreateScope())
 {
     var bootstrapper = scope.ServiceProvider.GetRequiredService<DbBootstrapper>();
     await bootstrapper.EnsureSchemaAsync(CancellationToken.None);
+    var apiStatusService = scope.ServiceProvider.GetRequiredService<IApiStatusService>();
+    await apiStatusService.SeedDefinitionsAsync(CancellationToken.None);
+    await apiStatusService.WarmLatestCacheAsync(CancellationToken.None);
 }
 
 if (!app.Environment.IsDevelopment())

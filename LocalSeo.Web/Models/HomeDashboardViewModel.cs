@@ -2,11 +2,13 @@ namespace LocalSeo.Web.Models;
 
 public sealed class HomeDashboardViewModel
 {
-    public decimal? DataForSeoBalanceUsd { get; init; }
-    public string? DataForSeoBalanceDisplay { get; init; }
-    public string? AccountError { get; init; }
-    public DateTime RetrievedAtUtc { get; init; }
-    public IReadOnlyList<DataForSeoApiStatusRow> ApiStatuses { get; init; } = [];
+    public decimal? DataForSeoBalanceUsd { get; set; }
+    public string? DataForSeoBalanceDisplay { get; set; }
+    public string? AccountError { get; set; }
+    public DateTime RetrievedAtUtc { get; set; }
+    public IReadOnlyList<DataForSeoApiStatusRow> ApiStatuses { get; set; } = [];
+    public DateTime ApiStatusRetrievedAtUtc { get; set; }
+    public IReadOnlyList<ApiStatusWidgetModel> ApiStatusWidgets { get; set; } = [];
 }
 
 public sealed record DataForSeoApiStatusRow(
