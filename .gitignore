@@ -13,3 +13,4 @@ _tmp/
 _test_tmp/
 **/_test_tmp/
 **/artifacts/
+/Private/*

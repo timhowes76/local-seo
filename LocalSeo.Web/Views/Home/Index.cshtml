@@ -50,6 +50,11 @@
             return $"{Math.Max(1, (int)Math.Floor(span.TotalHours))}h ago";
         return $"{Math.Max(1, (int)Math.Floor(span.TotalDays))}d ago";
     }
+
+    bool IsDataForSeoWidget(ApiStatusWidgetModel row)
+    {
+        return row.Key.Equals("dataforseo.appendix.status", StringComparison.OrdinalIgnoreCase);
+    }
 }
 
 <div class="page-stack">
@@ -105,20 +110,6 @@
         {
             <p class="notice">@Model.AccountError</p>
         }
-
-        <p>
-            <strong>API Status:</strong>
-            @if (Model.ApiStatuses.Count == 0)
-            {
-                <span class="muted">No API status data available.</span>
-            }
-            else
-            {
-                <a href="#dataforseo-api-status-modal" id="open-dataforseo-api-status-modal-link">
-                    View all endpoint statuses (@Model.ApiStatuses.Count)
-                </a>
-            }
-        </p>
     </section>
 
     <section class="card">
@@ -166,6 +157,14 @@
                     </p>
                     <p class="api-status-card-meta">Latency: @(row.LatencyMs.HasValue ? $"{row.LatencyMs.Value} ms" : "N/A")</p>
                     <p class="api-status-card-message">@(string.IsNullOrWhiteSpace(row.Message) ? "No message." : row.Message)</p>
+                    @if (IsDataForSeoWidget(row) && Model.ApiStatuses.Count > 0)
+                    {
+                        <p class="api-status-card-meta">
+                            <a href="#dataforseo-api-status-modal" id="open-dataforseo-api-status-modal-link">
+                                View all endpoint statuses (@Model.ApiStatuses.Count)
+                            </a>
+                        </p>
+                    }
                 </article>
             }
             </div>

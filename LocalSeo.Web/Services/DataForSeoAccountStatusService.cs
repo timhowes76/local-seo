@@ -34,6 +34,15 @@ public sealed class DataForSeoAccountStatusService(
             return new HomeDashboardViewModel
             {
                 AccountError = "DataForSEO credentials are not configured.",
+                ApiStatuses =
+                [
+                    new DataForSeoApiStatusRow(
+                        "DataForSEO API",
+                        "Unavailable",
+                        "DataForSEO credentials are not configured.",
+                        null,
+                        null)
+                ],
                 RetrievedAtUtc = DateTime.UtcNow
             };
         }
@@ -43,14 +52,13 @@ public sealed class DataForSeoAccountStatusService(
 
         await Task.WhenAll(balanceTask, statusTask);
         var (balance, balanceError) = balanceTask.Result;
-        var (statuses, statusError) = statusTask.Result;
-        var combinedError = CombineErrors(balanceError, statusError);
+        var statuses = statusTask.Result;
 
         var vm = new HomeDashboardViewModel
         {
             DataForSeoBalanceUsd = balance,
             DataForSeoBalanceDisplay = balance.HasValue ? balance.Value.ToString("0.00", CultureInfo.InvariantCulture) : null,
-            AccountError = combinedError,
+            AccountError = balanceError,
             ApiStatuses = statuses,
             RetrievedAtUtc = DateTime.UtcNow
         };
@@ -100,7 +108,7 @@ public sealed class DataForSeoAccountStatusService(
         }
     }
 
-    private async Task<(IReadOnlyList<DataForSeoApiStatusRow> Statuses, string? Error)> GetStatusesAsync(DataForSeoOptions cfg, CancellationToken ct)
+    private async Task<IReadOnlyList<DataForSeoApiStatusRow>> GetStatusesAsync(DataForSeoOptions cfg, CancellationToken ct)
     {
         try
         {
@@ -111,7 +119,7 @@ public sealed class DataForSeoAccountStatusService(
             if (!response.IsSuccessStatusCode)
             {
                 var desc = GetStatusDescription((int)response.StatusCode, response.ReasonPhrase);
-                return ([new DataForSeoApiStatusRow("DataForSEO API", response.ReasonPhrase ?? "Error", desc, (int)response.StatusCode, response.ReasonPhrase)], null);
+                return [new DataForSeoApiStatusRow("DataForSEO API", response.ReasonPhrase ?? "Error", desc, (int)response.StatusCode, response.ReasonPhrase)];
             }
 
             using var doc = JsonDocument.Parse(body);
@@ -119,22 +127,13 @@ public sealed class DataForSeoAccountStatusService(
             if (rows.Count == 0)
                 rows.Add(new DataForSeoApiStatusRow("DataForSEO API", "Unknown", "The API response did not include a status payload.", null, null));
 
-            return (rows, null);
+            return rows;
         }
         catch (Exception ex) when (!ct.IsCancellationRequested)
         {
             logger.LogWarning(ex, "Failed to retrieve DataForSEO API status.");
-            return ([new DataForSeoApiStatusRow("DataForSEO API", "Unavailable", "Sorry, we could not retrieve DataForSEO status right now. Please try again later.", null, null)], null);
+            return [new DataForSeoApiStatusRow("DataForSEO API", "Unavailable", "Sorry, we could not retrieve DataForSEO status right now. Please try again later.", null, null)];
         }
-    }
-
-    private static string? CombineErrors(string? left, string? right)
-    {
-        if (string.IsNullOrWhiteSpace(left))
-            return right;
-        if (string.IsNullOrWhiteSpace(right))
-            return left;
-        return $"{left} {right}";
     }
 
     private static List<DataForSeoApiStatusRow> ParseStatusRows(JsonElement root)
