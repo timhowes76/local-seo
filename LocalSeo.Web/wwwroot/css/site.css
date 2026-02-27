@@ -978,6 +978,11 @@ button:disabled,
     background: var(--bg-subtle);
 }
 
+.overview-social-stack {
+    display: grid;
+    gap: 10px;
+}
+
 .overview-social {
     display: grid;
     gap: 10px;

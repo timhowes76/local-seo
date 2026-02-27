@@ -50,6 +50,12 @@
             </div>
 
             <div class="form-row">
+                <label for="AppleBingRefreshHours">Number of hours before attempting Apple/Bing collection</label>
+                <input id="AppleBingRefreshHours" name="AppleBingRefreshHours" type="number" min="0" step="1" value="@Model.AppleBingRefreshHours" />
+                @Html.ValidationMessage(nameof(Model.AppleBingRefreshHours))
+            </div>
+
+            <div class="form-row">
                 <label for="SearchVolumeRefreshCooldownDays">Search Volume Refresh Cooldown (Days)</label>
                 <input id="SearchVolumeRefreshCooldownDays" name="SearchVolumeRefreshCooldownDays" type="number" min="0" step="1" value="@Model.SearchVolumeRefreshCooldownDays" />
                 @Html.ValidationMessage(nameof(Model.SearchVolumeRefreshCooldownDays))

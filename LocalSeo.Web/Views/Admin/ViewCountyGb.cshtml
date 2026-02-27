@@ -69,6 +69,7 @@
                             <th>Get Google Updates</th>
                             <th>Get Google Question &amp; Answers</th>
                             <th>Get Google Social Profiles</th>
+                            <th>Get Apple/Bing</th>
                             <th>Ran</th>
                             <th>Details</th>
                         </tr>
@@ -86,6 +87,7 @@
                             <td><span class="status-pill @(r.FetchGoogleUpdates ? "status-healthy" : "status-noreviews")">@(r.FetchGoogleUpdates ? "Yes" : "No")</span></td>
                             <td><span class="status-pill @(r.FetchGoogleQuestionsAndAnswers ? "status-healthy" : "status-noreviews")">@(r.FetchGoogleQuestionsAndAnswers ? "Yes" : "No")</span></td>
                             <td><span class="status-pill @(r.FetchGoogleSocialProfiles ? "status-healthy" : "status-noreviews")">@(r.FetchGoogleSocialProfiles ? "Yes" : "No")</span></td>
+                            <td><span class="status-pill @(r.FetchAppleBing ? "status-healthy" : "status-noreviews")">@(r.FetchAppleBing ? "Yes" : "No")</span></td>
                             <td>@r.RanAtUtc</td>
                             <td><a href="/runs/@r.SearchRunId">View</a></td>
                         </tr>

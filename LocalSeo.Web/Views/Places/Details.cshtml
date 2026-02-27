@@ -258,6 +258,15 @@
         .Where(x => !string.IsNullOrWhiteSpace(x.Url))
         .Select(x => (Label: x.Label, Url: x.Url!, IconClass: x.IconClass))
         .ToList();
+    var mapProfiles = new (string Label, string? Url, string IconClass)[]
+    {
+        ("Apple Maps", !string.IsNullOrWhiteSpace(Model.AppleUrl) ? Model.AppleUrl : null, "bi-apple"),
+        ("Bing Maps", !string.IsNullOrWhiteSpace(Model.BingUrl) ? Model.BingUrl : null, "bi-bing")
+    };
+    var activeMapProfiles = mapProfiles
+        .Where(x => !string.IsNullOrWhiteSpace(x.Url))
+        .Select(x => (Label: x.Label, Url: x.Url!, IconClass: x.IconClass))
+        .ToList();
     var logoUrl = string.IsNullOrWhiteSpace(Model.LogoUrl) ? null : Model.LogoUrl;
     string? localLogoUrl = null;
     if (!string.IsNullOrWhiteSpace(logoUrl)
@@ -470,27 +479,51 @@
                     </div>
                 </div>
 
-                <div class="overview-social">
-                    <div class="overview-social-head">
-                        <h3>Social Media</h3>
-                        <a class="btn btn-secondary" href="@editSocialLinksUrl">Edit</a>
-                    </div>
-                    @if (activeSocialProfiles.Count == 0)
-                    {
-                        <p class="muted">No social media profiles found yet.</p>
-                    }
-                    else
-                    {
-                        <div class="social-links">
-                            @foreach (var social in activeSocialProfiles)
-                            {
-                                <a class="social-link-item" href="@social.Url" target="_blank" rel="noopener noreferrer">
-                                    <i class="bi @social.IconClass" aria-hidden="true"></i>
-                                    <span>@social.Label</span>
-                                </a>
-                            }
+                <div class="overview-social-stack">
+                    <div class="overview-social">
+                        <div class="overview-social-head">
+                            <h3>Social Media</h3>
+                            <a class="btn btn-secondary" href="@editSocialLinksUrl">Edit</a>
                         </div>
-                    }
+                        @if (activeSocialProfiles.Count == 0)
+                        {
+                            <p class="muted">No social media profiles found yet.</p>
+                        }
+                        else
+                        {
+                            <div class="social-links">
+                                @foreach (var social in activeSocialProfiles)
+                                {
+                                    <a class="social-link-item" href="@social.Url" target="_blank" rel="noopener noreferrer">
+                                        <i class="bi @social.IconClass" aria-hidden="true"></i>
+                                        <span>@social.Label</span>
+                                    </a>
+                                }
+                            </div>
+                        }
+                    </div>
+
+                    <div class="overview-social">
+                        <div class="overview-social-head">
+                            <h3>Map Listings</h3>
+                        </div>
+                        @if (activeMapProfiles.Count == 0)
+                        {
+                            <p class="muted">No Apple or Bing map links found yet.</p>
+                        }
+                        else
+                        {
+                            <div class="social-links">
+                                @foreach (var map in activeMapProfiles)
+                                {
+                                    <a class="social-link-item" href="@map.Url" target="_blank" rel="noopener noreferrer">
+                                        <i class="bi @map.IconClass" aria-hidden="true"></i>
+                                        <span>@map.Label</span>
+                                    </a>
+                                }
+                            </div>
+                        }
+                    </div>
                 </div>
             </div>
         </section>

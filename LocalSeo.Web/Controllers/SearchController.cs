@@ -47,6 +47,7 @@ public class SearchController(
                 model.FetchGoogleUpdates = run.FetchGoogleUpdates;
                 model.FetchGoogleQuestionsAndAnswers = run.FetchGoogleQuestionsAndAnswers;
                 model.FetchGoogleSocialProfiles = run.FetchGoogleSocialProfiles;
+                model.FetchAppleBing = run.FetchAppleBing;
                 model.RerunSourceRunId = run.SearchRunId;
             }
             else
@@ -247,7 +248,8 @@ public class SearchController(
             FetchGoogleReviews = existingRun.FetchGoogleReviews,
             FetchGoogleUpdates = existingRun.FetchGoogleUpdates,
             FetchGoogleQuestionsAndAnswers = existingRun.FetchGoogleQuestionsAndAnswers,
-            FetchGoogleSocialProfiles = existingRun.FetchGoogleSocialProfiles
+            FetchGoogleSocialProfiles = existingRun.FetchGoogleSocialProfiles,
+            FetchAppleBing = existingRun.FetchAppleBing
         }, ct);
 
         searchRunExecutor.EnsureRunning(queuedRunId);

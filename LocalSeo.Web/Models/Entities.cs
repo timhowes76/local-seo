@@ -16,6 +16,7 @@ public sealed record SearchRun(
     bool FetchGoogleUpdates,
     bool FetchGoogleQuestionsAndAnswers,
     bool FetchGoogleSocialProfiles,
+    bool FetchAppleBing,
     DateTime RanAtUtc);
 
 public sealed record SearchRunProgressSnapshot(
@@ -200,6 +201,10 @@ public sealed class PlaceDetailsViewModel
     public string? TikTokUrl { get; init; }
     public string? PinterestUrl { get; init; }
     public string? BlueskyUrl { get; init; }
+    public bool Apple { get; init; }
+    public bool Bing { get; init; }
+    public string? AppleUrl { get; init; }
+    public string? BingUrl { get; init; }
     public DateTime? OpeningDate { get; init; }
     public decimal? Lat { get; init; }
     public decimal? Lng { get; init; }
@@ -466,6 +471,7 @@ public sealed class SearchFormModel
     public bool FetchGoogleUpdates { get; set; }
     public bool FetchGoogleQuestionsAndAnswers { get; set; }
     public bool FetchGoogleSocialProfiles { get; set; }
+    public bool FetchAppleBing { get; set; }
     public IReadOnlyList<GoogleBusinessProfileCategoryLookupItem> CategoryOptions { get; set; } = [];
     public IReadOnlyList<GbCountyLookupItem> CountyOptions { get; set; } = [];
     public IReadOnlyList<GbTownLookupItem> TownOptions { get; set; } = [];
@@ -532,6 +538,7 @@ public sealed class AdminSettingsModel
     public int GoogleUpdatesRefreshHours { get; set; } = 24;
     public int GoogleQuestionsAndAnswersRefreshHours { get; set; } = 24;
     public int GoogleSocialProfilesRefreshHours { get; set; } = 24;
+    public int AppleBingRefreshHours { get; set; } = 24;
     public int SearchVolumeRefreshCooldownDays { get; set; } = 30;
     public int MaxSuggestedKeyphrases { get; set; } = 20;
     public string OpenAiApiKeyProtected { get; set; } = string.Empty;
@@ -610,6 +617,7 @@ public sealed class AdminDataCollectionWindowsSettingsModel
     public int GoogleUpdatesRefreshHours { get; set; } = 24;
     public int GoogleQuestionsAndAnswersRefreshHours { get; set; } = 24;
     public int GoogleSocialProfilesRefreshHours { get; set; } = 24;
+    public int AppleBingRefreshHours { get; set; } = 24;
     public int SearchVolumeRefreshCooldownDays { get; set; } = 30;
 }
 

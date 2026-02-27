@@ -106,6 +106,13 @@
                     </div>
                     <span class="run-summary-badge @(Model.Run.FetchGoogleSocialProfiles ? "is-on" : "is-off")">@(Model.Run.FetchGoogleSocialProfiles ? "Enabled" : "Disabled")</span>
                 </article>
+                <article class="run-summary-item">
+                    <div class="run-summary-item-head">
+                        <i class="bi bi-map run-summary-icon" aria-hidden="true"></i>
+                        <span class="run-summary-label">Apple/Bing</span>
+                    </div>
+                    <span class="run-summary-badge @(Model.Run.FetchAppleBing ? "is-on" : "is-off")">@(Model.Run.FetchAppleBing ? "Enabled" : "Disabled")</span>
+                </article>
             </div>
         </section>
         <section class="run-actions-grid">

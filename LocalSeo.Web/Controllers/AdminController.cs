@@ -137,6 +137,7 @@ public class AdminController(
             GoogleUpdatesRefreshHours = settings.GoogleUpdatesRefreshHours,
             GoogleQuestionsAndAnswersRefreshHours = settings.GoogleQuestionsAndAnswersRefreshHours,
             GoogleSocialProfilesRefreshHours = settings.GoogleSocialProfilesRefreshHours,
+            AppleBingRefreshHours = settings.AppleBingRefreshHours,
             SearchVolumeRefreshCooldownDays = settings.SearchVolumeRefreshCooldownDays
         });
     }
@@ -150,6 +151,7 @@ public class AdminController(
         ValidateNonNegative(nameof(model.GoogleUpdatesRefreshHours), model.GoogleUpdatesRefreshHours, "hours");
         ValidateNonNegative(nameof(model.GoogleQuestionsAndAnswersRefreshHours), model.GoogleQuestionsAndAnswersRefreshHours, "hours");
         ValidateNonNegative(nameof(model.GoogleSocialProfilesRefreshHours), model.GoogleSocialProfilesRefreshHours, "hours");
+        ValidateNonNegative(nameof(model.AppleBingRefreshHours), model.AppleBingRefreshHours, "hours");
         ValidateNonNegative(nameof(model.SearchVolumeRefreshCooldownDays), model.SearchVolumeRefreshCooldownDays, "days");
         if (!ModelState.IsValid)
             return View("SettingsDataCollectionWindows", model);
@@ -160,6 +162,7 @@ public class AdminController(
         settings.GoogleUpdatesRefreshHours = model.GoogleUpdatesRefreshHours;
         settings.GoogleQuestionsAndAnswersRefreshHours = model.GoogleQuestionsAndAnswersRefreshHours;
         settings.GoogleSocialProfilesRefreshHours = model.GoogleSocialProfilesRefreshHours;
+        settings.AppleBingRefreshHours = model.AppleBingRefreshHours;
         settings.SearchVolumeRefreshCooldownDays = model.SearchVolumeRefreshCooldownDays;
         await adminSettingsService.SaveAsync(settings, ct);
         TempData["Status"] = "Data collection window settings saved.";

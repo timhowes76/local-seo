@@ -162,16 +162,33 @@ public class PlacesController(
             return RedirectToAction(nameof(Details), new { id, runId });
         }
 
-        var place = await ingestionService.GetPlaceDetailsAsync(id, runId, ct);
-        if (place is null)
-            return NotFound();
-
-        var provider = reviewsProviderResolver.Resolve(out _);
         var fetchGoogleReviews = string.Equals(normalizedTaskType, "reviews", StringComparison.OrdinalIgnoreCase);
         var fetchMyBusinessInfo = string.Equals(normalizedTaskType, "my_business_info", StringComparison.OrdinalIgnoreCase);
         var fetchGoogleUpdates = string.Equals(normalizedTaskType, "my_business_updates", StringComparison.OrdinalIgnoreCase);
         var fetchGoogleQuestionsAndAnswers = string.Equals(normalizedTaskType, "questions_and_answers", StringComparison.OrdinalIgnoreCase);
         var fetchGoogleSocialProfiles = string.Equals(normalizedTaskType, "social_profiles", StringComparison.OrdinalIgnoreCase);
+        var fetchAppleBing = string.Equals(normalizedTaskType, "apple_bing", StringComparison.OrdinalIgnoreCase);
+
+        if (fetchAppleBing)
+        {
+            try
+            {
+                var message = await ingestionService.RefreshAppleBingForPlaceAsync(id, ct);
+                TempData["Status"] = $"Refresh requested for Apple/Bing. {message}";
+            }
+            catch (InvalidOperationException ex)
+            {
+                TempData["Status"] = ex.Message;
+            }
+
+            return RedirectToAction(nameof(Details), new { id, runId });
+        }
+
+        var place = await ingestionService.GetPlaceDetailsAsync(id, runId, ct);
+        if (place is null)
+            return NotFound();
+
+        var provider = reviewsProviderResolver.Resolve(out _);
 
         await provider.FetchAndStoreReviewsAsync(
             id,
@@ -193,6 +210,7 @@ public class PlacesController(
             "my_business_updates" => "Google Updates",
             "questions_and_answers" => "Google Question & Answers",
             "social_profiles" => "Social Profiles",
+            "apple_bing" => "Apple/Bing",
             _ => "Google Reviews"
         };
         TempData["Status"] = $"Refresh requested for {typeLabel}.";
@@ -211,6 +229,8 @@ public class PlacesController(
             return "questions_and_answers";
         if (string.Equals(taskType, "social_profiles", StringComparison.OrdinalIgnoreCase))
             return "social_profiles";
+        if (string.Equals(taskType, "apple_bing", StringComparison.OrdinalIgnoreCase))
+            return "apple_bing";
         if (string.Equals(taskType, "reviews", StringComparison.OrdinalIgnoreCase))
             return "reviews";
         return null;

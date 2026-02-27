@@ -139,6 +139,7 @@ BEGIN
     FetchGoogleUpdates bit NOT NULL CONSTRAINT DF_SearchRun_FetchGoogleUpdates DEFAULT(0),
     FetchGoogleQuestionsAndAnswers bit NOT NULL CONSTRAINT DF_SearchRun_FetchGoogleQuestionsAndAnswers DEFAULT(0),
     FetchGoogleSocialProfiles bit NOT NULL CONSTRAINT DF_SearchRun_FetchGoogleSocialProfiles DEFAULT(0),
+    FetchAppleBing bit NOT NULL CONSTRAINT DF_SearchRun_FetchAppleBing DEFAULT(0),
     [Status] nvarchar(20) NOT NULL CONSTRAINT DF_SearchRun_Status DEFAULT(N'Completed'),
     TotalApiCalls int NULL,
     CompletedApiCalls int NULL,
@@ -160,6 +161,8 @@ IF COL_LENGTH('dbo.SearchRun', 'FetchGoogleQuestionsAndAnswers') IS NULL
   ALTER TABLE dbo.SearchRun ADD FetchGoogleQuestionsAndAnswers bit NOT NULL CONSTRAINT DF_SearchRun_FetchGoogleQuestionsAndAnswers_Alt DEFAULT(0);
 IF COL_LENGTH('dbo.SearchRun', 'FetchGoogleSocialProfiles') IS NULL
   ALTER TABLE dbo.SearchRun ADD FetchGoogleSocialProfiles bit NOT NULL CONSTRAINT DF_SearchRun_FetchGoogleSocialProfiles_Alt DEFAULT(0);
+IF COL_LENGTH('dbo.SearchRun', 'FetchAppleBing') IS NULL
+  ALTER TABLE dbo.SearchRun ADD FetchAppleBing bit NOT NULL CONSTRAINT DF_SearchRun_FetchAppleBing_Alt DEFAULT(0);
 IF COL_LENGTH('dbo.SearchRun', 'Status') IS NULL
   ALTER TABLE dbo.SearchRun ADD [Status] nvarchar(20) NOT NULL CONSTRAINT DF_SearchRun_Status_Alt DEFAULT(N'Completed');
 IF COL_LENGTH('dbo.SearchRun', 'TotalApiCalls') IS NULL
@@ -306,6 +309,10 @@ BEGIN
     TikTokUrl nvarchar(1500) NULL,
     PinterestUrl nvarchar(1500) NULL,
     BlueskyUrl nvarchar(1500) NULL,
+    Apple bit NOT NULL CONSTRAINT DF_Place_Apple DEFAULT(0),
+    Bing bit NOT NULL CONSTRAINT DF_Place_Bing DEFAULT(0),
+    AppleUrl nvarchar(1500) NULL,
+    BingUrl nvarchar(1500) NULL,
     Description nvarchar(750) NULL,
     PhotoCount int NULL,
     QuestionAnswerCount int NULL,
@@ -352,6 +359,14 @@ IF COL_LENGTH('dbo.Place', 'PinterestUrl') IS NULL
   ALTER TABLE dbo.Place ADD PinterestUrl nvarchar(1500) NULL;
 IF COL_LENGTH('dbo.Place', 'BlueskyUrl') IS NULL
   ALTER TABLE dbo.Place ADD BlueskyUrl nvarchar(1500) NULL;
+IF COL_LENGTH('dbo.Place', 'Apple') IS NULL
+  ALTER TABLE dbo.Place ADD Apple bit NOT NULL CONSTRAINT DF_Place_Apple_Alt DEFAULT(0);
+IF COL_LENGTH('dbo.Place', 'Bing') IS NULL
+  ALTER TABLE dbo.Place ADD Bing bit NOT NULL CONSTRAINT DF_Place_Bing_Alt DEFAULT(0);
+IF COL_LENGTH('dbo.Place', 'AppleUrl') IS NULL
+  ALTER TABLE dbo.Place ADD AppleUrl nvarchar(1500) NULL;
+IF COL_LENGTH('dbo.Place', 'BingUrl') IS NULL
+  ALTER TABLE dbo.Place ADD BingUrl nvarchar(1500) NULL;
 IF COL_LENGTH('dbo.Place', 'Description') IS NULL
   ALTER TABLE dbo.Place ADD Description nvarchar(750) NULL;
 IF EXISTS (SELECT 1 FROM sys.columns WHERE object_id=OBJECT_ID('dbo.Place') AND name='Description' AND max_length <> 1500)
@@ -1044,6 +1059,7 @@ BEGIN
     GoogleUpdatesRefreshHours int NOT NULL CONSTRAINT DF_AppSettings_GoogleUpdatesRefreshHours DEFAULT(24),
     GoogleQuestionsAndAnswersRefreshHours int NOT NULL CONSTRAINT DF_AppSettings_GoogleQuestionsAndAnswersRefreshHours DEFAULT(24),
     GoogleSocialProfilesRefreshHours int NOT NULL CONSTRAINT DF_AppSettings_GoogleSocialProfilesRefreshHours DEFAULT(24),
+    AppleBingRefreshHours int NOT NULL CONSTRAINT DF_AppSettings_AppleBingRefreshHours DEFAULT(24),
     SearchVolumeRefreshCooldownDays int NOT NULL CONSTRAINT DF_AppSettings_SearchVolumeRefreshCooldownDays DEFAULT(30),
     MaxSuggestedKeyphrases int NOT NULL CONSTRAINT DF_AppSettings_MaxSuggestedKeyphrases DEFAULT(20),
     OpenAiApiKeyProtected nvarchar(max) NULL,
@@ -1103,6 +1119,8 @@ IF COL_LENGTH('dbo.AppSettings', 'GoogleQuestionsAndAnswersRefreshHours') IS NUL
   ALTER TABLE dbo.AppSettings ADD GoogleQuestionsAndAnswersRefreshHours int NOT NULL CONSTRAINT DF_AppSettings_GoogleQuestionsAndAnswersRefreshHours_Alt DEFAULT(24);
 IF COL_LENGTH('dbo.AppSettings', 'GoogleSocialProfilesRefreshHours') IS NULL
   ALTER TABLE dbo.AppSettings ADD GoogleSocialProfilesRefreshHours int NOT NULL CONSTRAINT DF_AppSettings_GoogleSocialProfilesRefreshHours_Alt DEFAULT(24);
+IF COL_LENGTH('dbo.AppSettings', 'AppleBingRefreshHours') IS NULL
+  ALTER TABLE dbo.AppSettings ADD AppleBingRefreshHours int NOT NULL CONSTRAINT DF_AppSettings_AppleBingRefreshHours_Alt DEFAULT(24);
 IF COL_LENGTH('dbo.AppSettings', 'SearchVolumeRefreshCooldownDays') IS NULL
   ALTER TABLE dbo.AppSettings ADD SearchVolumeRefreshCooldownDays int NOT NULL CONSTRAINT DF_AppSettings_SearchVolumeRefreshCooldownDays_Alt DEFAULT(30);
 IF COL_LENGTH('dbo.AppSettings', 'MaxSuggestedKeyphrases') IS NULL
@@ -1207,6 +1225,7 @@ WHEN MATCHED THEN UPDATE SET
   GoogleUpdatesRefreshHours = CASE WHEN target.GoogleUpdatesRefreshHours IS NULL OR target.GoogleUpdatesRefreshHours < 0 THEN 24 ELSE target.GoogleUpdatesRefreshHours END,
   GoogleQuestionsAndAnswersRefreshHours = CASE WHEN target.GoogleQuestionsAndAnswersRefreshHours IS NULL OR target.GoogleQuestionsAndAnswersRefreshHours < 0 THEN 24 ELSE target.GoogleQuestionsAndAnswersRefreshHours END,
   GoogleSocialProfilesRefreshHours = CASE WHEN target.GoogleSocialProfilesRefreshHours IS NULL OR target.GoogleSocialProfilesRefreshHours < 0 THEN 24 ELSE target.GoogleSocialProfilesRefreshHours END,
+  AppleBingRefreshHours = CASE WHEN target.AppleBingRefreshHours IS NULL OR target.AppleBingRefreshHours < 0 THEN 24 ELSE target.AppleBingRefreshHours END,
   SearchVolumeRefreshCooldownDays = CASE WHEN target.SearchVolumeRefreshCooldownDays IS NULL OR target.SearchVolumeRefreshCooldownDays < 0 THEN 30 ELSE target.SearchVolumeRefreshCooldownDays END,
   MaxSuggestedKeyphrases = CASE WHEN target.MaxSuggestedKeyphrases IS NULL OR target.MaxSuggestedKeyphrases < 5 THEN 20 WHEN target.MaxSuggestedKeyphrases > 100 THEN 100 ELSE target.MaxSuggestedKeyphrases END,
   OpenAiApiKeyProtected = CASE WHEN target.OpenAiApiKeyProtected IS NULL OR LEN(LTRIM(RTRIM(target.OpenAiApiKeyProtected))) = 0 THEN NULL ELSE target.OpenAiApiKeyProtected END,
@@ -1254,8 +1273,8 @@ WHEN MATCHED THEN UPDATE SET
   ChangePasswordOtpMaxAttempts = CASE WHEN target.ChangePasswordOtpMaxAttempts IS NULL OR target.ChangePasswordOtpMaxAttempts < 1 THEN 5 ELSE target.ChangePasswordOtpMaxAttempts END,
   ChangePasswordOtpLockMinutes = CASE WHEN target.ChangePasswordOtpLockMinutes IS NULL OR target.ChangePasswordOtpLockMinutes < 1 THEN 15 ELSE target.ChangePasswordOtpLockMinutes END
 WHEN NOT MATCHED THEN
-  INSERT(AppSettingsId, EnhancedGoogleDataRefreshHours, GoogleReviewsRefreshHours, GoogleUpdatesRefreshHours, GoogleQuestionsAndAnswersRefreshHours, GoogleSocialProfilesRefreshHours, SearchVolumeRefreshCooldownDays, MaxSuggestedKeyphrases, OpenAiApiKeyProtected, OpenAiModel, OpenAiTimeoutSeconds, MapPackClickSharePercent, MapPackCtrPosition1Percent, MapPackCtrPosition2Percent, MapPackCtrPosition3Percent, MapPackCtrPosition4Percent, MapPackCtrPosition5Percent, MapPackCtrPosition6Percent, MapPackCtrPosition7Percent, MapPackCtrPosition8Percent, MapPackCtrPosition9Percent, MapPackCtrPosition10Percent, ZohoLeadOwnerName, ZohoLeadOwnerId, ZohoLeadNextAction, SiteUrl, MinimumPasswordLength, PasswordRequiresNumber, PasswordRequiresCapitalLetter, PasswordRequiresSpecialCharacter, LoginLockoutThreshold, LoginLockoutMinutes, EmailCodeCooldownSeconds, EmailCodeMaxPerHourPerEmail, EmailCodeMaxPerHourPerIp, EmailCodeExpiryMinutes, EmailCodeMaxFailedAttemptsPerCode, InviteExpiryHours, InviteOtpExpiryMinutes, InviteOtpCooldownSeconds, InviteOtpMaxPerHourPerInvite, InviteOtpMaxPerHourPerIp, InviteOtpMaxAttempts, InviteOtpLockMinutes, InviteMaxAttempts, InviteLockMinutes, ChangePasswordOtpExpiryMinutes, ChangePasswordOtpCooldownSeconds, ChangePasswordOtpMaxPerHourPerUser, ChangePasswordOtpMaxPerHourPerIp, ChangePasswordOtpMaxAttempts, ChangePasswordOtpLockMinutes, UpdatedAtUtc)
-  VALUES(1, 24, 24, 24, 24, 24, 30, 20, NULL, N''gpt-4.1-mini'', 20, 50, 38, 23, 16, 7, 5, 4, 3, 2, 1, 1, N''Richard Howes'', N''1108404000000068001'', N''Make first contact'', N''https://briskly-viceless-kayleen.ngrok-free.dev/'', 12, 1, 1, 1, 5, 15, 60, 10, 50, 10, 5, 24, 10, 60, 3, 25, 5, 15, 10, 15, 10, 60, 3, 25, 5, 15, SYSUTCDATETIME());
+  INSERT(AppSettingsId, EnhancedGoogleDataRefreshHours, GoogleReviewsRefreshHours, GoogleUpdatesRefreshHours, GoogleQuestionsAndAnswersRefreshHours, GoogleSocialProfilesRefreshHours, AppleBingRefreshHours, SearchVolumeRefreshCooldownDays, MaxSuggestedKeyphrases, OpenAiApiKeyProtected, OpenAiModel, OpenAiTimeoutSeconds, MapPackClickSharePercent, MapPackCtrPosition1Percent, MapPackCtrPosition2Percent, MapPackCtrPosition3Percent, MapPackCtrPosition4Percent, MapPackCtrPosition5Percent, MapPackCtrPosition6Percent, MapPackCtrPosition7Percent, MapPackCtrPosition8Percent, MapPackCtrPosition9Percent, MapPackCtrPosition10Percent, ZohoLeadOwnerName, ZohoLeadOwnerId, ZohoLeadNextAction, SiteUrl, MinimumPasswordLength, PasswordRequiresNumber, PasswordRequiresCapitalLetter, PasswordRequiresSpecialCharacter, LoginLockoutThreshold, LoginLockoutMinutes, EmailCodeCooldownSeconds, EmailCodeMaxPerHourPerEmail, EmailCodeMaxPerHourPerIp, EmailCodeExpiryMinutes, EmailCodeMaxFailedAttemptsPerCode, InviteExpiryHours, InviteOtpExpiryMinutes, InviteOtpCooldownSeconds, InviteOtpMaxPerHourPerInvite, InviteOtpMaxPerHourPerIp, InviteOtpMaxAttempts, InviteOtpLockMinutes, InviteMaxAttempts, InviteLockMinutes, ChangePasswordOtpExpiryMinutes, ChangePasswordOtpCooldownSeconds, ChangePasswordOtpMaxPerHourPerUser, ChangePasswordOtpMaxPerHourPerIp, ChangePasswordOtpMaxAttempts, ChangePasswordOtpLockMinutes, UpdatedAtUtc)
+  VALUES(1, 24, 24, 24, 24, 24, 24, 30, 20, NULL, N''gpt-4.1-mini'', 20, 50, 38, 23, 16, 7, 5, 4, 3, 2, 1, 1, N''Richard Howes'', N''1108404000000068001'', N''Make first contact'', N''https://briskly-viceless-kayleen.ngrok-free.dev/'', 12, 1, 1, 1, 5, 15, 60, 10, 50, 10, 5, 24, 10, 60, 3, 25, 5, 15, 10, 15, 10, 60, 3, 25, 5, 15, SYSUTCDATETIME());
 ');
 IF OBJECT_ID('dbo.GoogleBusinessProfileCategory','U') IS NULL
 BEGIN
@@ -2432,6 +2451,41 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_AppError_ExceptionType_C
   CREATE INDEX IX_AppError_ExceptionType_CreatedUtc ON dbo.AppError(ExceptionType, CreatedUtc DESC);
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_AppError_StatusCode_CreatedUtc' AND object_id = OBJECT_ID('dbo.AppError'))
   CREATE INDEX IX_AppError_StatusCode_CreatedUtc ON dbo.AppError(StatusCode, CreatedUtc DESC);
+
+IF OBJECT_ID('dbo.AppleMapsLookupTrace','U') IS NULL
+BEGIN
+  CREATE TABLE dbo.AppleMapsLookupTrace(
+    AppleMapsLookupTraceId bigint IDENTITY(1,1) NOT NULL PRIMARY KEY,
+    CreatedAtUtc datetime2(3) NOT NULL CONSTRAINT DF_AppleMapsLookupTrace_CreatedAtUtc DEFAULT SYSUTCDATETIME(),
+    PlaceId nvarchar(255) NOT NULL,
+    QueryIndex int NOT NULL CONSTRAINT DF_AppleMapsLookupTrace_QueryIndex DEFAULT(1),
+    QueryText nvarchar(500) NOT NULL,
+    RequestUrl nvarchar(2000) NOT NULL,
+    HttpStatusCode int NULL,
+    ResponseJson nvarchar(max) NULL,
+    ErrorMessage nvarchar(2000) NULL
+  );
+END;
+IF COL_LENGTH('dbo.AppleMapsLookupTrace', 'CreatedAtUtc') IS NULL
+  ALTER TABLE dbo.AppleMapsLookupTrace ADD CreatedAtUtc datetime2(3) NOT NULL CONSTRAINT DF_AppleMapsLookupTrace_CreatedAtUtc_Alt DEFAULT SYSUTCDATETIME();
+IF COL_LENGTH('dbo.AppleMapsLookupTrace', 'PlaceId') IS NULL
+  ALTER TABLE dbo.AppleMapsLookupTrace ADD PlaceId nvarchar(255) NOT NULL CONSTRAINT DF_AppleMapsLookupTrace_PlaceId_Alt DEFAULT(N'');
+IF COL_LENGTH('dbo.AppleMapsLookupTrace', 'QueryIndex') IS NULL
+  ALTER TABLE dbo.AppleMapsLookupTrace ADD QueryIndex int NOT NULL CONSTRAINT DF_AppleMapsLookupTrace_QueryIndex_Alt DEFAULT(1);
+IF COL_LENGTH('dbo.AppleMapsLookupTrace', 'QueryText') IS NULL
+  ALTER TABLE dbo.AppleMapsLookupTrace ADD QueryText nvarchar(500) NOT NULL CONSTRAINT DF_AppleMapsLookupTrace_QueryText_Alt DEFAULT(N'');
+IF COL_LENGTH('dbo.AppleMapsLookupTrace', 'RequestUrl') IS NULL
+  ALTER TABLE dbo.AppleMapsLookupTrace ADD RequestUrl nvarchar(2000) NOT NULL CONSTRAINT DF_AppleMapsLookupTrace_RequestUrl_Alt DEFAULT(N'');
+IF COL_LENGTH('dbo.AppleMapsLookupTrace', 'HttpStatusCode') IS NULL
+  ALTER TABLE dbo.AppleMapsLookupTrace ADD HttpStatusCode int NULL;
+IF COL_LENGTH('dbo.AppleMapsLookupTrace', 'ResponseJson') IS NULL
+  ALTER TABLE dbo.AppleMapsLookupTrace ADD ResponseJson nvarchar(max) NULL;
+IF COL_LENGTH('dbo.AppleMapsLookupTrace', 'ErrorMessage') IS NULL
+  ALTER TABLE dbo.AppleMapsLookupTrace ADD ErrorMessage nvarchar(2000) NULL;
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_AppleMapsLookupTrace_Place_CreatedAt' AND object_id = OBJECT_ID('dbo.AppleMapsLookupTrace'))
+  CREATE INDEX IX_AppleMapsLookupTrace_Place_CreatedAt ON dbo.AppleMapsLookupTrace(PlaceId, CreatedAtUtc DESC, AppleMapsLookupTraceId DESC);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_AppleMapsLookupTrace_CreatedAt' AND object_id = OBJECT_ID('dbo.AppleMapsLookupTrace'))
+  CREATE INDEX IX_AppleMapsLookupTrace_CreatedAt ON dbo.AppleMapsLookupTrace(CreatedAtUtc DESC, AppleMapsLookupTraceId DESC);
 
 IF OBJECT_ID('dbo.Announcements','U') IS NULL
 BEGIN

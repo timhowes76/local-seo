@@ -19,6 +19,7 @@
                         <th>Get Google Updates</th>
                         <th>Get Google Question &amp; Answers</th>
                         <th>Get Social Profiles</th>
+                        <th>Get Apple/Bing</th>
                         <th>Ran</th>
                         <th>Details</th>
                     </tr>
@@ -73,6 +74,16 @@
                         </td>
                         <td>
                             @if (r.FetchGoogleSocialProfiles)
+                            {
+                                <span class="status-pill status-healthy">Yes</span>
+                            }
+                            else
+                            {
+                                <span class="status-pill status-noreviews">No</span>
+                            }
+                        </td>
+                        <td>
+                            @if (r.FetchAppleBing)
                             {
                                 <span class="status-pill status-healthy">Yes</span>
                             }

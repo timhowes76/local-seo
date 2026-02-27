@@ -191,6 +191,8 @@ builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IInviteService, InviteService>();
 builder.Services.AddScoped<IPasswordChangeService, PasswordChangeService>();
 builder.Services.AddScoped<IGooglePlacesClient, GooglePlacesClient>();
+builder.Services.AddScoped<IAppleMapsLookupTraceRepository, AppleMapsLookupTraceRepository>();
+builder.Services.AddScoped<IAppleBingMapLinksService, AppleBingMapLinksService>();
 builder.Services.AddScoped<ISearchIngestionService, SearchIngestionService>();
 builder.Services.AddSingleton<ISearchRunExecutor, SearchRunExecutor>();
 builder.Services.AddScoped<IAdminSettingsService, AdminSettingsService>();

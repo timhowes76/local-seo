@@ -26,12 +26,14 @@ public interface ISearchIngestionService
     Task<bool> UpdatePlaceSocialLinksAsync(PlaceSocialLinksEditModel model, CancellationToken ct);
     Task<bool> SavePlaceFinancialAsync(string placeId, PlaceFinancialInfoUpsert financialInfo, CancellationToken ct);
     Task<PlaceFinancialInfo?> GetPlaceFinancialAsync(string placeId, CancellationToken ct);
+    Task<string> RefreshAppleBingForPlaceAsync(string placeId, CancellationToken ct);
 }
 
 
 public sealed class SearchIngestionService(
     ISqlConnectionFactory connectionFactory,
     IGooglePlacesClient google,
+    IAppleBingMapLinksService appleBingMapLinksService,
     IOptions<PlacesOptions> placesOptions,
     IReviewsProviderResolver reviewsProviderResolver,
     DataForSeoReviewsProvider dataForSeoReviewsProvider,
@@ -39,6 +41,8 @@ public sealed class SearchIngestionService(
     IReviewVelocityService reviewVelocityService,
     ILogger<SearchIngestionService> logger) : ISearchIngestionService
 {
+    private const string AppleBingTaskType = "apple_bing";
+
     public async Task<long> RunAsync(SearchFormModel model, CancellationToken ct)
     {
         var normalizedCategoryId = (model.CategoryId ?? string.Empty).Trim();
@@ -156,9 +160,9 @@ WHERE TownId = @TownId;", new
         }
 
         var runId = await conn.ExecuteScalarAsync<long>(new CommandDefinition(@"
-INSERT INTO dbo.SearchRun(CategoryId,TownId,RadiusMeters,ResultLimit,FetchDetailedData,FetchGoogleReviews,FetchGoogleUpdates,FetchGoogleQuestionsAndAnswers,FetchGoogleSocialProfiles)
+INSERT INTO dbo.SearchRun(CategoryId,TownId,RadiusMeters,ResultLimit,FetchDetailedData,FetchGoogleReviews,FetchGoogleUpdates,FetchGoogleQuestionsAndAnswers,FetchGoogleSocialProfiles,FetchAppleBing)
 OUTPUT INSERTED.SearchRunId
-VALUES(@CategoryId,@TownId,@RadiusMeters,@ResultLimit,@FetchDetailedData,@FetchGoogleReviews,@FetchGoogleUpdates,@FetchGoogleQuestionsAndAnswers,@FetchGoogleSocialProfiles)",
+VALUES(@CategoryId,@TownId,@RadiusMeters,@ResultLimit,@FetchDetailedData,@FetchGoogleReviews,@FetchGoogleUpdates,@FetchGoogleQuestionsAndAnswers,@FetchGoogleSocialProfiles,@FetchAppleBing)",
             new
             {
                 CategoryId = selection.CategoryId,
@@ -169,7 +173,8 @@ VALUES(@CategoryId,@TownId,@RadiusMeters,@ResultLimit,@FetchDetailedData,@FetchG
                 FetchGoogleReviews = model.FetchGoogleReviews,
                 FetchGoogleUpdates = model.FetchGoogleUpdates,
                 FetchGoogleQuestionsAndAnswers = model.FetchGoogleQuestionsAndAnswers,
-                FetchGoogleSocialProfiles = model.FetchGoogleSocialProfiles
+                FetchGoogleSocialProfiles = model.FetchGoogleSocialProfiles,
+                FetchAppleBing = model.FetchAppleBing
             }, tx, cancellationToken: ct));
 
         var requestGoogleReviews = model.FetchGoogleReviews;
@@ -177,6 +182,7 @@ VALUES(@CategoryId,@TownId,@RadiusMeters,@ResultLimit,@FetchDetailedData,@FetchG
         var requestGoogleUpdates = model.FetchGoogleUpdates;
         var requestGoogleQuestionsAndAnswers = model.FetchGoogleQuestionsAndAnswers;
         var requestGoogleSocialProfiles = model.FetchGoogleSocialProfiles;
+        var requestAppleBing = model.FetchAppleBing;
         var shouldFetchAnyDataForSeo = requestGoogleReviews || requestMyBusinessInfo || requestGoogleUpdates || requestGoogleQuestionsAndAnswers || requestGoogleSocialProfiles;
 
         IReviewsProvider? provider = null;
@@ -196,6 +202,9 @@ VALUES(@CategoryId,@TownId,@RadiusMeters,@ResultLimit,@FetchDetailedData,@FetchG
 
         var reviewRequests = shouldFetchAnyDataForSeo
             ? new List<ReviewTaskRequest>()
+            : null;
+        var mapLinkRequests = requestAppleBing
+            ? new List<MapLinkTaskRequest>()
             : null;
 
         for (var i = 0; i < places.Count; i++)
@@ -254,6 +263,8 @@ VALUES(@SearchRunId,@PlaceId,@RankPosition,@Rating,@UserRatingCount)",
 
             if (reviewRequests is not null)
                 reviewRequests.Add(new ReviewTaskRequest(p.Id, p.UserRatingCount, placeLocationName, p.Lat, p.Lng));
+            if (mapLinkRequests is not null)
+                mapLinkRequests.Add(new MapLinkTaskRequest(p.Id, p.DisplayName, p.NationalPhoneNumber, p.Lat, p.Lng, p.FormattedAddress, placeLocationName));
         }
 
         await tx.CommitAsync(ct);
@@ -267,6 +278,52 @@ VALUES(@SearchRunId,@PlaceId,@RankPosition,@Rating,@UserRatingCount)",
             catch (Exception ex) when (!ct.IsCancellationRequested)
             {
                 logger.LogWarning(ex, "Failed to recompute review velocity stats for place {PlaceId} after capture.", place.Id);
+            }
+        }
+
+        if (mapLinkRequests is not null && mapLinkRequests.Count > 0)
+        {
+            var settings = await adminSettingsService.GetAsync(ct);
+            var appleBingHours = Math.Max(0, settings.AppleBingRefreshHours);
+            var nowUtc = DateTime.UtcNow;
+            var latestRunsByKey = new Dictionary<string, DateTime>(StringComparer.OrdinalIgnoreCase);
+
+            await using (var latestConn = (Microsoft.Data.SqlClient.SqlConnection)await connectionFactory.OpenConnectionAsync(ct))
+            {
+                var placeIds = mapLinkRequests.Select(x => x.PlaceId).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+                var latestRows = await latestConn.QueryAsync<LatestTaskRunByPlaceRow>(new CommandDefinition(@"
+SELECT
+  PlaceId,
+  COALESCE(TaskType, 'reviews') AS TaskType,
+  MAX(CreatedAtUtc) AS LastCreatedAtUtc
+FROM dbo.DataForSeoReviewTask
+WHERE PlaceId IN @PlaceIds
+  AND COALESCE(TaskType, 'reviews') IN @TaskTypes
+GROUP BY PlaceId, COALESCE(TaskType, 'reviews');",
+                    new { PlaceIds = placeIds, TaskTypes = new[] { AppleBingTaskType } }, cancellationToken: ct));
+
+                foreach (var row in latestRows)
+                    latestRunsByKey[$"{row.PlaceId}|{row.TaskType}"] = row.LastCreatedAtUtc;
+            }
+
+            foreach (var mapRequest in mapLinkRequests)
+            {
+                ct.ThrowIfCancellationRequested();
+                var isDue = IsTaskDue(mapRequest.PlaceId, AppleBingTaskType, appleBingHours, nowUtc, latestRunsByKey);
+                if (!isDue)
+                {
+                    logger.LogInformation("Skipping {TaskType} task for place {PlaceId}; last run is within {Hours}h window.", AppleBingTaskType, mapRequest.PlaceId, appleBingHours);
+                    continue;
+                }
+
+                try
+                {
+                    await CollectAndPersistAppleBingAsync(mapRequest, ct);
+                }
+                catch (Exception ex) when (!ct.IsCancellationRequested)
+                {
+                    logger.LogWarning(ex, "Apple/Bing collection failed for place {PlaceId}.", mapRequest.PlaceId);
+                }
             }
         }
 
@@ -416,6 +473,7 @@ INSERT INTO dbo.SearchRun(
   FetchGoogleUpdates,
   FetchGoogleQuestionsAndAnswers,
   FetchGoogleSocialProfiles,
+  FetchAppleBing,
   [Status],
   TotalApiCalls,
   CompletedApiCalls,
@@ -436,6 +494,7 @@ VALUES(
   @FetchGoogleUpdates,
   @FetchGoogleQuestionsAndAnswers,
   @FetchGoogleSocialProfiles,
+  @FetchAppleBing,
   N'Queued',
   NULL,
   0,
@@ -456,6 +515,7 @@ VALUES(
                 FetchGoogleUpdates = model.FetchGoogleUpdates,
                 FetchGoogleQuestionsAndAnswers = model.FetchGoogleQuestionsAndAnswers,
                 FetchGoogleSocialProfiles = model.FetchGoogleSocialProfiles,
+                FetchAppleBing = model.FetchAppleBing,
                 NowUtc = nowUtc
             }, cancellationToken: ct));
 
@@ -480,7 +540,8 @@ SELECT TOP 1
   r.FetchGoogleReviews,
   r.FetchGoogleUpdates,
   r.FetchGoogleQuestionsAndAnswers,
-  r.FetchGoogleSocialProfiles
+  r.FetchGoogleSocialProfiles,
+  r.FetchAppleBing
 FROM dbo.SearchRun r
 JOIN dbo.GbTown t ON t.TownId = r.TownId
 WHERE r.SearchRunId = @RunId;", new { RunId = runId }, cancellationToken: ct));
@@ -498,7 +559,8 @@ WHERE r.SearchRunId = @RunId;", new { RunId = runId }, cancellationToken: ct));
             FetchGoogleReviews = run.FetchGoogleReviews,
             FetchGoogleUpdates = run.FetchGoogleUpdates,
             FetchGoogleQuestionsAndAnswers = run.FetchGoogleQuestionsAndAnswers,
-            FetchGoogleSocialProfiles = run.FetchGoogleSocialProfiles
+            FetchGoogleSocialProfiles = run.FetchGoogleSocialProfiles,
+            FetchAppleBing = run.FetchAppleBing
         };
 
         try
@@ -666,7 +728,8 @@ SET
   FetchGoogleReviews = @FetchGoogleReviews,
   FetchGoogleUpdates = @FetchGoogleUpdates,
   FetchGoogleQuestionsAndAnswers = @FetchGoogleQuestionsAndAnswers,
-  FetchGoogleSocialProfiles = @FetchGoogleSocialProfiles
+  FetchGoogleSocialProfiles = @FetchGoogleSocialProfiles,
+  FetchAppleBing = @FetchAppleBing
 WHERE SearchRunId = @SearchRunId;", new
             {
                 SearchRunId = runId,
@@ -678,7 +741,8 @@ WHERE SearchRunId = @SearchRunId;", new
                 FetchGoogleReviews = model.FetchGoogleReviews,
                 FetchGoogleUpdates = model.FetchGoogleUpdates,
                 FetchGoogleQuestionsAndAnswers = model.FetchGoogleQuestionsAndAnswers,
-                FetchGoogleSocialProfiles = model.FetchGoogleSocialProfiles
+                FetchGoogleSocialProfiles = model.FetchGoogleSocialProfiles,
+                FetchAppleBing = model.FetchAppleBing
             }, tx, cancellationToken: ct));
 
             if (shouldPersistTownCoordinates)
@@ -711,6 +775,7 @@ WHERE TownId = @TownId;", new
             var requestGoogleUpdates = model.FetchGoogleUpdates;
             var requestGoogleQuestionsAndAnswers = model.FetchGoogleQuestionsAndAnswers;
             var requestGoogleSocialProfiles = model.FetchGoogleSocialProfiles;
+            var requestAppleBing = model.FetchAppleBing;
             var shouldFetchAnyDataForSeo = requestGoogleReviews || requestMyBusinessInfo || requestGoogleUpdates || requestGoogleQuestionsAndAnswers || requestGoogleSocialProfiles;
 
             IReviewsProvider? provider = null;
@@ -730,6 +795,9 @@ WHERE TownId = @TownId;", new
 
             var reviewRequests = shouldFetchAnyDataForSeo
                 ? new List<ReviewTaskRequest>()
+                : null;
+            var mapLinkRequests = requestAppleBing
+                ? new List<MapLinkTaskRequest>()
                 : null;
 
             for (var i = 0; i < places.Count; i++)
@@ -788,6 +856,8 @@ VALUES(@SearchRunId,@PlaceId,@RankPosition,@Rating,@UserRatingCount)",
 
                 if (reviewRequests is not null)
                     reviewRequests.Add(new ReviewTaskRequest(p.Id, p.UserRatingCount, placeLocationName, p.Lat, p.Lng));
+                if (mapLinkRequests is not null)
+                    mapLinkRequests.Add(new MapLinkTaskRequest(p.Id, p.DisplayName, p.NationalPhoneNumber, p.Lat, p.Lng, p.FormattedAddress, placeLocationName));
             }
 
             await tx.CommitAsync(ct);
@@ -912,6 +982,57 @@ GROUP BY PlaceId, COALESCE(TaskType, 'reviews');",
                 }
             }
 
+            if (mapLinkRequests is not null && mapLinkRequests.Count > 0)
+            {
+                var settings = await adminSettingsService.GetAsync(ct);
+                var appleBingHours = Math.Max(0, settings.AppleBingRefreshHours);
+                var requestNowUtc = DateTime.UtcNow;
+                var latestRunsByKey = new Dictionary<string, DateTime>(StringComparer.OrdinalIgnoreCase);
+
+                await using (var latestConn = (Microsoft.Data.SqlClient.SqlConnection)await connectionFactory.OpenConnectionAsync(ct))
+                {
+                    var placeIds = mapLinkRequests.Select(x => x.PlaceId).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+                    var latestRows = await latestConn.QueryAsync<LatestTaskRunByPlaceRow>(new CommandDefinition(@"
+SELECT
+  PlaceId,
+  COALESCE(TaskType, 'reviews') AS TaskType,
+  MAX(CreatedAtUtc) AS LastCreatedAtUtc
+FROM dbo.DataForSeoReviewTask
+WHERE PlaceId IN @PlaceIds
+  AND COALESCE(TaskType, 'reviews') IN @TaskTypes
+GROUP BY PlaceId, COALESCE(TaskType, 'reviews');",
+                        new { PlaceIds = placeIds, TaskTypes = new[] { AppleBingTaskType } }, cancellationToken: ct));
+
+                    foreach (var row in latestRows)
+                        latestRunsByKey[$"{row.PlaceId}|{row.TaskType}"] = row.LastCreatedAtUtc;
+                }
+
+                var dueRequests = mapLinkRequests
+                    .Where(x => IsTaskDue(x.PlaceId, AppleBingTaskType, appleBingHours, requestNowUtc, latestRunsByKey))
+                    .ToList();
+
+                totalApiCalls += dueRequests.Count;
+                await UpdateSearchRunProgressAsync(runId, "Running", totalApiCalls, completedApiCalls, CalculatePercent(completedApiCalls, totalApiCalls), null, ct);
+
+                foreach (var due in dueRequests)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    try
+                    {
+                        await CollectAndPersistAppleBingAsync(due, ct);
+                    }
+                    catch (Exception ex) when (!ct.IsCancellationRequested)
+                    {
+                        logger.LogWarning(ex, "Apple/Bing collection failed for place {PlaceId}.", due.PlaceId);
+                    }
+                    finally
+                    {
+                        completedApiCalls++;
+                        await UpdateSearchRunProgressAsync(runId, "Running", totalApiCalls, completedApiCalls, CalculatePercent(completedApiCalls, totalApiCalls), null, ct);
+                    }
+                }
+            }
+
             await UpdateSearchRunProgressAsync(runId, "Completed", totalApiCalls, totalApiCalls, 100, null, ct, setCompletedUtc: true);
         }
         catch (Exception ex) when (!ct.IsCancellationRequested)
@@ -1006,6 +1127,138 @@ WHERE SearchRunId = @RunId;",
         return (nowUtc - lastRunUtc) >= TimeSpan.FromHours(Math.Max(0, thresholdHours));
     }
 
+    private async Task<string> CollectAndPersistAppleBingAsync(MapLinkTaskRequest request, CancellationToken ct)
+    {
+        var lookup = await appleBingMapLinksService.LookupAsync(new AppleBingMapLookupRequest(
+            request.PlaceId,
+            request.DisplayName,
+            request.NationalPhoneNumber,
+            request.Lat,
+            request.Lng,
+            request.FormattedAddress,
+            request.LocationName), ct);
+
+        var status = ResolveAppleBingTaskStatus(lookup);
+        var statusMessage = TruncateForDb(BuildAppleBingTaskStatusMessage(lookup), 500);
+        var lastError = status == "Error"
+            ? TruncateForDb(BuildAppleBingErrorMessage(lookup) ?? string.Empty, 2000)
+            : null;
+        var appleUrl = TruncateForDb((lookup.AppleUrl ?? string.Empty).Trim(), 1500);
+        var bingUrl = TruncateForDb((lookup.BingUrl ?? string.Empty).Trim(), 1500);
+
+        await using var conn = (Microsoft.Data.SqlClient.SqlConnection)await connectionFactory.OpenConnectionAsync(ct);
+        await conn.ExecuteAsync(new CommandDefinition(@"
+UPDATE dbo.Place
+SET
+  Apple = CASE WHEN @AppleChecked = 1 THEN @AppleMatched ELSE Apple END,
+  Bing = CASE WHEN @BingChecked = 1 THEN @BingMatched ELSE Bing END,
+  AppleUrl = CASE WHEN @AppleChecked = 1 THEN CASE WHEN @AppleMatched = 1 THEN @AppleUrl ELSE NULL END ELSE AppleUrl END,
+  BingUrl = CASE WHEN @BingChecked = 1 THEN @BingUrl ELSE BingUrl END
+WHERE PlaceId = @PlaceId;", new
+        {
+            request.PlaceId,
+            AppleChecked = lookup.AppleChecked,
+            AppleMatched = lookup.AppleMatched,
+            AppleUrl = string.IsNullOrWhiteSpace(appleUrl) ? null : appleUrl,
+            BingChecked = lookup.BingChecked,
+            BingMatched = lookup.BingMatched,
+            BingUrl = string.IsNullOrWhiteSpace(bingUrl) ? null : bingUrl
+        }, cancellationToken: ct));
+
+        await conn.ExecuteAsync(new CommandDefinition(@"
+INSERT INTO dbo.DataForSeoReviewTask(
+  DataForSeoTaskId,
+  TaskType,
+  PlaceId,
+  LocationName,
+  Status,
+  TaskStatusCode,
+  TaskStatusMessage,
+  Endpoint,
+  CreatedAtUtc,
+  LastCheckedUtc,
+  ReadyAtUtc,
+  PopulatedAtUtc,
+  LastAttemptedPopulateUtc,
+  LastPopulateReviewCount,
+  LastError
+)
+VALUES(
+  @DataForSeoTaskId,
+  @TaskType,
+  @PlaceId,
+  @LocationName,
+  @Status,
+  NULL,
+  @TaskStatusMessage,
+  @Endpoint,
+  SYSUTCDATETIME(),
+  SYSUTCDATETIME(),
+  CASE WHEN @Status IN ('Populated', 'NoData') THEN SYSUTCDATETIME() ELSE NULL END,
+  CASE WHEN @Status IN ('Populated', 'NoData') THEN SYSUTCDATETIME() ELSE NULL END,
+  SYSUTCDATETIME(),
+  0,
+  @LastError
+);", new
+        {
+            DataForSeoTaskId = $"apple_bing-{Guid.NewGuid():N}",
+            TaskType = AppleBingTaskType,
+            request.PlaceId,
+            LocationName = request.LocationName,
+            Status = status,
+            TaskStatusMessage = statusMessage,
+            Endpoint = "AppleMaps+AzureMaps",
+            LastError = lastError
+        }, cancellationToken: ct));
+
+        return statusMessage;
+    }
+
+    private static string ResolveAppleBingTaskStatus(AppleBingMapLookupResult lookup)
+    {
+        if (lookup.AppleMatched || lookup.BingMatched)
+            return "Populated";
+        if (lookup.AppleChecked && lookup.BingChecked)
+            return "NoData";
+        return "Error";
+    }
+
+    private static string BuildAppleBingTaskStatusMessage(AppleBingMapLookupResult lookup)
+    {
+        var appleState = lookup.AppleMatched
+            ? "Apple matched"
+            : lookup.AppleChecked
+                ? "Apple no match"
+                : "Apple error";
+        var bingState = lookup.BingMatched
+            ? "Bing matched"
+            : lookup.BingChecked
+                ? "Bing no match"
+                : "Bing error";
+        return $"{appleState}; {bingState}.";
+    }
+
+    private static string? BuildAppleBingErrorMessage(AppleBingMapLookupResult lookup)
+    {
+        var errors = new List<string>(2);
+        if (!string.IsNullOrWhiteSpace(lookup.AppleError))
+            errors.Add($"Apple: {lookup.AppleError.Trim()}");
+        if (!string.IsNullOrWhiteSpace(lookup.BingError))
+            errors.Add($"Bing: {lookup.BingError.Trim()}");
+        if (errors.Count == 0)
+            errors.Add("Apple/Bing checks did not complete.");
+
+        return string.Join(" | ", errors);
+    }
+
+    private static string TruncateForDb(string value, int maxLength)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return string.Empty;
+        var trimmed = value.Trim();
+        return trimmed.Length <= maxLength ? trimmed : trimmed[..maxLength];
+    }
+
     public async Task<IReadOnlyList<SearchRun>> GetLatestRunsAsync(int take, CancellationToken ct)
     {
         await using var conn = (Microsoft.Data.SqlClient.SqlConnection)await connectionFactory.OpenConnectionAsync(ct);
@@ -1026,6 +1279,7 @@ SELECT TOP (@Take)
   r.FetchGoogleUpdates,
   r.FetchGoogleQuestionsAndAnswers,
   r.FetchGoogleSocialProfiles,
+  r.FetchAppleBing,
   r.RanAtUtc
 FROM dbo.SearchRun r
 JOIN dbo.GoogleBusinessProfileCategory c ON c.CategoryId = r.CategoryId
@@ -1055,6 +1309,7 @@ SELECT
   r.FetchGoogleUpdates,
   r.FetchGoogleQuestionsAndAnswers,
   r.FetchGoogleSocialProfiles,
+  r.FetchAppleBing,
   r.RanAtUtc
 FROM dbo.SearchRun r
 JOIN dbo.GoogleBusinessProfileCategory c ON c.CategoryId = r.CategoryId
@@ -1186,6 +1441,8 @@ ORDER BY s.RankPosition", new { RunId = runId }, cancellationToken: ct))).ToList
             selectedTaskTypes.Add(("questions_and_answers", "Google Question & Answers"));
         if (run.FetchGoogleSocialProfiles)
             selectedTaskTypes.Add(("social_profiles", "Social Profiles"));
+        if (run.FetchAppleBing)
+            selectedTaskTypes.Add(("apple_bing", "Apple/Bing"));
 
         if (selectedTaskTypes.Count == 0)
             return [];
@@ -1840,6 +2097,39 @@ WHERE PlaceId = @PlaceId;", new { PlaceId = normalizedPlaceId }, cancellationTok
             row.HasInsolvencyHistory);
     }
 
+    public async Task<string> RefreshAppleBingForPlaceAsync(string placeId, CancellationToken ct)
+    {
+        var normalizedPlaceId = (placeId ?? string.Empty).Trim();
+        if (normalizedPlaceId.Length == 0)
+            throw new InvalidOperationException("Place ID is required.");
+
+        await using var conn = (Microsoft.Data.SqlClient.SqlConnection)await connectionFactory.OpenConnectionAsync(ct);
+        var seed = await conn.QuerySingleOrDefaultAsync<PlaceAppleBingSeedRow>(new CommandDefinition(@"
+SELECT TOP 1
+  PlaceId,
+  DisplayName,
+  NationalPhoneNumber,
+  Lat,
+  Lng,
+  FormattedAddress,
+  SearchLocationName
+FROM dbo.Place
+WHERE PlaceId = @PlaceId;", new { PlaceId = normalizedPlaceId }, cancellationToken: ct));
+
+        if (seed is null)
+            throw new InvalidOperationException("Place was not found.");
+
+        var request = new MapLinkTaskRequest(
+            seed.PlaceId,
+            seed.DisplayName,
+            seed.NationalPhoneNumber,
+            seed.Lat,
+            seed.Lng,
+            seed.FormattedAddress,
+            seed.SearchLocationName);
+        return await CollectAndPersistAppleBingAsync(request, ct);
+    }
+
     public async Task<PlaceDetailsViewModel?> GetPlaceDetailsAsync(string placeId, long? runId, CancellationToken ct, int reviewPage = 1, int reviewPageSize = 25)
     {
         await using var conn = (Microsoft.Data.SqlClient.SqlConnection)await connectionFactory.OpenConnectionAsync(ct);
@@ -1866,6 +2156,10 @@ SELECT
   p.TikTokUrl,
   p.PinterestUrl,
   p.BlueskyUrl,
+  p.Apple,
+  p.Bing,
+  p.AppleUrl,
+  p.BingUrl,
   p.OpeningDate,
   p.SearchLocationName,
   p.QuestionAnswerCount,
@@ -2269,6 +2563,10 @@ ORDER BY
             TikTokUrl = place.TikTokUrl,
             PinterestUrl = place.PinterestUrl,
             BlueskyUrl = place.BlueskyUrl,
+            Apple = place.Apple,
+            Bing = place.Bing,
+            AppleUrl = place.AppleUrl,
+            BingUrl = place.BingUrl,
             OpeningDate = place.OpeningDate,
             SearchLocationName = place.SearchLocationName,
             QuestionAnswerCount = place.QuestionAnswerCount,
@@ -2556,7 +2854,8 @@ ORDER BY m.[Year] DESC, m.[Month] DESC;", new
             Build("reviews", "Google Review collection", settings.GoogleReviewsRefreshHours),
             Build("my_business_updates", "Google Updates collection", settings.GoogleUpdatesRefreshHours),
             Build("questions_and_answers", "Google Question & Answers collection", settings.GoogleQuestionsAndAnswersRefreshHours),
-            Build("social_profiles", "Social Profile collection", settings.GoogleSocialProfilesRefreshHours)
+            Build("social_profiles", "Social Profile collection", settings.GoogleSocialProfilesRefreshHours),
+            Build(AppleBingTaskType, "Apple/Bing collection", settings.AppleBingRefreshHours)
         };
     }
 
@@ -3070,6 +3369,10 @@ ORDER BY m.[Year] DESC, m.[Month] DESC;", new
         string? TikTokUrl,
         string? PinterestUrl,
         string? BlueskyUrl,
+        bool Apple,
+        bool Bing,
+        string? AppleUrl,
+        string? BingUrl,
         DateTime? OpeningDate,
         string? SearchLocationName,
         int? QuestionAnswerCount,
@@ -3108,6 +3411,15 @@ ORDER BY m.[Year] DESC, m.[Month] DESC;", new
         string? TikTokUrl,
         string? PinterestUrl,
         string? BlueskyUrl);
+
+    private sealed record PlaceAppleBingSeedRow(
+        string PlaceId,
+        string? DisplayName,
+        string? NationalPhoneNumber,
+        decimal? Lat,
+        decimal? Lng,
+        string? FormattedAddress,
+        string? SearchLocationName);
 
     private sealed record PlaceFinancialRow(
         string PlaceId,
@@ -3226,7 +3538,8 @@ ORDER BY m.[Year] DESC, m.[Month] DESC;", new
         bool FetchGoogleReviews,
         bool FetchGoogleUpdates,
         bool FetchGoogleQuestionsAndAnswers,
-        bool FetchGoogleSocialProfiles);
+        bool FetchGoogleSocialProfiles,
+        bool FetchAppleBing);
 
     private sealed record RunKeywordTrafficContextRow(string CategoryId, long TownId);
     private sealed record WeightedMonthRow(int Year, int Month, decimal WeightedSearchVolume);
@@ -3261,6 +3574,7 @@ ORDER BY m.[Year] DESC, m.[Month] DESC;", new
     private sealed record RunReviewMonthlyCountRow(string PlaceId, string DisplayName, int Year, int Month, int ReviewCount);
 
     private sealed record ReviewTaskRequest(string PlaceId, int? ReviewCount, string? LocationName, decimal? Lat, decimal? Lng);
+    private sealed record MapLinkTaskRequest(string PlaceId, string? DisplayName, string? NationalPhoneNumber, decimal? Lat, decimal? Lng, string? FormattedAddress, string? LocationName);
     private sealed record ReviewTaskDueRequest(
         string PlaceId,
         int? ReviewCount,
