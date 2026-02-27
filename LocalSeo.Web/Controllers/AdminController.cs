@@ -10,6 +10,7 @@ namespace LocalSeo.Web.Controllers;
 public class AdminController(
     IDataForSeoTaskTracker dataForSeoTaskTracker,
     IAdminSettingsService adminSettingsService,
+    IRobotsTxtWriter robotsTxtWriter,
     IEmailSignatureSettingsService emailSignatureSettingsService,
     IGbLocationDataListService gbLocationDataListService,
     IGoogleBusinessProfileCategoryService googleBusinessProfileCategoryService,
@@ -285,7 +286,8 @@ public class AdminController(
             ChangePasswordOtpMaxPerHourPerUser = settings.ChangePasswordOtpMaxPerHourPerUser,
             ChangePasswordOtpMaxPerHourPerIp = settings.ChangePasswordOtpMaxPerHourPerIp,
             ChangePasswordOtpMaxAttempts = settings.ChangePasswordOtpMaxAttempts,
-            ChangePasswordOtpLockMinutes = settings.ChangePasswordOtpLockMinutes
+            ChangePasswordOtpLockMinutes = settings.ChangePasswordOtpLockMinutes,
+            BlockSearchEngines = settings.BlockSearchEngines
         });
     }
 
@@ -299,6 +301,7 @@ public class AdminController(
             model.PasswordRequiresNumber = form.ContainsKey(nameof(model.PasswordRequiresNumber));
             model.PasswordRequiresCapitalLetter = form.ContainsKey(nameof(model.PasswordRequiresCapitalLetter));
             model.PasswordRequiresSpecialCharacter = form.ContainsKey(nameof(model.PasswordRequiresSpecialCharacter));
+            model.BlockSearchEngines = form.ContainsKey(nameof(model.BlockSearchEngines));
         }
 
         ValidateMinimum(nameof(model.MinimumPasswordLength), model.MinimumPasswordLength, 8, "characters");
@@ -328,6 +331,7 @@ public class AdminController(
             return View("SettingsSecurity", model);
 
         var settings = await adminSettingsService.GetAsync(ct);
+        var previousBlockSearchEngines = settings.BlockSearchEngines;
         settings.MinimumPasswordLength = model.MinimumPasswordLength;
         settings.PasswordRequiresNumber = model.PasswordRequiresNumber;
         settings.PasswordRequiresCapitalLetter = model.PasswordRequiresCapitalLetter;
@@ -354,7 +358,32 @@ public class AdminController(
         settings.ChangePasswordOtpMaxPerHourPerIp = model.ChangePasswordOtpMaxPerHourPerIp;
         settings.ChangePasswordOtpMaxAttempts = model.ChangePasswordOtpMaxAttempts;
         settings.ChangePasswordOtpLockMinutes = model.ChangePasswordOtpLockMinutes;
+        settings.BlockSearchEngines = model.BlockSearchEngines;
         await adminSettingsService.SaveAsync(settings, ct);
+
+        var robotsWriteResult = await robotsTxtWriter.WriteAsync(model.BlockSearchEngines, ct);
+        if (!robotsWriteResult.Success)
+        {
+            if (previousBlockSearchEngines != model.BlockSearchEngines)
+            {
+                try
+                {
+                    settings.BlockSearchEngines = previousBlockSearchEngines;
+                    await adminSettingsService.SaveAsync(settings, ct);
+                    TempData["Status"] = $"robots.txt update failed; Block Search Engines was not changed. {robotsWriteResult.ErrorMessage}";
+                }
+                catch (Exception rollbackEx)
+                {
+                    TempData["Status"] = $"robots.txt update failed; site may not be blocked for crawlers until resolved. {robotsWriteResult.ErrorMessage} Rollback failed: {rollbackEx.Message}";
+                }
+            }
+
+            if (previousBlockSearchEngines == model.BlockSearchEngines)
+                TempData["Status"] = $"Security settings saved, but robots.txt update failed: {robotsWriteResult.ErrorMessage}";
+
+            return RedirectToAction(nameof(SettingsSecurity));
+        }
+
         TempData["Status"] = "Security settings saved.";
         return RedirectToAction(nameof(SettingsSecurity));
     }

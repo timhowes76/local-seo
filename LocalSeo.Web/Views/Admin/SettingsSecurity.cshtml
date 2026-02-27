@@ -44,6 +44,15 @@
                 </label>
             </div>
 
+            <h3>Crawlers</h3>
+            <div class="form-row">
+                <label class="inline-group" for="BlockSearchEngines">
+                    <input id="BlockSearchEngines" name="BlockSearchEngines" type="checkbox" value="true" @(Model.BlockSearchEngines ? "checked" : null) />
+                    <span>Block Search Engines</span>
+                </label>
+                <small class="muted">When enabled, the site will instruct crawlers not to index pages (robots.txt + noindex headers).</small>
+            </div>
+
             <h3>Login Lockout</h3>
             <div class="form-row">
                 <label for="LoginLockoutThreshold">Failed password attempts before lockout</label>

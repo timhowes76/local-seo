@@ -2,6 +2,8 @@ using Dapper;
 using LocalSeo.Web.Data;
 using LocalSeo.Web.Models;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.Extensions.Caching.Memory;
+using System.Reflection;
 
 namespace LocalSeo.Web.Services;
 
@@ -13,12 +15,22 @@ public interface IAdminSettingsService
 
 public sealed class AdminSettingsService(
     ISqlConnectionFactory connectionFactory,
-    IDataProtectionProvider dataProtectionProvider) : IAdminSettingsService
+    IDataProtectionProvider dataProtectionProvider,
+    IMemoryCache memoryCache) : IAdminSettingsService
 {
+    private const string CacheKey = "AdminSettingsService.AppSettings";
+    private static readonly TimeSpan CacheTtl = TimeSpan.FromSeconds(60);
+    private static readonly PropertyInfo[] WritableProperties = typeof(AdminSettingsModel)
+        .GetProperties(BindingFlags.Instance | BindingFlags.Public)
+        .Where(p => p.CanRead && p.CanWrite)
+        .ToArray();
     private readonly IDataProtector protector = dataProtectionProvider.CreateProtector("LocalSeo.Web.AppSettings.OpenAiApiKey.v1");
 
     public async Task<AdminSettingsModel> GetAsync(CancellationToken ct)
     {
+        if (memoryCache.TryGetValue(CacheKey, out AdminSettingsModel? cached) && cached is not null)
+            return CloneModel(cached);
+
         await using var conn = (Microsoft.Data.SqlClient.SqlConnection)await connectionFactory.OpenConnectionAsync(ct);
         var row = await conn.QuerySingleOrDefaultAsync<AdminSettingsModel>(new CommandDefinition(@"
 SELECT TOP 1
@@ -73,16 +85,19 @@ SELECT TOP 1
   ChangePasswordOtpMaxPerHourPerUser,
   ChangePasswordOtpMaxPerHourPerIp,
   ChangePasswordOtpMaxAttempts,
-  ChangePasswordOtpLockMinutes
+  ChangePasswordOtpLockMinutes,
+  BlockSearchEngines
 FROM dbo.AppSettings
 WHERE AppSettingsId = 1;", cancellationToken: ct));
 
         if (row is null)
-            return new AdminSettingsModel();
+            row = new AdminSettingsModel();
 
         row.SiteUrl = NormalizeSiteUrl(row.SiteUrl, "https://briskly-viceless-kayleen.ngrok-free.dev/");
         row.OpenAiApiKey = UnprotectValue(row.OpenAiApiKeyProtected);
-        return row;
+        var cacheEntry = CloneModel(row);
+        memoryCache.Set(CacheKey, cacheEntry, CacheTtl);
+        return CloneModel(cacheEntry);
     }
 
     public async Task SaveAsync(AdminSettingsModel model, CancellationToken ct)
@@ -141,7 +156,8 @@ WHERE AppSettingsId = 1;", cancellationToken: ct));
             ChangePasswordOtpMaxPerHourPerUser = Math.Clamp(model.ChangePasswordOtpMaxPerHourPerUser, 1, 1000),
             ChangePasswordOtpMaxPerHourPerIp = Math.Clamp(model.ChangePasswordOtpMaxPerHourPerIp, 1, 5000),
             ChangePasswordOtpMaxAttempts = Math.Clamp(model.ChangePasswordOtpMaxAttempts, 1, 100),
-            ChangePasswordOtpLockMinutes = Math.Clamp(model.ChangePasswordOtpLockMinutes, 1, 7 * 24 * 60)
+            ChangePasswordOtpLockMinutes = Math.Clamp(model.ChangePasswordOtpLockMinutes, 1, 7 * 24 * 60),
+            BlockSearchEngines = model.BlockSearchEngines
         };
 
         await using var conn = (Microsoft.Data.SqlClient.SqlConnection)await connectionFactory.OpenConnectionAsync(ct);
@@ -202,11 +218,14 @@ WHEN MATCHED THEN UPDATE SET
   ChangePasswordOtpMaxPerHourPerIp = @ChangePasswordOtpMaxPerHourPerIp,
   ChangePasswordOtpMaxAttempts = @ChangePasswordOtpMaxAttempts,
   ChangePasswordOtpLockMinutes = @ChangePasswordOtpLockMinutes,
+  BlockSearchEngines = @BlockSearchEngines,
   UpdatedAtUtc = SYSUTCDATETIME()
 WHEN NOT MATCHED THEN
-  INSERT(AppSettingsId, EnhancedGoogleDataRefreshHours, GoogleReviewsRefreshHours, GoogleUpdatesRefreshHours, GoogleQuestionsAndAnswersRefreshHours, GoogleSocialProfilesRefreshHours, AppleBingRefreshHours, SearchVolumeRefreshCooldownDays, MaxSuggestedKeyphrases, OpenAiApiKeyProtected, OpenAiModel, OpenAiTimeoutSeconds, MapPackClickSharePercent, MapPackCtrPosition1Percent, MapPackCtrPosition2Percent, MapPackCtrPosition3Percent, MapPackCtrPosition4Percent, MapPackCtrPosition5Percent, MapPackCtrPosition6Percent, MapPackCtrPosition7Percent, MapPackCtrPosition8Percent, MapPackCtrPosition9Percent, MapPackCtrPosition10Percent, ZohoLeadOwnerName, ZohoLeadOwnerId, ZohoLeadNextAction, SiteUrl, MinimumPasswordLength, PasswordRequiresNumber, PasswordRequiresCapitalLetter, PasswordRequiresSpecialCharacter, LoginLockoutThreshold, LoginLockoutMinutes, EmailCodeCooldownSeconds, EmailCodeMaxPerHourPerEmail, EmailCodeMaxPerHourPerIp, EmailCodeExpiryMinutes, EmailCodeMaxFailedAttemptsPerCode, InviteExpiryHours, InviteOtpExpiryMinutes, InviteOtpCooldownSeconds, InviteOtpMaxPerHourPerInvite, InviteOtpMaxPerHourPerIp, InviteOtpMaxAttempts, InviteOtpLockMinutes, InviteMaxAttempts, InviteLockMinutes, ChangePasswordOtpExpiryMinutes, ChangePasswordOtpCooldownSeconds, ChangePasswordOtpMaxPerHourPerUser, ChangePasswordOtpMaxPerHourPerIp, ChangePasswordOtpMaxAttempts, ChangePasswordOtpLockMinutes, UpdatedAtUtc)
-  VALUES(1, @EnhancedGoogleDataRefreshHours, @GoogleReviewsRefreshHours, @GoogleUpdatesRefreshHours, @GoogleQuestionsAndAnswersRefreshHours, @GoogleSocialProfilesRefreshHours, @AppleBingRefreshHours, @SearchVolumeRefreshCooldownDays, @MaxSuggestedKeyphrases, @OpenAiApiKeyProtected, @OpenAiModel, @OpenAiTimeoutSeconds, @MapPackClickSharePercent, @MapPackCtrPosition1Percent, @MapPackCtrPosition2Percent, @MapPackCtrPosition3Percent, @MapPackCtrPosition4Percent, @MapPackCtrPosition5Percent, @MapPackCtrPosition6Percent, @MapPackCtrPosition7Percent, @MapPackCtrPosition8Percent, @MapPackCtrPosition9Percent, @MapPackCtrPosition10Percent, @ZohoLeadOwnerName, @ZohoLeadOwnerId, @ZohoLeadNextAction, @SiteUrl, @MinimumPasswordLength, @PasswordRequiresNumber, @PasswordRequiresCapitalLetter, @PasswordRequiresSpecialCharacter, @LoginLockoutThreshold, @LoginLockoutMinutes, @EmailCodeCooldownSeconds, @EmailCodeMaxPerHourPerEmail, @EmailCodeMaxPerHourPerIp, @EmailCodeExpiryMinutes, @EmailCodeMaxFailedAttemptsPerCode, @InviteExpiryHours, @InviteOtpExpiryMinutes, @InviteOtpCooldownSeconds, @InviteOtpMaxPerHourPerInvite, @InviteOtpMaxPerHourPerIp, @InviteOtpMaxAttempts, @InviteOtpLockMinutes, @InviteMaxAttempts, @InviteLockMinutes, @ChangePasswordOtpExpiryMinutes, @ChangePasswordOtpCooldownSeconds, @ChangePasswordOtpMaxPerHourPerUser, @ChangePasswordOtpMaxPerHourPerIp, @ChangePasswordOtpMaxAttempts, @ChangePasswordOtpLockMinutes, SYSUTCDATETIME());",
+  INSERT(AppSettingsId, EnhancedGoogleDataRefreshHours, GoogleReviewsRefreshHours, GoogleUpdatesRefreshHours, GoogleQuestionsAndAnswersRefreshHours, GoogleSocialProfilesRefreshHours, AppleBingRefreshHours, SearchVolumeRefreshCooldownDays, MaxSuggestedKeyphrases, OpenAiApiKeyProtected, OpenAiModel, OpenAiTimeoutSeconds, MapPackClickSharePercent, MapPackCtrPosition1Percent, MapPackCtrPosition2Percent, MapPackCtrPosition3Percent, MapPackCtrPosition4Percent, MapPackCtrPosition5Percent, MapPackCtrPosition6Percent, MapPackCtrPosition7Percent, MapPackCtrPosition8Percent, MapPackCtrPosition9Percent, MapPackCtrPosition10Percent, ZohoLeadOwnerName, ZohoLeadOwnerId, ZohoLeadNextAction, SiteUrl, MinimumPasswordLength, PasswordRequiresNumber, PasswordRequiresCapitalLetter, PasswordRequiresSpecialCharacter, LoginLockoutThreshold, LoginLockoutMinutes, EmailCodeCooldownSeconds, EmailCodeMaxPerHourPerEmail, EmailCodeMaxPerHourPerIp, EmailCodeExpiryMinutes, EmailCodeMaxFailedAttemptsPerCode, InviteExpiryHours, InviteOtpExpiryMinutes, InviteOtpCooldownSeconds, InviteOtpMaxPerHourPerInvite, InviteOtpMaxPerHourPerIp, InviteOtpMaxAttempts, InviteOtpLockMinutes, InviteMaxAttempts, InviteLockMinutes, ChangePasswordOtpExpiryMinutes, ChangePasswordOtpCooldownSeconds, ChangePasswordOtpMaxPerHourPerUser, ChangePasswordOtpMaxPerHourPerIp, ChangePasswordOtpMaxAttempts, ChangePasswordOtpLockMinutes, BlockSearchEngines, UpdatedAtUtc)
+  VALUES(1, @EnhancedGoogleDataRefreshHours, @GoogleReviewsRefreshHours, @GoogleUpdatesRefreshHours, @GoogleQuestionsAndAnswersRefreshHours, @GoogleSocialProfilesRefreshHours, @AppleBingRefreshHours, @SearchVolumeRefreshCooldownDays, @MaxSuggestedKeyphrases, @OpenAiApiKeyProtected, @OpenAiModel, @OpenAiTimeoutSeconds, @MapPackClickSharePercent, @MapPackCtrPosition1Percent, @MapPackCtrPosition2Percent, @MapPackCtrPosition3Percent, @MapPackCtrPosition4Percent, @MapPackCtrPosition5Percent, @MapPackCtrPosition6Percent, @MapPackCtrPosition7Percent, @MapPackCtrPosition8Percent, @MapPackCtrPosition9Percent, @MapPackCtrPosition10Percent, @ZohoLeadOwnerName, @ZohoLeadOwnerId, @ZohoLeadNextAction, @SiteUrl, @MinimumPasswordLength, @PasswordRequiresNumber, @PasswordRequiresCapitalLetter, @PasswordRequiresSpecialCharacter, @LoginLockoutThreshold, @LoginLockoutMinutes, @EmailCodeCooldownSeconds, @EmailCodeMaxPerHourPerEmail, @EmailCodeMaxPerHourPerIp, @EmailCodeExpiryMinutes, @EmailCodeMaxFailedAttemptsPerCode, @InviteExpiryHours, @InviteOtpExpiryMinutes, @InviteOtpCooldownSeconds, @InviteOtpMaxPerHourPerInvite, @InviteOtpMaxPerHourPerIp, @InviteOtpMaxAttempts, @InviteOtpLockMinutes, @InviteMaxAttempts, @InviteLockMinutes, @ChangePasswordOtpExpiryMinutes, @ChangePasswordOtpCooldownSeconds, @ChangePasswordOtpMaxPerHourPerUser, @ChangePasswordOtpMaxPerHourPerIp, @ChangePasswordOtpMaxAttempts, @ChangePasswordOtpLockMinutes, @BlockSearchEngines, SYSUTCDATETIME());",
             normalized, cancellationToken: ct));
+
+        memoryCache.Remove(CacheKey);
     }
 
     private string ResolveProtectedOpenAiApiKey(AdminSettingsModel model)
@@ -232,6 +251,15 @@ WHEN NOT MATCHED THEN
         {
             return string.Empty;
         }
+    }
+
+    private static AdminSettingsModel CloneModel(AdminSettingsModel source)
+    {
+        var clone = new AdminSettingsModel();
+        foreach (var property in WritableProperties)
+            property.SetValue(clone, property.GetValue(source));
+
+        return clone;
     }
 
     private static string NormalizeText(string? value, int maxLength, string fallback)

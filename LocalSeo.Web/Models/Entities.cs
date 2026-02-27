@@ -586,6 +586,7 @@ public sealed class AdminSettingsModel
     public int ChangePasswordOtpMaxPerHourPerIp { get; set; } = 25;
     public int ChangePasswordOtpMaxAttempts { get; set; } = 5;
     public int ChangePasswordOtpLockMinutes { get; set; } = 15;
+    public bool BlockSearchEngines { get; set; }
 }
 
 public sealed class AdminSiteSettingsModel
@@ -671,6 +672,7 @@ public sealed class AdminSecuritySettingsModel
     public int ChangePasswordOtpMaxPerHourPerIp { get; set; } = 25;
     public int ChangePasswordOtpMaxAttempts { get; set; } = 5;
     public int ChangePasswordOtpLockMinutes { get; set; } = 15;
+    public bool BlockSearchEngines { get; set; }
 }
 
 public sealed class PasswordPolicyViewModel

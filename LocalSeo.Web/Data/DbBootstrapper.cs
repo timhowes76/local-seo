@@ -1106,6 +1106,7 @@ BEGIN
     ChangePasswordOtpMaxPerHourPerIp int NOT NULL CONSTRAINT DF_AppSettings_ChangePasswordOtpMaxPerHourPerIp DEFAULT(25),
     ChangePasswordOtpMaxAttempts int NOT NULL CONSTRAINT DF_AppSettings_ChangePasswordOtpMaxAttempts DEFAULT(5),
     ChangePasswordOtpLockMinutes int NOT NULL CONSTRAINT DF_AppSettings_ChangePasswordOtpLockMinutes DEFAULT(15),
+    BlockSearchEngines bit NOT NULL CONSTRAINT DF_AppSettings_BlockSearchEngines DEFAULT(0),
     UpdatedAtUtc datetime2(0) NOT NULL CONSTRAINT DF_AppSettings_UpdatedAtUtc DEFAULT SYSUTCDATETIME()
   );
 END;
@@ -1213,6 +1214,8 @@ IF COL_LENGTH('dbo.AppSettings', 'ChangePasswordOtpMaxAttempts') IS NULL
   ALTER TABLE dbo.AppSettings ADD ChangePasswordOtpMaxAttempts int NOT NULL CONSTRAINT DF_AppSettings_ChangePasswordOtpMaxAttempts_Alt DEFAULT(5);
 IF COL_LENGTH('dbo.AppSettings', 'ChangePasswordOtpLockMinutes') IS NULL
   ALTER TABLE dbo.AppSettings ADD ChangePasswordOtpLockMinutes int NOT NULL CONSTRAINT DF_AppSettings_ChangePasswordOtpLockMinutes_Alt DEFAULT(15);
+IF COL_LENGTH('dbo.AppSettings', 'BlockSearchEngines') IS NULL
+  ALTER TABLE dbo.AppSettings ADD BlockSearchEngines bit NOT NULL CONSTRAINT DF_AppSettings_BlockSearchEngines_Alt DEFAULT(0);
 IF COL_LENGTH('dbo.AppSettings', 'UpdatedAtUtc') IS NULL
   ALTER TABLE dbo.AppSettings ADD UpdatedAtUtc datetime2(0) NOT NULL CONSTRAINT DF_AppSettings_UpdatedAtUtc_Alt DEFAULT SYSUTCDATETIME();
 EXEC(N'
@@ -1271,10 +1274,11 @@ WHEN MATCHED THEN UPDATE SET
   ChangePasswordOtpMaxPerHourPerUser = CASE WHEN target.ChangePasswordOtpMaxPerHourPerUser IS NULL OR target.ChangePasswordOtpMaxPerHourPerUser < 1 THEN 3 ELSE target.ChangePasswordOtpMaxPerHourPerUser END,
   ChangePasswordOtpMaxPerHourPerIp = CASE WHEN target.ChangePasswordOtpMaxPerHourPerIp IS NULL OR target.ChangePasswordOtpMaxPerHourPerIp < 1 THEN 25 ELSE target.ChangePasswordOtpMaxPerHourPerIp END,
   ChangePasswordOtpMaxAttempts = CASE WHEN target.ChangePasswordOtpMaxAttempts IS NULL OR target.ChangePasswordOtpMaxAttempts < 1 THEN 5 ELSE target.ChangePasswordOtpMaxAttempts END,
-  ChangePasswordOtpLockMinutes = CASE WHEN target.ChangePasswordOtpLockMinutes IS NULL OR target.ChangePasswordOtpLockMinutes < 1 THEN 15 ELSE target.ChangePasswordOtpLockMinutes END
+  ChangePasswordOtpLockMinutes = CASE WHEN target.ChangePasswordOtpLockMinutes IS NULL OR target.ChangePasswordOtpLockMinutes < 1 THEN 15 ELSE target.ChangePasswordOtpLockMinutes END,
+  BlockSearchEngines = ISNULL(target.BlockSearchEngines, 0)
 WHEN NOT MATCHED THEN
-  INSERT(AppSettingsId, EnhancedGoogleDataRefreshHours, GoogleReviewsRefreshHours, GoogleUpdatesRefreshHours, GoogleQuestionsAndAnswersRefreshHours, GoogleSocialProfilesRefreshHours, AppleBingRefreshHours, SearchVolumeRefreshCooldownDays, MaxSuggestedKeyphrases, OpenAiApiKeyProtected, OpenAiModel, OpenAiTimeoutSeconds, MapPackClickSharePercent, MapPackCtrPosition1Percent, MapPackCtrPosition2Percent, MapPackCtrPosition3Percent, MapPackCtrPosition4Percent, MapPackCtrPosition5Percent, MapPackCtrPosition6Percent, MapPackCtrPosition7Percent, MapPackCtrPosition8Percent, MapPackCtrPosition9Percent, MapPackCtrPosition10Percent, ZohoLeadOwnerName, ZohoLeadOwnerId, ZohoLeadNextAction, SiteUrl, MinimumPasswordLength, PasswordRequiresNumber, PasswordRequiresCapitalLetter, PasswordRequiresSpecialCharacter, LoginLockoutThreshold, LoginLockoutMinutes, EmailCodeCooldownSeconds, EmailCodeMaxPerHourPerEmail, EmailCodeMaxPerHourPerIp, EmailCodeExpiryMinutes, EmailCodeMaxFailedAttemptsPerCode, InviteExpiryHours, InviteOtpExpiryMinutes, InviteOtpCooldownSeconds, InviteOtpMaxPerHourPerInvite, InviteOtpMaxPerHourPerIp, InviteOtpMaxAttempts, InviteOtpLockMinutes, InviteMaxAttempts, InviteLockMinutes, ChangePasswordOtpExpiryMinutes, ChangePasswordOtpCooldownSeconds, ChangePasswordOtpMaxPerHourPerUser, ChangePasswordOtpMaxPerHourPerIp, ChangePasswordOtpMaxAttempts, ChangePasswordOtpLockMinutes, UpdatedAtUtc)
-  VALUES(1, 24, 24, 24, 24, 24, 24, 30, 20, NULL, N''gpt-4.1-mini'', 20, 50, 38, 23, 16, 7, 5, 4, 3, 2, 1, 1, N''Richard Howes'', N''1108404000000068001'', N''Make first contact'', N''https://briskly-viceless-kayleen.ngrok-free.dev/'', 12, 1, 1, 1, 5, 15, 60, 10, 50, 10, 5, 24, 10, 60, 3, 25, 5, 15, 10, 15, 10, 60, 3, 25, 5, 15, SYSUTCDATETIME());
+  INSERT(AppSettingsId, EnhancedGoogleDataRefreshHours, GoogleReviewsRefreshHours, GoogleUpdatesRefreshHours, GoogleQuestionsAndAnswersRefreshHours, GoogleSocialProfilesRefreshHours, AppleBingRefreshHours, SearchVolumeRefreshCooldownDays, MaxSuggestedKeyphrases, OpenAiApiKeyProtected, OpenAiModel, OpenAiTimeoutSeconds, MapPackClickSharePercent, MapPackCtrPosition1Percent, MapPackCtrPosition2Percent, MapPackCtrPosition3Percent, MapPackCtrPosition4Percent, MapPackCtrPosition5Percent, MapPackCtrPosition6Percent, MapPackCtrPosition7Percent, MapPackCtrPosition8Percent, MapPackCtrPosition9Percent, MapPackCtrPosition10Percent, ZohoLeadOwnerName, ZohoLeadOwnerId, ZohoLeadNextAction, SiteUrl, MinimumPasswordLength, PasswordRequiresNumber, PasswordRequiresCapitalLetter, PasswordRequiresSpecialCharacter, LoginLockoutThreshold, LoginLockoutMinutes, EmailCodeCooldownSeconds, EmailCodeMaxPerHourPerEmail, EmailCodeMaxPerHourPerIp, EmailCodeExpiryMinutes, EmailCodeMaxFailedAttemptsPerCode, InviteExpiryHours, InviteOtpExpiryMinutes, InviteOtpCooldownSeconds, InviteOtpMaxPerHourPerInvite, InviteOtpMaxPerHourPerIp, InviteOtpMaxAttempts, InviteOtpLockMinutes, InviteMaxAttempts, InviteLockMinutes, ChangePasswordOtpExpiryMinutes, ChangePasswordOtpCooldownSeconds, ChangePasswordOtpMaxPerHourPerUser, ChangePasswordOtpMaxPerHourPerIp, ChangePasswordOtpMaxAttempts, ChangePasswordOtpLockMinutes, BlockSearchEngines, UpdatedAtUtc)
+  VALUES(1, 24, 24, 24, 24, 24, 24, 30, 20, NULL, N''gpt-4.1-mini'', 20, 50, 38, 23, 16, 7, 5, 4, 3, 2, 1, 1, N''Richard Howes'', N''1108404000000068001'', N''Make first contact'', N''https://briskly-viceless-kayleen.ngrok-free.dev/'', 12, 1, 1, 1, 5, 15, 60, 10, 50, 10, 5, 24, 10, 60, 3, 25, 5, 15, 10, 15, 10, 60, 3, 25, 5, 15, 0, SYSUTCDATETIME());
 ');
 IF OBJECT_ID('dbo.GoogleBusinessProfileCategory','U') IS NULL
 BEGIN

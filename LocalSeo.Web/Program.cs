@@ -84,6 +84,10 @@ builder.Services.AddHttpClient();
 builder.Services.AddMemoryCache();
 builder.Services.AddDataProtection();
 
+var isTestingEnvironment = builder.Environment.IsEnvironment("Testing");
+var disableHostedServices = isTestingEnvironment || builder.Configuration.GetValue<bool>("Testing:DisableHostedServices");
+var skipStartupInitialization = isTestingEnvironment || builder.Configuration.GetValue<bool>("Testing:SkipStartupInitialization");
+
 builder.Services.AddAuthentication("LocalCookie")
     .AddCookie("LocalCookie", options =>
     {
@@ -196,6 +200,7 @@ builder.Services.AddScoped<IAppleBingMapLinksService, AppleBingMapLinksService>(
 builder.Services.AddScoped<ISearchIngestionService, SearchIngestionService>();
 builder.Services.AddSingleton<ISearchRunExecutor, SearchRunExecutor>();
 builder.Services.AddScoped<IAdminSettingsService, AdminSettingsService>();
+builder.Services.AddScoped<IRobotsTxtWriter, RobotsTxtWriter>();
 builder.Services.AddScoped<ISecuritySettingsProvider, SecuritySettingsProvider>();
 builder.Services.AddScoped<IGbLocationDataListService, GbLocationDataListService>();
 builder.Services.AddScoped<ICategoryLocationKeywordService, CategoryLocationKeywordService>();
@@ -264,13 +269,17 @@ builder.Services.AddScoped<IApiStatusCheck, SendGridProfileApiStatusCheck>();
 builder.Services.AddScoped<IApiStatusCheck, ZohoCrmPingApiStatusCheck>();
 builder.Services.AddSingleton<IExternalApiStatusChecker, AppleMapsStatusChecker>();
 builder.Services.AddSingleton<IExternalApiStatusChecker, AzureMapsStatusChecker>();
-builder.Services.AddHostedService<ApiStatusMonitorHostedService>();
-builder.Services.AddHostedService<ExternalApiHealthMonitorHostedService>();
+if (!disableHostedServices)
+{
+    builder.Services.AddHostedService<ApiStatusMonitorHostedService>();
+    builder.Services.AddHostedService<ExternalApiHealthMonitorHostedService>();
+}
 
 var app = builder.Build();
 
-using (var scope = app.Services.CreateScope())
+if (!skipStartupInitialization)
 {
+    using var scope = app.Services.CreateScope();
     var bootstrapper = scope.ServiceProvider.GetRequiredService<DbBootstrapper>();
     await bootstrapper.EnsureSchemaAsync(CancellationToken.None);
     var apiStatusService = scope.ServiceProvider.GetRequiredService<IApiStatusService>();
@@ -307,9 +316,12 @@ app.UseStaticFiles();
 app.UseRouting();
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseMiddleware<SearchEngineBlockMiddleware>();
 
 app.MapControllerRoute(
     name: "default",
     pattern: "{controller=Home}/{action=Index}/{id?}");
 
 app.Run();
+
+public partial class Program { }
