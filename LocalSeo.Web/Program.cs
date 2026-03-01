@@ -1,5 +1,8 @@
 using System.Net.Http.Headers;
 using System.Security.Claims;
+using System.Text.Json;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.AspNetCore.DataProtection;
 using LocalSeo.Web.Data;
 using LocalSeo.Web.Models;
 using LocalSeo.Web.Options;
@@ -9,11 +12,11 @@ using TransactionalEmails = LocalSeo.Web.Services.TransactionalEmails;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
 var contentRootPath = builder.Environment.ContentRootPath;
-builder.Configuration.AddUserSecrets<Program>(optional: true, reloadOnChange: true);
 
 string ResolveContentRootPath(string? configuredPath)
 {
@@ -26,6 +29,27 @@ string ResolveContentRootPath(string? configuredPath)
         return Path.GetFullPath(normalized);
 
     return Path.GetFullPath(Path.Combine(contentRootPath, normalized));
+}
+
+Task WriteHealthJson(HttpContext context, HealthReport report)
+{
+    context.Response.ContentType = "application/json; charset=utf-8";
+
+    var payload = new
+    {
+        status = report.Status.ToString(),
+        totalDurationMs = (long)Math.Round(report.TotalDuration.TotalMilliseconds, MidpointRounding.AwayFromZero),
+        checks = report.Entries
+            .Select(entry => new
+            {
+                name = entry.Key,
+                status = entry.Value.Status.ToString(),
+                durationMs = (long)Math.Round(entry.Value.Duration.TotalMilliseconds, MidpointRounding.AwayFromZero)
+            })
+            .ToArray()
+    };
+
+    return context.Response.WriteAsync(JsonSerializer.Serialize(payload));
 }
 
 builder.Host.UseSerilog((ctx, lc) => lc
@@ -82,7 +106,15 @@ builder.Services.AddOptions<AppleMapsOptions>()
 builder.Services.AddControllersWithViews();
 builder.Services.AddHttpClient();
 builder.Services.AddMemoryCache();
-builder.Services.AddDataProtection();
+var dataProtectionKeysPath = Path.Combine(contentRootPath, "App_Data", "DataProtection-Keys");
+Directory.CreateDirectory(dataProtectionKeysPath);
+var dataProtectionBuilder = builder.Services.AddDataProtection()
+    .SetApplicationName("LocalSeo.Web")
+    .PersistKeysToFileSystem(new DirectoryInfo(dataProtectionKeysPath));
+if (OperatingSystem.IsWindows())
+    dataProtectionBuilder.ProtectKeysWithDpapi(protectToLocalMachine: true);
+builder.Services.AddHealthChecks()
+    .AddCheck<SqlConnectionHealthCheck>("sqlserver");
 
 var isTestingEnvironment = builder.Environment.IsEnvironment("Testing");
 var disableHostedServices = isTestingEnvironment || builder.Configuration.GetValue<bool>("Testing:DisableHostedServices");
@@ -321,6 +353,18 @@ app.UseMiddleware<SearchEngineBlockMiddleware>();
 app.MapControllerRoute(
     name: "default",
     pattern: "{controller=Home}/{action=Index}/{id?}");
+
+// CI/CD release validation probes call this endpoint to verify app + DB reachability.
+app.MapHealthChecks("/health", new HealthCheckOptions
+{
+    ResultStatusCodes =
+    {
+        [HealthStatus.Healthy] = StatusCodes.Status200OK,
+        [HealthStatus.Degraded] = StatusCodes.Status200OK,
+        [HealthStatus.Unhealthy] = StatusCodes.Status503ServiceUnavailable
+    },
+    ResponseWriter = WriteHealthJson
+});
 
 app.Run();
 

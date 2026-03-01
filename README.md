@@ -22,7 +22,7 @@ ASP.NET Core MVC app for internal staff to run Google Places Text Search queries
 - Cookie auth + antiforgery
 
 ## Configuration
-Set via `appsettings.json` and/or environment variables:
+Set in `appsettings.json`:
 - `ConnectionStrings__Sql`
 - `Google__ApiKey`
 - `Google__ClientId`
@@ -58,7 +58,7 @@ Set via `appsettings.json` and/or environment variables:
 - `ZohoOAuth__AccountsBaseUrl` (EU: `https://accounts.zoho.eu`, US: `https://accounts.zoho.com`)
 - `ZohoOAuth__CrmApiBaseUrl` (EU: `https://www.zohoapis.eu/crm/v2`, US: `https://www.zohoapis.com/crm/v2`)
 - `ZohoOAuth__ClientId`
-- `ZohoOAuth__ClientSecret` (store in secrets manager / env var for production)
+- `ZohoOAuth__ClientSecret`
 - `ZohoOAuth__RedirectUri` (e.g. `https://your-domain/zoho/oauth/callback`)
 - `ZohoOAuth__Scopes` (default `ZohoCRM.modules.leads.ALL,ZohoCRM.settings.modules.READ`)
 
@@ -84,20 +84,17 @@ Set via `appsettings.json` and/or environment variables:
   `GET /integrations/zoho/ping`
 
 ### Zoho client secret rotation
-- Create a new client secret in Zoho and update only `ZohoOAuth__ClientSecret` in your secret store/environment.
+- Create a new client secret in Zoho and update only `ZohoOAuth__ClientSecret` in `appsettings.json`.
 - Restart the app instances so new config is loaded.
 - Existing refresh tokens stay valid unless revoked; if revoked, rerun `/integrations/zoho/connect`.
 
 ### OpenAI keyphrase suggestions setup
-- Development: store the fallback key with user-secrets instead of committing it:
-  ```bash
-  dotnet user-secrets set "OpenAi:ApiKey" "<your-api-key>" --project LocalSeo.Web
-  ```
-- Production: configure and rotate key via `Admin > Settings > Search` (`OpenAI API Key` field is encrypted at rest and masked in UI).
+- Set the fallback key in `appsettings.json` as `OpenAi:ApiKey`.
+- You can also configure and rotate key via `Admin > Settings > Search` (`OpenAI API Key` field is encrypted at rest and masked in UI).
 
 ## Run
 1. Create SQL DB and set `ConnectionStrings__Sql`.
-2. Set Google + SendGrid API keys in environment variables.
+2. Set Google + SendGrid API keys in `appsettings.json`.
 3. Run app:
    ```bash
    dotnet restore

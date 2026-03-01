@@ -14,3 +14,7 @@ _test_tmp/
 **/_test_tmp/
 **/artifacts/
 **Private/
+publish/
+**/publish/
+deploy-publish.ps1
+deploy-msdeploy.ps1

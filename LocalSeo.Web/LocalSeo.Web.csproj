@@ -4,7 +4,6 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <Version>0.10.0</Version>
-    <UserSecretsId>7fb4b4c1-4bc7-4ecf-a4f1-0bcc8067c7a8</UserSecretsId>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Dapper" Version="2.1.35" />

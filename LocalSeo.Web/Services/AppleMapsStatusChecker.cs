@@ -10,7 +10,8 @@ namespace LocalSeo.Web.Services;
 
 public sealed class AppleMapsStatusChecker(
     IHttpClientFactory httpClientFactory,
-    IOptions<AppleMapsOptions> options) : IExternalApiStatusChecker
+    IOptions<AppleMapsOptions> options,
+    ILogger<AppleMapsStatusChecker> logger) : IExternalApiStatusChecker
 {
     private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(3);
     private static readonly TimeSpan TokenLifetime = TimeSpan.FromDays(180);
@@ -71,8 +72,9 @@ public sealed class AppleMapsStatusChecker(
                 HttpStatusCode: null,
                 Error: "Request timed out after 3 seconds.");
         }
-        catch (Exception)
+        catch (Exception ex)
         {
+            logger.LogWarning(ex, "Apple Maps health check failed.");
             return new ApiStatusResult(
                 Name,
                 IsUp: false,
@@ -81,8 +83,19 @@ public sealed class AppleMapsStatusChecker(
                 LatencyMs: (int)Math.Max(0, stopwatch.ElapsedMilliseconds),
                 EndpointCalled: SearchEndpoint,
                 HttpStatusCode: null,
-                Error: "Apple Maps check failed.");
+                Error: BuildExceptionError(ex));
         }
+    }
+
+    private static string BuildExceptionError(Exception ex)
+    {
+        var typeName = ex.GetType().Name;
+        var message = (ex.Message ?? string.Empty).Trim();
+        if (message.Length == 0)
+            return $"Apple Maps check failed: {typeName}.";
+
+        var details = $"Apple Maps check failed: {typeName}: {message}";
+        return details.Length <= 500 ? details : details[..500];
     }
 
     private ApiStatusResult BuildResult(HttpResponseMessage response, string endpoint, long latencyMs)
