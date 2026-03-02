@@ -12,7 +12,7 @@
         padding: 0 !important;
         color: #111827 !important;
         background: transparent !important;
-        overflow: hidden !important;
+        overflow: visible !important;
         -webkit-print-color-adjust: exact !important;
         print-color-adjust: exact !important;
     }
@@ -28,15 +28,23 @@
 
     .fc-container {
         width: 210mm !important;
-        min-height: 297mm !important;
-        height: 297mm !important;
+        min-height: auto !important;
+        height: auto !important;
         margin: 0 !important;
         padding: 6mm !important;
         border: none !important;
         border-radius: 0 !important;
         box-shadow: none !important;
-        overflow: hidden !important;
-        page-break-inside: avoid !important;
+        overflow: visible !important;
+        page-break-inside: auto !important;
+    }
+
+    .fc-grid {
+        grid-template-columns: 1fr 1fr !important;
+    }
+
+    .fc-signals {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
     }
 
     .fc-header {
@@ -136,6 +144,10 @@
     .fc-cta-btn {
         padding: 5px 9px !important;
         font-size: 10px !important;
+    }
+
+    .fc-cta-btn.is-secondary {
+        color: #ffffff !important;
     }
 
     .fc-disclaimer {

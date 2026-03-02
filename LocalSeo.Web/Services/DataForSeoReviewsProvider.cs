@@ -293,7 +293,7 @@ SELECT TOP (@Take)
   CallbackTaskId,
   LastError
 FROM dbo.DataForSeoReviewTask
-WHERE @TaskType IS NULL OR COALESCE(TaskType, 'reviews') = @TaskType
+WHERE (@TaskType IS NULL OR COALESCE(TaskType, 'reviews') = @TaskType)
   AND (@Status IS NULL OR Status = @Status)
 ORDER BY
   DataForSeoReviewTaskId DESC;",

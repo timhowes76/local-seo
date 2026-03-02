@@ -1190,6 +1190,8 @@ public class AdminController(
             return "questions_and_answers";
         if (string.Equals(taskType, "social_profiles", StringComparison.OrdinalIgnoreCase))
             return "social_profiles";
+        if (string.Equals(taskType, "apple_bing", StringComparison.OrdinalIgnoreCase))
+            return "apple_bing";
         if (string.Equals(taskType, "reviews", StringComparison.OrdinalIgnoreCase))
             return "reviews";
         return null;

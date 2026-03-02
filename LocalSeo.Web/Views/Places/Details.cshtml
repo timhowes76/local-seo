@@ -307,11 +307,6 @@
     var firstContactClientUrl = hasReportRunId
         ? $"/reports/{Uri.EscapeDataString(Model.PlaceId)}/{reportRunIdValue}/first-contact?variant=client"
         : string.Empty;
-    var firstContactInternalUrl = hasReportRunId
-        ? $"/reports/{Uri.EscapeDataString(Model.PlaceId)}/{reportRunIdValue}/first-contact?variant=internal"
-        : string.Empty;
-    var firstContactClientPdf = firstContactAvailability?.Variants.FirstOrDefault(x => x.Variant == FirstContactReportVariant.ClientFacing)?.ExistingPdfPath;
-    var firstContactInternalPdf = firstContactAvailability?.Variants.FirstOrDefault(x => x.Variant == FirstContactReportVariant.Internal)?.ExistingPdfPath;
     var financialSearchDefault = (Model.DisplayName ?? string.Empty).Trim();
     var financialLocationDefault = (Model.FormattedAddress ?? Model.SearchLocationName ?? string.Empty).Trim();
 }
@@ -1390,40 +1385,20 @@ else
 <div id="tab-reports" class="details-tab-panel card is-hidden">
     <h3>Reports</h3>
     <div class="reports-list">
-        <article class="reports-item">
-            <div class="reports-item-header">
-                <h4>First contact (1 page)</h4>
-                <p class="muted">Local Visibility Snapshot</p>
-            </div>
+        <div class="reports-actions">
             @if (canViewFirstContactReport)
             {
-                <div class="reports-actions">
-                    <a class="btn btn-secondary" href="@firstContactClientUrl" target="_blank" rel="noopener noreferrer">View (Client-facing)</a>
-                    <a class="btn btn-secondary" href="@firstContactInternalUrl" target="_blank" rel="noopener noreferrer">View (Internal)</a>
-                </div>
-                @if (!string.IsNullOrWhiteSpace(firstContactClientPdf) || !string.IsNullOrWhiteSpace(firstContactInternalPdf))
-                {
-                    <div class="reports-links">
-                        @if (!string.IsNullOrWhiteSpace(firstContactClientPdf))
-                        {
-                            <a href="@firstContactClientPdf" target="_blank" rel="noopener noreferrer">Latest client-facing PDF</a>
-                        }
-                        @if (!string.IsNullOrWhiteSpace(firstContactInternalPdf))
-                        {
-                            <a href="@firstContactInternalPdf" target="_blank" rel="noopener noreferrer">Latest internal PDF</a>
-                        }
-                    </div>
-                }
+                <a class="btn btn-secondary" href="@firstContactClientUrl" target="_blank" rel="noopener noreferrer">First Contact - Opportunity Gap</a>
             }
             else
             {
-                <div class="reports-actions">
-                    <button type="button" class="btn btn-secondary" disabled>View (Client-facing)</button>
-                    <button type="button" class="btn btn-secondary" disabled>View (Internal)</button>
-                </div>
-                <p class="muted">@reportBlockedMessage</p>
+                <button type="button" class="btn btn-secondary" disabled>First Contact - Opportunity Gap</button>
             }
-        </article>
+        </div>
+        @if (!canViewFirstContactReport)
+        {
+            <p class="muted">@reportBlockedMessage</p>
+        }
     </div>
 </div>
 

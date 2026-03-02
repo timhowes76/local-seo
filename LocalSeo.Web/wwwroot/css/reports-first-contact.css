@@ -27,6 +27,22 @@ body {
     padding: 28px 0;
 }
 
+.fc-pdf-mode {
+    background: #fff;
+}
+
+.fc-pdf-mode .fc-shell {
+    padding: 0;
+}
+
+.fc-pdf-mode .fc-grid {
+    grid-template-columns: 1fr 1fr !important;
+}
+
+.fc-pdf-mode .fc-signals {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+}
+
 .fc-container {
     position: relative;
     width: 210mm;
@@ -496,7 +512,7 @@ body {
     }
 }
 
-@media (max-width: 900px) {
+@media screen and (max-width: 900px) {
     .fc-container {
         width: calc(100% - 20px);
         min-height: auto;

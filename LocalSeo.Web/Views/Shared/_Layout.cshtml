@@ -86,6 +86,7 @@
         ["change-password"] = "Change Password",
         ["settings"] = "Settings",
         ["logs"] = "Logs",
+        ["dataforseo-tasks"] = "DataForSEO Tasks",
         ["errors"] = "Errors",
         ["announcements"] = "Announcements",
         ["login-log"] = "Login Log",
@@ -109,26 +110,40 @@
         var pathSegments = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
         if (pathSegments.Length > 0)
         {
-            var cumulative = string.Empty;
-            for (var i = 0; i < pathSegments.Length; i++)
+            var isDataForSeoTaskFromLogs =
+                pathSegments.Length == 2
+                && string.Equals(pathSegments[0], "admin", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(pathSegments[1], "dataforseo-tasks", StringComparison.OrdinalIgnoreCase);
+
+            if (isDataForSeoTaskFromLogs)
             {
-                var segment = pathSegments[i];
-                cumulative += "/" + segment;
-                var isCurrent = i == pathSegments.Length - 1;
-                var label = breadcrumbMap.TryGetValue(segment, out var mappedLabel)
-                    ? mappedLabel
-                    : segment;
-                if (!breadcrumbMap.ContainsKey(segment))
+                breadcrumbs.Add(("Admin", "/admin", false));
+                breadcrumbs.Add(("Logs", "/admin/logs", false));
+                breadcrumbs.Add(("DataForSEO Tasks", "/admin/dataforseo-tasks", true));
+            }
+            else
+            {
+                var cumulative = string.Empty;
+                for (var i = 0; i < pathSegments.Length; i++)
                 {
-                    if (long.TryParse(segment, out var idValue))
-                        label = $"#{idValue}";
-                    else if (segment.Length > 24 && segment.All(ch => char.IsLetterOrDigit(ch) || ch is '-' or '_'))
-                        label = "Item";
-                    else
-                        label = string.Join(' ', segment.Split(new[] { '-', '_' }, StringSplitOptions.RemoveEmptyEntries)
-                            .Select(part => part.Length == 0 ? part : char.ToUpperInvariant(part[0]) + part[1..].ToLowerInvariant()));
+                    var segment = pathSegments[i];
+                    cumulative += "/" + segment;
+                    var isCurrent = i == pathSegments.Length - 1;
+                    var label = breadcrumbMap.TryGetValue(segment, out var mappedLabel)
+                        ? mappedLabel
+                        : segment;
+                    if (!breadcrumbMap.ContainsKey(segment))
+                    {
+                        if (long.TryParse(segment, out var idValue))
+                            label = $"#{idValue}";
+                        else if (segment.Length > 24 && segment.All(ch => char.IsLetterOrDigit(ch) || ch is '-' or '_'))
+                            label = "Item";
+                        else
+                            label = string.Join(' ', segment.Split(new[] { '-', '_' }, StringSplitOptions.RemoveEmptyEntries)
+                                .Select(part => part.Length == 0 ? part : char.ToUpperInvariant(part[0]) + part[1..].ToLowerInvariant()));
+                    }
+                    breadcrumbs.Add((label, cumulative, isCurrent));
                 }
-                breadcrumbs.Add((label, cumulative, isCurrent));
             }
         }
     }
@@ -146,7 +161,7 @@
     <link rel="icon" type="image/png" href="/assets/images/favicon.png" />
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" />
     <link rel="stylesheet" href="~/lib/tom-select/dist/css/tom-select.css" asp-append-version="true" />
-    <link rel="stylesheet" href="/css/site.css" />
+    <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
 </head>
 <body>
 

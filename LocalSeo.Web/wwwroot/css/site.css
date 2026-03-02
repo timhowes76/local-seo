@@ -1776,6 +1776,22 @@ tbody tr:hover {
     align-self: end;
 }
 
+.dataforseo-task-filters.inline-filter-line {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: flex-end;
+    gap: var(--space-2);
+}
+
+.dataforseo-task-filters .form-row {
+    flex: 1 1 0;
+    min-width: 0;
+}
+
+.dataforseo-task-filters .inline-filter-actions {
+    flex: 0 0 auto;
+}
+
 .stat-card {
     background: var(--bg-card);
     border: 1px solid var(--border-soft);

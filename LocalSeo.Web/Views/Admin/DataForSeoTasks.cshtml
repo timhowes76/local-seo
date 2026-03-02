@@ -1,12 +1,40 @@
 @model IReadOnlyList<DataForSeoTaskRow>
 @{
     ViewData["Title"] = "DataForSEO Tasks";
-    var selectedTaskType = (ViewBag.TaskType as string ?? "all").ToLowerInvariant();
-    var selectedStatus = (ViewBag.TaskStatus as string ?? "all").ToLowerInvariant();
+    var selectedTaskType = ViewBag.TaskType as string ?? "all";
+    var selectedTaskTypeKey = selectedTaskType.ToLowerInvariant();
+    var selectedStatus = ViewBag.TaskStatus as string ?? "all";
+    var selectedStatusKey = selectedStatus.ToLowerInvariant();
     var statusMessage = TempData["Status"] as string;
 }
 
 <div class="page-stack">
+    <style>
+        .dataforseo-task-filters.inline-filter-line {
+            display: flex;
+            flex-wrap: nowrap;
+            align-items: flex-end;
+            gap: 10px;
+        }
+
+        .dataforseo-task-filters .form-row {
+            display: grid;
+            gap: 6px;
+            min-width: 0;
+            flex: 0 0 auto;
+        }
+
+        .dataforseo-task-filters .form-row select {
+            width: auto !important;
+            max-width: none !important;
+            min-width: 0 !important;
+        }
+
+        .dataforseo-task-filters .inline-filter-actions {
+            flex: 0 0 auto;
+            align-self: end;
+        }
+    </style>
     @if (!string.IsNullOrWhiteSpace(statusMessage))
     {
         <div class="notice">@statusMessage</div>
@@ -14,11 +42,14 @@
 
     <section class="card">
         <div class="toolbar">
-            <a href="/admin" class="btn btn-secondary">Back to Admin</a>
-            <form method="get" action="/admin/dataforseo-tasks" class="inline-group">
+            <a href="/admin/logs" class="btn btn-secondary">Back to Logs</a>
+        </div>
+
+        <form method="get" action="/admin/dataforseo-tasks" class="inline-filter-line dataforseo-task-filters">
+            <div class="form-row">
                 <label for="taskTypeFilter">Task Type</label>
-                <select id="taskTypeFilter" name="taskType" class="js-searchable" data-placeholder="Search">
-                    @if (selectedTaskType == "all")
+                <select id="taskTypeFilter" name="taskType">
+                    @if (selectedTaskTypeKey == "all")
                     {
                         <option value="all" selected>All</option>
                     }
@@ -26,7 +57,7 @@
                     {
                         <option value="all">All</option>
                     }
-                    @if (selectedTaskType == "my_business_info")
+                    @if (selectedTaskTypeKey == "my_business_info")
                     {
                         <option value="my_business_info" selected>my_business_info</option>
                     }
@@ -34,7 +65,7 @@
                     {
                         <option value="my_business_info">my_business_info</option>
                     }
-                    @if (selectedTaskType == "my_business_updates")
+                    @if (selectedTaskTypeKey == "my_business_updates")
                     {
                         <option value="my_business_updates" selected>my_business_updates</option>
                     }
@@ -42,7 +73,7 @@
                     {
                         <option value="my_business_updates">my_business_updates</option>
                     }
-                    @if (selectedTaskType == "reviews")
+                    @if (selectedTaskTypeKey == "reviews")
                     {
                         <option value="reviews" selected>reviews</option>
                     }
@@ -50,7 +81,7 @@
                     {
                         <option value="reviews">reviews</option>
                     }
-                    @if (selectedTaskType == "questions_and_answers")
+                    @if (selectedTaskTypeKey == "questions_and_answers")
                     {
                         <option value="questions_and_answers" selected>questions_and_answers</option>
                     }
@@ -58,7 +89,7 @@
                     {
                         <option value="questions_and_answers">questions_and_answers</option>
                     }
-                    @if (selectedTaskType == "social_profiles")
+                    @if (selectedTaskTypeKey == "social_profiles")
                     {
                         <option value="social_profiles" selected>social_profiles</option>
                     }
@@ -66,10 +97,21 @@
                     {
                         <option value="social_profiles">social_profiles</option>
                     }
+                    @if (selectedTaskTypeKey == "apple_bing")
+                    {
+                        <option value="apple_bing" selected>apple_bing</option>
+                    }
+                    else
+                    {
+                        <option value="apple_bing">apple_bing</option>
+                    }
                 </select>
+            </div>
+
+            <div class="form-row">
                 <label for="statusFilter">Status</label>
-                <select id="statusFilter" name="status" class="js-searchable" data-placeholder="Search">
-                    @if (selectedStatus == "all")
+                <select id="statusFilter" name="status">
+                    @if (selectedStatusKey == "all")
                     {
                         <option value="all" selected>All</option>
                     }
@@ -77,7 +119,7 @@
                     {
                         <option value="all">All</option>
                     }
-                    @if (selectedStatus == "created")
+                    @if (selectedStatusKey == "created")
                     {
                         <option value="Created" selected>Created</option>
                     }
@@ -85,7 +127,7 @@
                     {
                         <option value="Created">Created</option>
                     }
-                    @if (selectedStatus == "pending")
+                    @if (selectedStatusKey == "pending")
                     {
                         <option value="Pending" selected>Pending</option>
                     }
@@ -93,7 +135,7 @@
                     {
                         <option value="Pending">Pending</option>
                     }
-                    @if (selectedStatus == "ready")
+                    @if (selectedStatusKey == "ready")
                     {
                         <option value="Ready" selected>Ready</option>
                     }
@@ -101,7 +143,7 @@
                     {
                         <option value="Ready">Ready</option>
                     }
-                    @if (selectedStatus == "populated")
+                    @if (selectedStatusKey == "populated")
                     {
                         <option value="Populated" selected>Populated</option>
                     }
@@ -109,7 +151,7 @@
                     {
                         <option value="Populated">Populated</option>
                     }
-                    @if (selectedStatus == "nodata")
+                    @if (selectedStatusKey == "nodata")
                     {
                         <option value="NoData" selected>NoData</option>
                     }
@@ -117,7 +159,7 @@
                     {
                         <option value="NoData">NoData</option>
                     }
-                    @if (selectedStatus == "completednodata")
+                    @if (selectedStatusKey == "completednodata")
                     {
                         <option value="CompletedNoData" selected>CompletedNoData</option>
                     }
@@ -125,7 +167,7 @@
                     {
                         <option value="CompletedNoData">CompletedNoData</option>
                     }
-                    @if (selectedStatus == "completednoreviews")
+                    @if (selectedStatusKey == "completednoreviews")
                     {
                         <option value="CompletedNoReviews" selected>CompletedNoReviews</option>
                     }
@@ -133,7 +175,7 @@
                     {
                         <option value="CompletedNoReviews">CompletedNoReviews</option>
                     }
-                    @if (selectedStatus == "completednoupdates")
+                    @if (selectedStatusKey == "completednoupdates")
                     {
                         <option value="CompletedNoUpdates" selected>CompletedNoUpdates</option>
                     }
@@ -141,7 +183,7 @@
                     {
                         <option value="CompletedNoUpdates">CompletedNoUpdates</option>
                     }
-                    @if (selectedStatus == "error")
+                    @if (selectedStatusKey == "error")
                     {
                         <option value="Error" selected>Error</option>
                     }
@@ -150,17 +192,23 @@
                         <option value="Error">Error</option>
                     }
                 </select>
+            </div>
+
+            <div class="form-row inline-filter-actions">
                 <button type="submit" class="btn btn-secondary">Apply Filter</button>
-            </form>
-            <form method="post" action="/admin/dataforseo-tasks/refresh?taskType=@selectedTaskType&status=@selectedStatus">
+            </div>
+        </form>
+
+        <div class="toolbar">
+            <form method="post" action="/admin/dataforseo-tasks/refresh?taskType=@Uri.EscapeDataString(selectedTaskType)&status=@Uri.EscapeDataString(selectedStatus)">
                 @Html.AntiForgeryToken()
                 <button type="submit" class="btn btn-secondary">Refresh Statuses</button>
             </form>
-            <form method="post" action="/admin/dataforseo-tasks/populate-ready?taskType=@selectedTaskType&status=@selectedStatus" onsubmit="return confirm('Populate results for all Ready tasks in the current filter?');">
+            <form method="post" action="/admin/dataforseo-tasks/populate-ready?taskType=@Uri.EscapeDataString(selectedTaskType)&status=@Uri.EscapeDataString(selectedStatus)" onsubmit="return confirm('Populate results for all Ready tasks in the current filter?');">
                 @Html.AntiForgeryToken()
                 <button type="submit">Populate All Ready</button>
             </form>
-            <form method="post" action="/admin/dataforseo-tasks/delete-errors?taskType=@selectedTaskType&status=@selectedStatus" onsubmit="return confirm('Delete all Error rows for the current filter?');">
+            <form method="post" action="/admin/dataforseo-tasks/delete-errors?taskType=@Uri.EscapeDataString(selectedTaskType)&status=@Uri.EscapeDataString(selectedStatus)" onsubmit="return confirm('Delete all Error rows for the current filter?');">
                 @Html.AntiForgeryToken()
                 <button type="submit">Delete Error Rows</button>
             </form>
@@ -250,4 +298,34 @@
         }
     </section>
 </div>
+
+<script>
+    (() => {
+        const selects = document.querySelectorAll(".dataforseo-task-filters select");
+        if (!selects.length) return;
+
+        const canvas = document.createElement("canvas");
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return;
+
+        selects.forEach((select) => {
+            const computed = window.getComputedStyle(select);
+            ctx.font = computed.font || `${computed.fontSize} ${computed.fontFamily}`;
+
+            let max = 0;
+            Array.from(select.options).forEach((option) => {
+                const width = ctx.measureText(option.textContent || "").width;
+                if (width > max) max = width;
+            });
+
+            // Include select horizontal padding and dropdown arrow space.
+            const horizontalPadding =
+                (parseFloat(computed.paddingLeft) || 0) +
+                (parseFloat(computed.paddingRight) || 0) +
+                34;
+
+            select.style.width = `${Math.ceil(max + horizontalPadding)}px`;
+        });
+    })();
+</script>
 

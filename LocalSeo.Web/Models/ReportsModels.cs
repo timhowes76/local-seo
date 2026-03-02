@@ -37,7 +37,7 @@ public sealed class FirstContactReportViewModel
     public string VariantLabel { get; init; } = string.Empty;
     public bool IsClientFacing => Variant == FirstContactReportVariant.ClientFacing;
     public bool ShowRawMetrics { get; init; }
-    public int Version { get; init; } = 1;
+    public int Version { get; init; } = 2;
 
     public string LogoPath { get; init; } = "/assets/images/logo.svg";
     public string? CompanyLogoPath { get; init; }

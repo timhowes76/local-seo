@@ -26,6 +26,7 @@ public sealed class ReportsService(
     Microsoft.AspNetCore.Hosting.IWebHostEnvironment webHostEnvironment,
     ILogger<ReportsService> logger) : IReportsService
 {
+    private const int FirstContactStyleVersion = 4;
     private const string FirstContactReportType = "FirstContactOnePager";
     private const string MissingReviewsMessage = "Run again with Reviews enabled to generate this report.";
     private const int FirstContactTemplateRevision = 2;
@@ -141,7 +142,7 @@ GROUP BY PlaceId;", new { PlaceIds = requiredPlaceIds }, cancellationToken: ct))
             Variant = variant,
             VariantLabel = GetVariantLabel(variant),
             ShowRawMetrics = false,
-            Version = Math.Max(1, reportsOptions.Value.FirstContactVersion),
+            Version = Math.Max(FirstContactStyleVersion, reportsOptions.Value.FirstContactVersion),
             ReportTitle = $"Google Maps Local Visibility Snapshot for {context.BusinessName}",
             BusinessName = context.BusinessName,
             CompanyLogoPath = ResolveCompanyLogoPath(context.CompanyLogoPath),
@@ -1016,6 +1017,7 @@ OUTPUT INSERTED.ReportId;", new
             Format = "A4",
             PreferCSSPageSize = true,
             PrintBackground = true,
+            Scale = 0.9f,
             Margin = new Margin
             {
                 Top = "0",

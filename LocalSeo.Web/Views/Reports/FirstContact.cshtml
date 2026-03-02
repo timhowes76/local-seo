@@ -26,7 +26,7 @@
     <link rel="stylesheet" href="~/css/reports-first-contact.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/css/print.css" asp-append-version="true" media="print" />
 </head>
-<body>
+<body class="@(printMode ? "fc-pdf-mode" : null)">
     @if (!printMode)
     {
         <div class="fc-actions">
@@ -145,23 +145,26 @@
                     <p>@Model.ProfileStrengthImpactText</p>
                 </div>
 
-                <div class="fc-card fc-card-wide fc-card-review">
-                    <h2>Review momentum (@Model.ReviewChart.GranularityLabel)</h2>
-                    <div class="fc-chart-wrap">
-                        <canvas id="review-momentum-chart"></canvas>
+                @if (!printMode)
+                {
+                    <div class="fc-card fc-card-wide fc-card-review">
+                        <h2>Review momentum (@Model.ReviewChart.GranularityLabel)</h2>
+                        <div class="fc-chart-wrap">
+                            <canvas id="review-momentum-chart"></canvas>
+                        </div>
+                        <div class="fc-legend">
+                            @for (var idx = 0; idx < Model.ReviewChart.Series.Count; idx++)
+                            {
+                                var series = Model.ReviewChart.Series[idx];
+                                var seriesColor = reviewSeriesColors[idx];
+                                <span class="fc-legend-item @(series.IsYou ? "is-you" : null)">
+                                    <span class="fc-dot @(series.IsYou ? "is-you" : null)" style="--dot-color:@seriesColor;"></span>
+                                    <span>@series.Name</span>
+                                </span>
+                            }
+                        </div>
                     </div>
-                    <div class="fc-legend">
-                        @for (var idx = 0; idx < Model.ReviewChart.Series.Count; idx++)
-                        {
-                            var series = Model.ReviewChart.Series[idx];
-                            var seriesColor = reviewSeriesColors[idx];
-                            <span class="fc-legend-item @(series.IsYou ? "is-you" : null)">
-                                <span class="fc-dot @(series.IsYou ? "is-you" : null)" style="--dot-color:@seriesColor;"></span>
-                                <span>@series.Name</span>
-                            </span>
-                        }
-                    </div>
-                </div>
+                }
 
                 <div class="fc-card fc-card-plan">
                     <h2>What we'd do</h2>
