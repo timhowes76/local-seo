@@ -196,7 +196,6 @@ public sealed class AuthService(
             return new CompleteTwoFactorResult(false, genericFailureMessage, null);
         }
 
-        // TODO(auth-v2): add trusted-device support to optionally remember successful MFA devices.
         await userRepository.UpdateLastLoginAsync(user.Id, timeProvider.GetUtcNow().UtcDateTime, ct);
         await WriteLogAsync(true, null, user.Id);
         return new CompleteTwoFactorResult(true, "Login successful.", user);

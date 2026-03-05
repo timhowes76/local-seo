@@ -33,6 +33,7 @@ public sealed class LoginRequestModel
 {
     public string Email { get; set; } = string.Empty;
     public string Password { get; set; } = string.Empty;
+    public bool TrustThisDevice { get; set; }
 }
 
 public sealed class TwoFactorRequestModel
@@ -40,6 +41,7 @@ public sealed class TwoFactorRequestModel
     public int Rid { get; set; }
     public string Email { get; set; } = string.Empty;
     public string Code { get; set; } = string.Empty;
+    public bool TrustThisDevice { get; set; }
 }
 
 public sealed class ForgotPasswordRequestModel

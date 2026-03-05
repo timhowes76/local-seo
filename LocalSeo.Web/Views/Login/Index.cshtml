@@ -34,6 +34,14 @@
                 Required = true
             })
         </div>
+        <div class="form-row">
+            <label class="checkbox-inline" for="trust-device-input">
+                <input id="trust-device-input" name="TrustThisDevice" type="checkbox" value="true" @(Model.TrustThisDevice ? "checked" : null) />
+                <span>Trust this device</span>
+            </label>
+            <input type="hidden" name="TrustThisDevice" value="false" />
+            <p class="form-help">Keeps you signed in for 30 days. Don't use on shared devices.</p>
+        </div>
         <div class="login-actions">
             <button type="submit">Continue</button>
         </div>

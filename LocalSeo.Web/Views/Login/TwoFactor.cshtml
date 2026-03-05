@@ -22,6 +22,7 @@
         @Html.AntiForgeryToken()
         <input type="hidden" name="Rid" value="@Model.Rid" />
         <input type="hidden" name="Email" value="@Model.Email" />
+        <input type="hidden" name="TrustThisDevice" value="@(Model.TrustThisDevice ? "true" : "false")" />
         <div class="form-row">
             <label for="code-input">6-digit code</label>
             <input id="code-input" name="Code" type="text" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" required />

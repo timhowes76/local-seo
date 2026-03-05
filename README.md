@@ -3,7 +3,6 @@
 ASP.NET Core MVC app for internal staff to run Google Places Text Search queries and persist snapshots into SQL Server 2019.
 
 ## Features
-- OTP login restricted to `@kontrolit.net`.
 - 6-digit code emailed via SendGrid (salted+hashed in DB only).
 - Search form for seed keyword + location (+ optional geo bias).
 - Ingestion pipeline with retries/backoff for Google transient errors.

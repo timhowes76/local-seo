@@ -23,7 +23,7 @@ public class LoginController(IAuthService authService) : Controller
     [AllowAnonymous]
     [HttpPost("/login")]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> Login(LoginRequestModel model, CancellationToken ct)
+    public async Task<IActionResult> Login([FromForm] LoginRequestModel model, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(model.Email) || string.IsNullOrWhiteSpace(model.Password))
         {
@@ -46,17 +46,18 @@ public class LoginController(IAuthService authService) : Controller
             return View("Index", model);
         }
 
-        return RedirectToAction(nameof(TwoFactor), new { rid = result.Rid, email = result.EmailAddress });
+        return RedirectToAction(nameof(TwoFactor), new { rid = result.Rid, email = result.EmailAddress, trustThisDevice = model.TrustThisDevice });
     }
 
     [AllowAnonymous]
     [HttpGet("/twofactor")]
-    public IActionResult TwoFactor([FromQuery] int rid, [FromQuery] string? email)
+    public IActionResult TwoFactor([FromQuery] int rid, [FromQuery] string? email, [FromQuery] bool trustThisDevice = false)
     {
         return View(new TwoFactorRequestModel
         {
             Rid = rid,
-            Email = email ?? string.Empty
+            Email = email ?? string.Empty,
+            TrustThisDevice = trustThisDevice
         });
     }
 
@@ -79,7 +80,7 @@ public class LoginController(IAuthService authService) : Controller
             return View("TwoFactor", model);
         }
 
-        await SignInUserAsync(result.User);
+        await SignInUserAsync(result.User, model.TrustThisDevice);
         return RedirectToAction("Index", "Home");
     }
 
@@ -130,7 +131,7 @@ public class LoginController(IAuthService authService) : Controller
             return View("ResetPassword", model);
         }
 
-        await SignInUserAsync(result.User);
+        await SignInUserAsync(result.User, trustThisDevice: false);
         return RedirectToAction("Index", "Home");
     }
 
@@ -143,7 +144,7 @@ public class LoginController(IAuthService authService) : Controller
         return RedirectToAction("Index");
     }
 
-    private async Task SignInUserAsync(UserRecord user)
+    private async Task SignInUserAsync(UserRecord user, bool trustThisDevice)
     {
         var claims = new List<Claim>
         {
@@ -158,7 +159,19 @@ public class LoginController(IAuthService authService) : Controller
             claims.Add(new Claim(ClaimTypes.Role, "Admin"));
 
         var identity = new ClaimsIdentity(claims, "LocalCookie");
-        await HttpContext.SignInAsync("LocalCookie", new ClaimsPrincipal(identity));
+        var principal = new ClaimsPrincipal(identity);
+        AuthenticationProperties? authProperties = null;
+        if (trustThisDevice)
+        {
+            authProperties = new AuthenticationProperties
+            {
+                IsPersistent = true,
+                ExpiresUtc = DateTimeOffset.UtcNow.AddDays(30),
+                AllowRefresh = false
+            };
+        }
+
+        await HttpContext.SignInAsync("LocalCookie", principal, authProperties);
         ThemeCookieHelper.ApplyThemeCookie(Response, user.IsDarkMode);
     }
 }

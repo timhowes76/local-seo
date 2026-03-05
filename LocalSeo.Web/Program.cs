@@ -128,8 +128,8 @@ builder.Services.AddAuthentication("LocalCookie")
         options.Cookie.HttpOnly = true;
         options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
         options.Cookie.SameSite = SameSiteMode.Lax;
-        options.SlidingExpiration = true;
-        options.ExpireTimeSpan = TimeSpan.FromHours(8);
+        options.SlidingExpiration = false;
+        options.ExpireTimeSpan = TimeSpan.FromDays(30);
         options.Events = new CookieAuthenticationEvents
         {
             OnValidatePrincipal = async context =>
