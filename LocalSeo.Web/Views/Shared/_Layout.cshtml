@@ -1,6 +1,7 @@
 @inject LocalSeo.Web.Services.IUserRepository UserRepository
 @inject LocalSeo.Web.Services.IAvatarResolver AvatarResolver
 @inject LocalSeo.Web.Services.IAnnouncementService AnnouncementService
+@inject LocalSeo.Web.Services.IAppInfo AppInfo
 @{
     var isAuthenticated = User.Identity?.IsAuthenticated == true;
     var isAdmin = User.HasClaim(LocalSeo.Web.Services.AuthClaimTypes.IsAdmin, "true");
@@ -14,6 +15,8 @@
     int? currentUserId = null;
     var announcementUnreadCount = 0;
     var blockSearchEngines = false;
+    var footerYear = DateTime.UtcNow.Year;
+    var footerVersion = AppInfo.Version;
 
     if (Context.Items.TryGetValue(LocalSeo.Web.Services.SearchEngineBlockContext.HttpContextItemKey, out var blockSearchEnginesObj)
         && blockSearchEnginesObj is bool blockSearchEnginesValue)
@@ -282,6 +285,9 @@
             <main class="content-shell">
                 @RenderBody()
             </main>
+            <footer class="app-footer">
+                © @footerYear Kontrolit.net Limited. Version @footerVersion
+            </footer>
         </div>
     </div>
 
@@ -312,9 +318,14 @@
 }
 else
 {
-    <main class="auth-shell">
-        @RenderBody()
-    </main>
+    <div class="auth-page-shell">
+        <main class="auth-shell">
+            @RenderBody()
+        </main>
+        <footer class="app-footer">
+            © @footerYear Kontrolit.net Limited. Version @footerVersion
+        </footer>
+    </div>
 }
 <script src="~/js/password-toggle.js" asp-append-version="true"></script>
 <script src="~/lib/tom-select/dist/js/tom-select.complete.min.js" asp-append-version="true"></script>

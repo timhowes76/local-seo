@@ -420,11 +420,27 @@ button.avatar-menu-item:hover {
 }
 
 .content-shell {
+    flex: 1 0 auto;
     padding: var(--space-4);
 }
 
-.auth-shell {
+.app-footer {
+    padding: 12px var(--space-4);
+    border-top: 1px solid var(--border-soft);
+    background: var(--bg-surface);
+    color: var(--text-muted);
+    font-size: 12px;
+    text-align: center;
+}
+
+.auth-page-shell {
     min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.auth-shell {
+    flex: 1 0 auto;
     display: grid;
     place-items: center;
     padding: var(--space-4);

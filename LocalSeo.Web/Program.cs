@@ -195,6 +195,7 @@ builder.Services.AddScoped<ISqlConnectionFactory, SqlConnectionFactory>();
 builder.Services.AddScoped<Microsoft.AspNetCore.Authorization.IAuthorizationHandler, AdminOnlyAuthorizationHandler>();
 builder.Services.AddScoped<DbBootstrapper>();
 builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddSingleton<IAppInfo, AppInfo>();
 builder.Services.AddScoped<IEmailAddressNormalizer, EmailAddressNormalizer>();
 builder.Services.AddScoped<IAvatarResolver, AvatarResolver>();
 builder.Services.AddScoped<IUserRepository, UserRepository>();
