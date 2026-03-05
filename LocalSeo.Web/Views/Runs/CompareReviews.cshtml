@@ -17,6 +17,14 @@
             return "status-pending";
         return "status-healthy";
     }
+    decimal? RoundToHalfStar(decimal? value)
+    {
+        if (!value.HasValue)
+            return null;
+
+        var clamped = Math.Clamp(value.Value, 0m, 5m);
+        return Math.Round(clamped * 2m, MidpointRounding.AwayFromZero) / 2m;
+    }
 
     var chartSeries = Model.Series
         .Where(x => x.Points.Count > 0)
@@ -76,9 +84,35 @@
                 @foreach (var row in Model.Rows)
                 {
                     var respondedLabel = row.RespondedPct12m.HasValue ? $"{row.RespondedPct12m.Value:0.##}%" : "N/A";
+                    var roundedRating = RoundToHalfStar(row.AvgRating);
                     <tr>
                         <td><a href="/places/@row.PlaceId?runId=@Model.Run.SearchRunId">@row.DisplayName</a></td>
-                        <td>@(row.AvgRating?.ToString("0.0") ?? "N/A")</td>
+                        <td>
+                            @if (roundedRating.HasValue)
+                            {
+                                var fullStars = (int)Math.Floor(roundedRating.Value);
+                                var hasHalfStar = roundedRating.Value - fullStars >= 0.5m;
+                                var emptyStars = 5 - fullStars - (hasHalfStar ? 1 : 0);
+                                <span class="rating-stars" title="@($"{roundedRating.Value:0.0} out of 5")" aria-label="@($"{roundedRating.Value:0.0} out of 5 stars")">
+                                    @for (var i = 0; i < fullStars; i++)
+                                    {
+                                        <i class="bi bi-star-fill" aria-hidden="true"></i>
+                                    }
+                                    @if (hasHalfStar)
+                                    {
+                                        <i class="bi bi-star-half" aria-hidden="true"></i>
+                                    }
+                                    @for (var i = 0; i < emptyStars; i++)
+                                    {
+                                        <i class="bi bi-star" aria-hidden="true"></i>
+                                    }
+                                </span>
+                            }
+                            else
+                            {
+                                <span>N/A</span>
+                            }
+                        </td>
                         <td>@(row.UserRatingCount?.ToString() ?? "N/A")</td>
                         <td>@row.Reviews3m</td>
                         <td>@row.Reviews6m</td>

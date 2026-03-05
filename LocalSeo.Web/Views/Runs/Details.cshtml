@@ -18,6 +18,22 @@
 
         return new DateTime(year, month, 1).ToString("MMM yyyy", CultureInfo.InvariantCulture);
     }
+    decimal? DistanceKm(decimal? centerLat, decimal? centerLng, decimal? placeLat, decimal? placeLng)
+    {
+        if (!centerLat.HasValue || !centerLng.HasValue || !placeLat.HasValue || !placeLng.HasValue)
+            return null;
+
+        const double earthRadiusKm = 6371d;
+        var lat1 = (double)centerLat.Value * Math.PI / 180d;
+        var lat2 = (double)placeLat.Value * Math.PI / 180d;
+        var deltaLat = lat2 - lat1;
+        var deltaLng = ((double)placeLng.Value - (double)centerLng.Value) * Math.PI / 180d;
+        var sinLat = Math.Sin(deltaLat / 2d);
+        var sinLng = Math.Sin(deltaLng / 2d);
+        var a = (sinLat * sinLat) + (Math.Cos(lat1) * Math.Cos(lat2) * sinLng * sinLng);
+        var c = 2d * Math.Atan2(Math.Sqrt(a), Math.Sqrt(1d - a));
+        return (decimal)(earthRadiusKm * c);
+    }
     var apiKey = GoogleOptions.Value.ApiKey;
     var mapPoints = Model.Snapshots
         .Where(x => x.Lat.HasValue && x.Lng.HasValue)
@@ -175,6 +191,7 @@
                         <th>Rank</th>
                         <th class="run-logo-col" aria-label="Logo"></th>
                         <th>Name</th>
+                        <th>Disk in km</th>
                         <th title="Financial Information"><i class="bi bi-bank2" aria-hidden="true"></i></th>
                         <th title="Zoho Connected"><i class="bi bi-person-vcard-fill" aria-hidden="true"></i></th>
                         <th>Primary Category</th>
@@ -206,6 +223,7 @@
                         : descriptionPercent < 66
                             ? "status-pending"
                             : "status-healthy";
+                    var distanceKm = DistanceKm(Model.Run.CenterLat, Model.Run.CenterLng, s.Lat, s.Lng);
                     <tr>
                         <td>@s.RankPosition</td>
                         <td class="run-logo-cell">
@@ -215,6 +233,7 @@
                             }
                         </td>
                         <td><a href="/places/@s.PlaceId?runId=@Model.Run.SearchRunId">@(s.DisplayName ?? "N/A")</a></td>
+                        <td>@(distanceKm.HasValue ? $"{distanceKm.Value:0.0}" : "N/A")</td>
                         <td class="run-indicator-cell">
                             <span class="run-indicator @(s.HasFinancialInfo ? "is-yes" : "is-no")" title="@(s.HasFinancialInfo ? "Financial information available" : "No financial information")">
                                 <i class="bi bi-bank2" aria-hidden="true"></i>
