@@ -905,6 +905,25 @@ else
         </ul>
     }
 
+    <h4>Suggested Other Categories (Based On Competitors)</h4>
+    <div class="help-panel">
+        <p>These suggested categories are derived from categories used by other businesses appearing in this search run. Categories already assigned to this place (including the primary category) are excluded. This is intended as guidance only. Any category added should accurately represent the business and be appropriate under Google Business Profile guidelines.</p>
+    </div>
+    @if (Model.SuggestedOtherCategories.Count == 0)
+    {
+        <p>None</p>
+    }
+    else
+    {
+        <ul>
+        @foreach (var suggestion in Model.SuggestedOtherCategories)
+        {
+            var competitorLabel = suggestion.CompetitorCount == 1 ? "competitor" : "competitors";
+            <li>@suggestion.Category (used by @suggestion.CompetitorCount @competitorLabel)</li>
+        }
+        </ul>
+    }
+
     <h4>Place Topics</h4>
     <div class="help-panel">
         <p>Keywords Google associates with this business based on reviews and engagement.</p>

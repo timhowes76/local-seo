@@ -214,6 +214,7 @@ public sealed class PlaceDetailsViewModel
     public string? BusinessStatus { get; init; }
     public IReadOnlyList<string> RegularOpeningHours { get; init; } = [];
     public IReadOnlyList<string> OtherCategories { get; init; } = [];
+    public IReadOnlyList<PlaceCategorySuggestionRow> SuggestedOtherCategories { get; init; } = [];
     public IReadOnlyList<string> PlaceTopics { get; init; } = [];
     public long? ActiveRunId { get; init; }
     public int? ActiveRankPosition { get; init; }
@@ -247,6 +248,10 @@ public sealed class PlaceDetailsViewModel
     public string? ZohoLastError { get; init; }
     public FirstContactReportAvailability? FirstContactReportAvailability { get; set; }
 }
+
+public sealed record PlaceCategorySuggestionRow(
+    string Category,
+    int CompetitorCount);
 
 public sealed record PlaceFinancialInfo(
     string PlaceId,

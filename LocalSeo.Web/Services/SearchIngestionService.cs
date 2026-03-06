@@ -2534,11 +2534,38 @@ ORDER BY
         var primaryCategory = SelectPrimaryCategoryLabel(
             PreferSpecificCategory(place.PrimaryCategory, liveDetails?.PrimaryCategory),
             primaryType);
+        string? canonicalPrimaryCategory = null;
+        if (!string.IsNullOrWhiteSpace(primaryType))
+        {
+            canonicalPrimaryCategory = await conn.ExecuteScalarAsync<string?>(new CommandDefinition(@"
+SELECT TOP 1
+  c.DisplayName
+FROM dbo.GoogleBusinessProfileCategory c
+WHERE c.CategoryId = @CategoryId;", new { CategoryId = primaryType }, cancellationToken: ct));
+        }
         var regularOpeningHours = ParseJsonStringArray(place.RegularOpeningHoursJson);
         if (regularOpeningHours.Count == 0 && liveDetails is { RegularOpeningHours.Count: > 0 })
             regularOpeningHours = liveDetails.RegularOpeningHours;
 
         var otherCategories = ParseJsonStringArray(place.OtherCategoriesJson);
+        var primaryCategoryCandidates = new List<string?>(5)
+        {
+            place.PrimaryCategory,
+            liveDetails?.PrimaryCategory,
+            primaryCategory,
+            HumanizeType(primaryType),
+            canonicalPrimaryCategory
+        };
+        var canonicalPrimaryCategories = await ResolveCanonicalCategoryDisplayNamesAsync(conn, primaryCategoryCandidates, ct);
+        foreach (var canonicalCategory in canonicalPrimaryCategories)
+            primaryCategoryCandidates.Add(canonicalCategory);
+        var suggestedOtherCategories = await GetSuggestedOtherCategoriesAsync(
+            conn,
+            contextRunId,
+            place.PlaceId,
+            primaryCategoryCandidates,
+            otherCategories,
+            ct);
         var placeTopics = ParseJsonStringArray(place.PlaceTopicsJson);
         var estimatedTraffic = await BuildPlaceEstimatedTrafficSummaryAsync(conn, contextRunId, active?.RankPosition, settings, ct);
 
@@ -2578,6 +2605,7 @@ ORDER BY
             BusinessStatus = HumanizeType(PreferNonEmpty(place.BusinessStatus, liveDetails?.BusinessStatus)),
             RegularOpeningHours = regularOpeningHours,
             OtherCategories = otherCategories,
+            SuggestedOtherCategories = suggestedOtherCategories,
             PlaceTopics = placeTopics,
             ActiveRunId = active?.SearchRunId,
             ActiveRankPosition = active?.RankPosition,
@@ -2621,6 +2649,88 @@ ORDER BY
             ZohoLastSyncAtUtc = place.ZohoLastSyncAtUtc,
             ZohoLastError = place.ZohoLastError
         };
+    }
+
+    private async Task<IReadOnlyList<PlaceCategorySuggestionRow>> GetSuggestedOtherCategoriesAsync(
+        Microsoft.Data.SqlClient.SqlConnection conn,
+        long? contextRunId,
+        string placeId,
+        IReadOnlyList<string?> currentPrimaryCategoryCandidates,
+        IReadOnlyList<string> currentOtherCategories,
+        CancellationToken ct)
+    {
+        if (!contextRunId.HasValue)
+            return [];
+
+        var excludedCategoryKeys = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var currentPrimaryCategory in currentPrimaryCategoryCandidates)
+        {
+            var currentPrimaryKey = NormalizeCategoryKey(currentPrimaryCategory);
+            if (currentPrimaryKey is not null)
+                excludedCategoryKeys.Add(currentPrimaryKey);
+        }
+
+        foreach (var category in currentOtherCategories)
+        {
+            var key = NormalizeCategoryKey(category);
+            if (key is not null)
+                excludedCategoryKeys.Add(key);
+        }
+
+        var competitorRows = (await conn.QueryAsync<RunCompetitorCategoryRow>(new CommandDefinition(@"
+WITH competitor_places AS (
+  SELECT DISTINCT s.PlaceId
+  FROM dbo.PlaceSnapshot s
+  WHERE s.SearchRunId = @RunId
+    AND s.PlaceId <> @PlaceId
+)
+SELECT
+  p.PrimaryCategory,
+  p.OtherCategoriesJson
+FROM competitor_places cp
+JOIN dbo.Place p ON p.PlaceId = cp.PlaceId;", new
+        {
+            RunId = contextRunId.Value,
+            PlaceId = placeId
+        }, cancellationToken: ct))).ToList();
+
+        if (competitorRows.Count == 0)
+            return [];
+
+        var competitorUsageByCategoryKey = new Dictionary<string, int>(StringComparer.Ordinal);
+        var displayVariantsByCategoryKey = new Dictionary<string, Dictionary<string, int>>(StringComparer.Ordinal);
+
+        foreach (var competitor in competitorRows)
+        {
+            var categoriesSeenForCompetitor = new HashSet<string>(StringComparer.Ordinal);
+            AddCompetitorCategoryUsage(
+                competitorUsageByCategoryKey,
+                displayVariantsByCategoryKey,
+                categoriesSeenForCompetitor,
+                competitor.PrimaryCategory);
+
+            foreach (var category in ParseJsonStringArray(competitor.OtherCategoriesJson))
+            {
+                AddCompetitorCategoryUsage(
+                    competitorUsageByCategoryKey,
+                    displayVariantsByCategoryKey,
+                    categoriesSeenForCompetitor,
+                    category);
+            }
+        }
+
+        return competitorUsageByCategoryKey
+            .Where(x => !excludedCategoryKeys.Contains(x.Key))
+            .Select(x =>
+            {
+                displayVariantsByCategoryKey.TryGetValue(x.Key, out var variants);
+                return new PlaceCategorySuggestionRow(
+                    SelectSuggestedCategoryDisplay(x.Key, variants),
+                    x.Value);
+            })
+            .OrderByDescending(x => x.CompetitorCount)
+            .ThenBy(x => NormalizeCategoryKey(x.Category) ?? string.Empty, StringComparer.Ordinal)
+            .ToList();
     }
 
     private async Task<RunKeyphraseTrafficSummary?> GetRunKeyphraseTrafficSummaryCoreAsync(
@@ -2696,6 +2806,36 @@ WHERE SearchRunId = @RunId;", new { RunId = contextRunId.Value }, cancellationTo
             visitsAt1,
             opportunityTo3,
             opportunityTo1);
+    }
+
+    private static async Task<IReadOnlyList<string>> ResolveCanonicalCategoryDisplayNamesAsync(
+        Microsoft.Data.SqlClient.SqlConnection conn,
+        IEnumerable<string?> categoryCandidates,
+        CancellationToken ct)
+    {
+        var normalizedCategoryNames = categoryCandidates
+            .Select(NormalizeCategoryKey)
+            .Where(x => x is not null)
+            .Select(x => x!)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        if (normalizedCategoryNames.Length == 0)
+            return [];
+
+        var rows = (await conn.QueryAsync<string>(new CommandDefinition(@"
+SELECT c.DisplayName
+FROM dbo.GoogleBusinessProfileCategory c
+WHERE LOWER(LTRIM(RTRIM(c.DisplayName))) IN @Names
+   OR LOWER(REPLACE(c.CategoryId, '_', ' ')) IN @Names;", new
+        {
+            Names = normalizedCategoryNames
+        }, cancellationToken: ct))).ToList();
+
+        return rows
+            .Select(x => x?.Trim())
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList()!;
     }
 
     private async Task<KeywordTrafficAggregate?> BuildKeywordTrafficAggregateAsync(
@@ -3308,6 +3448,61 @@ ORDER BY m.[Year] DESC, m.[Month] DESC;", new
     private static string NormalizeLabel(string value)
         => value.Trim().ToLowerInvariant();
 
+    private static string? NormalizeCategoryKey(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        var normalizedWhitespace = string.Join(' ', value.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+        if (normalizedWhitespace.Length == 0)
+            return null;
+
+        return normalizedWhitespace.ToLowerInvariant();
+    }
+
+    private static void AddCompetitorCategoryUsage(
+        IDictionary<string, int> competitorUsageByCategoryKey,
+        IDictionary<string, Dictionary<string, int>> displayVariantsByCategoryKey,
+        ISet<string> categoriesSeenForCompetitor,
+        string? rawCategory)
+    {
+        if (string.IsNullOrWhiteSpace(rawCategory))
+            return;
+
+        var displayCategory = rawCategory.Trim();
+        if (displayCategory.Length == 0)
+            return;
+
+        var categoryKey = NormalizeCategoryKey(displayCategory);
+        if (categoryKey is null || !categoriesSeenForCompetitor.Add(categoryKey))
+            return;
+
+        competitorUsageByCategoryKey.TryGetValue(categoryKey, out var usageCount);
+        competitorUsageByCategoryKey[categoryKey] = usageCount + 1;
+
+        if (!displayVariantsByCategoryKey.TryGetValue(categoryKey, out var variants))
+        {
+            variants = new Dictionary<string, int>(StringComparer.Ordinal);
+            displayVariantsByCategoryKey[categoryKey] = variants;
+        }
+
+        variants.TryGetValue(displayCategory, out var displayCount);
+        variants[displayCategory] = displayCount + 1;
+    }
+
+    private static string SelectSuggestedCategoryDisplay(string categoryKey, IReadOnlyDictionary<string, int>? variants)
+    {
+        if (variants is null || variants.Count == 0)
+            return categoryKey;
+
+        return variants
+            .OrderByDescending(x => x.Value)
+            .ThenBy(x => x.Key, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(x => x.Key, StringComparer.Ordinal)
+            .Select(x => x.Key)
+            .First();
+    }
+
     private static IReadOnlyList<string> ParseJsonStringArray(string? json)
     {
         if (string.IsNullOrWhiteSpace(json))
@@ -3399,6 +3594,10 @@ ORDER BY m.[Year] DESC, m.[Month] DESC;", new
         bool? FinancialHasLiquidated,
         bool? FinancialHasCharges,
         bool? FinancialHasInsolvencyHistory);
+
+    private sealed record RunCompetitorCategoryRow(
+        string? PrimaryCategory,
+        string? OtherCategoriesJson);
 
     private sealed record PlaceSocialLinksEditRow(
         string PlaceId,
