@@ -36,6 +36,7 @@ public sealed class AnnouncementHtmlSanitizer : IAnnouncementHtmlSanitizer
         sanitizer.AllowedTags.UnionWith(
         [
             "p",
+            "div",
             "br",
             "ul",
             "ol",
