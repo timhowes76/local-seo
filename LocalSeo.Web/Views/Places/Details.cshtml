@@ -47,6 +47,13 @@
         "never" => "status-noreviews",
         _ => "status-noreviews"
     };
+    string AuditStatusClass(string? status) => (status ?? string.Empty) switch
+    {
+        "Pass" => "status-healthy",
+        "Warning" => "status-pending",
+        "Fail" => "status-error",
+        _ => "status-noreviews"
+    };
     string NormalizeMultilineText(string? text)
     {
         if (string.IsNullOrWhiteSpace(text))
@@ -248,6 +255,9 @@
     var createZohoLeadUrl = requestedRunId.HasValue
         ? $"/places/{Model.PlaceId}/zoho/create-lead?runId={requestedRunId.Value}"
         : $"/places/{Model.PlaceId}/zoho/create-lead";
+    var recalculateAuditUrl = requestedRunId.HasValue
+        ? $"/places/{Model.PlaceId}/actions/recalculate?runId={requestedRunId.Value}"
+        : $"/places/{Model.PlaceId}/actions/recalculate";
     var editSocialLinksUrl = requestedRunId.HasValue
         ? $"/places/{Model.PlaceId}/edit?runId={requestedRunId.Value}"
         : $"/places/{Model.PlaceId}/edit";
@@ -326,6 +336,7 @@
         : string.Empty;
     var financialSearchDefault = (Model.DisplayName ?? string.Empty).Trim();
     var financialLocationDefault = (Model.FormattedAddress ?? Model.SearchLocationName ?? string.Empty).Trim();
+    var auditSummary = Model.AuditSummary;
 }
 
 <div class="page-stack">
@@ -833,6 +844,7 @@ else
 
 <div class="details-tab-buttons">
     <button type="button" data-tab-button="details" class="details-tab-button">Detail</button>
+    <button type="button" data-tab-button="actions" class="details-tab-button">Actions</button>
     <button type="button" data-tab-button="main-photo" class="details-tab-button">Main Photo</button>
     <button type="button" data-tab-button="reviews" class="details-tab-button">Reviews</button>
     <button type="button" data-tab-button="updates" class="details-tab-button">Updates</button>
@@ -941,6 +953,138 @@ else
             <li>@topic</li>
         }
         </ul>
+    }
+</div>
+
+<div id="tab-actions" class="details-tab-panel card is-hidden">
+    <div class="actions-audit-header">
+        <div class="actions-audit-heading">
+            <h3 class="card-title">Actions</h3>
+            <p class="muted">Current GBP optimisation opportunities based on the latest stored place data.</p>
+        </div>
+        <form method="post" action="@recalculateAuditUrl" class="actions-audit-recalculate">
+            @Html.AntiForgeryToken()
+            <button type="submit" class="btn btn-secondary">Recalculate Audit</button>
+        </form>
+    </div>
+
+    @if (auditSummary is null || !auditSummary.HasResults)
+    {
+        <p class="muted">No audit results are available yet.</p>
+    }
+    else
+    {
+        <div class="actions-audit-summary">
+            <div class="actions-audit-summary-main">
+                <span class="status-pill status-ready">Audit Score: @auditSummary.ScorePercentage%</span>
+                <span class="muted">Last evaluated: @(auditSummary.LastEvaluatedAtUtc?.ToString("dd MMM yyyy HH:mm") ?? "N/A") UTC</span>
+            </div>
+            @if (auditSummary.LastSourceSearchRunId.HasValue)
+            {
+                <div class="muted">
+                    Latest source run:
+                    <a href="/runs/@auditSummary.LastSourceSearchRunId.Value">@auditSummary.LastSourceSearchRunId.Value</a>
+                </div>
+            }
+        </div>
+
+        <section class="actions-audit-section">
+            <div class="actions-audit-section-header">
+                <h4>Actions Needed</h4>
+                <span class="muted">@auditSummary.ActionsNeeded.Count item@(auditSummary.ActionsNeeded.Count == 1 ? string.Empty : "s")</span>
+            </div>
+            @if (auditSummary.ActionsNeeded.Count == 0)
+            {
+                <p class="muted actions-audit-empty">No warning or fail actions are currently stored.</p>
+            }
+            else
+            {
+                <div class="table-wrap">
+                    <table class="actions-audit-table">
+                        <colgroup>
+                            <col class="actions-audit-col-issue" />
+                            <col class="actions-audit-col-why" />
+                            <col class="actions-audit-col-recommendation" />
+                            <col class="actions-audit-col-status" />
+                            <col class="actions-audit-col-impact" />
+                        </colgroup>
+                        <thead>
+                            <tr>
+                                <th>Issue</th>
+                                <th>Why it matters</th>
+                                <th>Recommended action</th>
+                                <th class="actions-audit-nowrap">Status</th>
+                                <th class="actions-audit-nowrap">Impact</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        @foreach (var row in auditSummary.ActionsNeeded)
+                        {
+                            <tr>
+                                <td>
+                                    <strong>@row.Name</strong>
+                                    @if (!string.IsNullOrWhiteSpace(row.SummaryText))
+                                    {
+                                        <div class="muted actions-audit-summary-text">@row.SummaryText</div>
+                                    }
+                                </td>
+                                <td>@(string.IsNullOrWhiteSpace(row.WhyItMattersText) ? "N/A" : row.WhyItMattersText)</td>
+                                <td>@(string.IsNullOrWhiteSpace(row.RecommendedActionText) ? "N/A" : row.RecommendedActionText)</td>
+                                <td class="actions-audit-nowrap"><span class="status-pill @AuditStatusClass(row.Status)">@row.Status</span></td>
+                                <td class="actions-audit-impact">@row.ScoreImpactApplied</td>
+                            </tr>
+                        }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </section>
+
+        <section class="actions-audit-section">
+            <div class="actions-audit-section-header">
+                <h4>Already Good</h4>
+                <span class="muted">@auditSummary.AlreadyGood.Count item@(auditSummary.AlreadyGood.Count == 1 ? string.Empty : "s")</span>
+            </div>
+            @if (auditSummary.AlreadyGood.Count == 0)
+            {
+                <p class="muted actions-audit-empty">No passing items are currently stored.</p>
+            }
+            else
+            {
+                <div class="table-wrap">
+                    <table class="actions-audit-table actions-audit-table-good">
+                        <colgroup>
+                            <col class="actions-audit-col-item" />
+                            <col class="actions-audit-col-why" />
+                            <col class="actions-audit-col-status" />
+                        </colgroup>
+                        <thead>
+                            <tr>
+                                <th>Item</th>
+                                <th>Why it matters</th>
+                                <th class="actions-audit-nowrap">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        @foreach (var row in auditSummary.AlreadyGood)
+                        {
+                            <tr>
+                                <td>
+                                    <strong>@row.Name</strong>
+                                    @if (!string.IsNullOrWhiteSpace(row.SummaryText))
+                                    {
+                                        <div class="muted actions-audit-summary-text">@row.SummaryText</div>
+                                    }
+                                </td>
+                                <td>@(string.IsNullOrWhiteSpace(row.WhyItMattersText) ? "N/A" : row.WhyItMattersText)</td>
+                                <td class="actions-audit-nowrap"><span class="status-pill @AuditStatusClass(row.Status)">@row.Status</span></td>
+                            </tr>
+                        }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </section>
     }
 </div>
 

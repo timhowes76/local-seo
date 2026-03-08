@@ -52,6 +52,7 @@ public sealed record PlaceSnapshotRow(
     long SearchRunId,
     string PlaceId,
     int RankPosition,
+    int? AuditScorePercentage,
     decimal? Rating,
     int? UserRatingCount,
     DateTime CapturedAtUtc,
@@ -247,6 +248,7 @@ public sealed class PlaceDetailsViewModel
     public DateTime? ZohoLastSyncAtUtc { get; init; }
     public string? ZohoLastError { get; init; }
     public FirstContactReportAvailability? FirstContactReportAvailability { get; set; }
+    public SeoAuditPlaceSummary? AuditSummary { get; set; }
 }
 
 public sealed record PlaceCategorySuggestionRow(

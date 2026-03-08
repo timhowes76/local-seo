@@ -12,7 +12,8 @@ public class PlacesController(
     IDataForSeoTaskTracker dataForSeoTaskTracker,
     IReviewsProviderResolver reviewsProviderResolver,
     IZohoLeadSyncService zohoLeadSyncService,
-    IReportsService reportsService) : Controller
+    IReportsService reportsService,
+    ISeoAuditService seoAuditService) : Controller
 {
     private static readonly int[] AllowedTakeOptions = [25, 50, 100, 500, 1000];
 
@@ -52,6 +53,11 @@ public class PlacesController(
         if (model is null)
             return NotFound();
 
+        var auditSummary = await seoAuditService.GetAuditSummaryForPlaceAsync(id, ct);
+        if (auditSummary is null || !auditSummary.HasResults)
+            auditSummary = await seoAuditService.RecalculateAuditForPlaceAsync(id, ct);
+        model.AuditSummary = auditSummary;
+
         var reportRunId = runId ?? model.ActiveRunId;
         if (reportRunId.HasValue && reportRunId.Value > 0)
         {
@@ -71,6 +77,23 @@ public class PlacesController(
 
         ViewBag.RequestedRunId = runId;
         return View(model);
+    }
+
+    [HttpPost("/places/{id}/actions/recalculate")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> RecalculateAudit(string id, [FromQuery] long? runId, CancellationToken ct)
+    {
+        try
+        {
+            await seoAuditService.RecalculateAuditForPlaceAsync(id, ct);
+            TempData["Status"] = "Audit recalculated.";
+        }
+        catch (InvalidOperationException ex)
+        {
+            TempData["Status"] = ex.Message;
+        }
+
+        return RedirectToAction(nameof(Details), new { id, runId, tab = "actions" });
     }
 
     [HttpGet("/places/{id}/edit")]

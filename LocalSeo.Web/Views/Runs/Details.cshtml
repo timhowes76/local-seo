@@ -9,6 +9,16 @@
         var key = (value ?? fallback).Trim().ToLowerInvariant().Replace(" ", string.Empty);
         return $"status-{key}";
     }
+    string AuditScoreCss(int? score)
+    {
+        if (!score.HasValue)
+            return "status-nodata";
+        if (score.Value >= 80)
+            return "status-healthy";
+        if (score.Value >= 60)
+            return "status-pending";
+        return "status-error";
+    }
     string FormatMonthYear(int year, int month)
     {
         if (month < 1 || month > 12)
@@ -189,6 +199,7 @@
                 <thead>
                     <tr>
                         <th>Rank</th>
+                        <th>Audit</th>
                         <th class="run-logo-col" aria-label="Logo"></th>
                         <th>Name</th>
                         <th>Disk in km</th>
@@ -226,6 +237,7 @@
                     var distanceKm = DistanceKm(Model.Run.CenterLat, Model.Run.CenterLng, s.Lat, s.Lng);
                     <tr>
                         <td>@s.RankPosition</td>
+                        <td><span class="status-pill @AuditScoreCss(s.AuditScorePercentage)">@(s.AuditScorePercentage.HasValue ? $"{s.AuditScorePercentage.Value}%" : "N/A")</span></td>
                         <td class="run-logo-cell">
                             @if (hasLogo)
                             {

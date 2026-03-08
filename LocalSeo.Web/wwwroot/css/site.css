@@ -2260,6 +2260,117 @@ tbody tr:hover {
     margin-top: var(--space-3);
 }
 
+.actions-audit-header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: var(--space-3);
+    align-items: start;
+    margin-bottom: var(--space-4);
+}
+
+.actions-audit-heading .card-title {
+    margin-bottom: 4px;
+}
+
+.actions-audit-heading .muted {
+    margin: 0;
+}
+
+.actions-audit-recalculate {
+    justify-self: end;
+    align-self: start;
+}
+
+.actions-audit-summary {
+    display: grid;
+    gap: var(--space-2);
+    padding: var(--space-3);
+    margin-bottom: var(--space-4);
+    border: 1px solid var(--border-soft);
+    border-radius: 12px;
+    background: var(--bg-soft);
+}
+
+.actions-audit-summary-main {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+    align-items: center;
+}
+
+.actions-audit-section + .actions-audit-section {
+    margin-top: var(--space-5);
+}
+
+.actions-audit-section-header {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+    gap: var(--space-2);
+    margin-bottom: var(--space-3);
+}
+
+.actions-audit-section-header h4 {
+    margin: 0;
+}
+
+.actions-audit-empty {
+    margin: 0;
+}
+
+.actions-audit-table {
+    table-layout: fixed;
+}
+
+.actions-audit-col-issue,
+.actions-audit-col-item {
+    width: 22%;
+}
+
+.actions-audit-col-why {
+    width: 26%;
+}
+
+.actions-audit-col-recommendation {
+    width: 28%;
+}
+
+.actions-audit-col-status {
+    width: 110px;
+}
+
+.actions-audit-col-impact {
+    width: 84px;
+}
+
+.actions-audit-nowrap {
+    white-space: nowrap;
+}
+
+.actions-audit-impact {
+    white-space: nowrap;
+    font-weight: 600;
+}
+
+.actions-audit-summary-text {
+    margin-top: 6px;
+}
+
+@media (max-width: 980px) {
+    .actions-audit-header {
+        grid-template-columns: 1fr;
+    }
+
+    .actions-audit-recalculate {
+        justify-self: start;
+    }
+
+    .actions-audit-table {
+        table-layout: auto;
+    }
+}
+
 .search-add-tabs {
     margin-bottom: var(--space-3);
 }

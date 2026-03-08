@@ -1,0 +1,134 @@
+@model SeoAuditRuleEditViewModel
+@{
+    var isCreate = string.Equals(Model.Mode, "create", StringComparison.OrdinalIgnoreCase);
+    var formAction = isCreate
+        ? "/admin/audit-rules/create"
+        : $"/admin/audit-rules/{Model.Rule.SeoAuditRuleId.GetValueOrDefault()}/edit";
+}
+
+<form method="post" action="@formAction" class="form-grid">
+    @Html.AntiForgeryToken()
+
+    <label for="rule-key">Rule Key</label>
+    <input id="rule-key" name="RuleKey" type="text" maxlength="120" value="@Model.Rule.RuleKey" @(isCreate ? null : "readonly") required />
+
+    <label for="rule-name">Name</label>
+    <input id="rule-name" name="Name" type="text" maxlength="200" value="@Model.Rule.Name" required />
+
+    <label for="rule-description">Description</label>
+    <textarea id="rule-description" name="Description" rows="3">@Model.Rule.Description</textarea>
+
+    <label for="rule-group">Rule Group</label>
+    <input id="rule-group" name="RuleGroup" type="text" maxlength="100" value="@Model.Rule.RuleGroup" />
+
+    <label for="rule-mode">Rule Mode</label>
+    <select id="rule-mode" name="RuleMode">
+        @foreach (var option in SeoAuditRuleModes.All)
+        {
+            <option value="@option" selected="@(string.Equals(Model.Rule.RuleMode, option, StringComparison.OrdinalIgnoreCase) ? "selected" : null)">@option</option>
+        }
+    </select>
+
+    <label for="rule-type">Rule Type</label>
+    <select id="rule-type" name="RuleType">
+        @foreach (var option in SeoAuditRuleTypes.All)
+        {
+            <option value="@option" selected="@(string.Equals(Model.Rule.RuleType, option, StringComparison.OrdinalIgnoreCase) ? "selected" : null)">@option</option>
+        }
+    </select>
+
+    <label for="entity-type">Entity Type</label>
+    <select id="entity-type" name="EntityType">
+        @foreach (var option in SeoAuditEntityTypes.All)
+        {
+            <option value="@option" selected="@(string.Equals(Model.Rule.EntityType, option, StringComparison.OrdinalIgnoreCase) ? "selected" : null)">@option</option>
+        }
+    </select>
+
+    <label for="severity">Severity</label>
+    <select id="severity" name="Severity">
+        @foreach (var option in SeoAuditSeverityLevels.All)
+        {
+            <option value="@option" selected="@(string.Equals(Model.Rule.Severity, option, StringComparison.OrdinalIgnoreCase) ? "selected" : null)">@option</option>
+        }
+    </select>
+
+    <label for="warning-score-impact">Warning Score Impact</label>
+    <input id="warning-score-impact" name="WarningScoreImpact" type="number" min="0" value="@Model.Rule.WarningScoreImpact" required />
+
+    <label for="fail-score-impact">Fail Score Impact</label>
+    <input id="fail-score-impact" name="FailScoreImpact" type="number" min="0" value="@Model.Rule.FailScoreImpact" required />
+
+    <label for="sort-order">Sort Order</label>
+    <input id="sort-order" name="SortOrder" type="number" value="@Model.Rule.SortOrder" required />
+
+    <label class="checkbox-inline">
+        <input type="hidden" name="IsActive" value="false" />
+        <input type="checkbox" name="IsActive" value="true" @(Model.Rule.IsActive ? "checked" : null) />
+        <span>Rule is active</span>
+    </label>
+
+    <label class="checkbox-inline">
+        <input type="hidden" name="ShowInActionsTab" value="false" />
+        <input type="checkbox" name="ShowInActionsTab" value="true" @(Model.Rule.ShowInActionsTab ? "checked" : null) />
+        <span>Show on Actions tab</span>
+    </label>
+
+    <label for="why-it-matters">Why It Matters</label>
+    <textarea id="why-it-matters" name="WhyItMattersText" rows="4">@Model.Rule.WhyItMattersText</textarea>
+
+    <label for="recommended-action">Recommended Action</label>
+    <textarea id="recommended-action" name="RecommendedActionText" rows="4">@Model.Rule.RecommendedActionText</textarea>
+
+    <div class="form-span-full">
+        <h3 class="card-title">Parameters</h3>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Value</th>
+                        <th>Type</th>
+                        <th>Sort Order</th>
+                        <th>Active</th>
+                    </tr>
+                </thead>
+                <tbody>
+                @for (var i = 0; i < Model.Rule.Parameters.Count; i++)
+                {
+                    <tr>
+                        <td>
+                            <input type="hidden" name="Parameters[@i].SeoAuditRuleParameterId" value="@Model.Rule.Parameters[i].SeoAuditRuleParameterId" />
+                            <input name="Parameters[@i].ParameterName" type="text" maxlength="120" value="@Model.Rule.Parameters[i].ParameterName" />
+                        </td>
+                        <td>
+                            <input name="Parameters[@i].ParameterValue" type="text" maxlength="4000" value="@Model.Rule.Parameters[i].ParameterValue" />
+                        </td>
+                        <td>
+                            <select name="Parameters[@i].ValueType">
+                                @foreach (var option in SeoAuditParameterValueTypes.All)
+                                {
+                                    <option value="@option" selected="@(string.Equals(Model.Rule.Parameters[i].ValueType, option, StringComparison.OrdinalIgnoreCase) ? "selected" : null)">@option</option>
+                                }
+                            </select>
+                        </td>
+                        <td>
+                            <input name="Parameters[@i].SortOrder" type="number" value="@Model.Rule.Parameters[i].SortOrder" />
+                        </td>
+                        <td>
+                            <input type="hidden" name="Parameters[@i].IsActive" value="false" />
+                            <input type="checkbox" name="Parameters[@i].IsActive" value="true" @(Model.Rule.Parameters[i].IsActive ? "checked" : null) />
+                        </td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+        <p class="muted">Leave blank rows empty. Existing parameter rows can be disabled by unticking Active.</p>
+    </div>
+
+    <div class="toolbar">
+        <button type="submit" class="btn btn-primary">@(isCreate ? "Create Rule" : "Save Rule")</button>
+        <a class="btn btn-secondary" href="/admin/audit-rules">Cancel</a>
+    </div>
+</form>

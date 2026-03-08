@@ -1,0 +1,27 @@
+@model SeoAuditRuleEditViewModel
+@{
+    ViewData["Title"] = "Create Audit Rule";
+    var statusMessage = TempData["Status"] as string;
+}
+
+<div class="page-stack">
+    @if (!string.IsNullOrWhiteSpace(statusMessage))
+    {
+        <div class="notice">@statusMessage</div>
+    }
+    @if (!string.IsNullOrWhiteSpace(Model.Message))
+    {
+        <div class="notice">@Model.Message</div>
+    }
+
+    <section class="card">
+        <div class="toolbar">
+            <a href="/admin/audit-rules" class="btn btn-secondary">Back to Audit Rules</a>
+        </div>
+    </section>
+
+    <section class="card">
+        <h2 class="card-title">Create Audit Rule</h2>
+        <partial name="_SeoAuditRuleForm" model="Model" />
+    </section>
+</div>

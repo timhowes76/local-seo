@@ -1322,7 +1322,13 @@ WHERE r.SearchRunId=@RunId", new { RunId = runId }, cancellationToken: ct));
     {
         await using var conn = (Microsoft.Data.SqlClient.SqlConnection)await connectionFactory.OpenConnectionAsync(ct);
         var rows = (await conn.QueryAsync<PlaceSnapshotRow>(new CommandDefinition(@"
-SELECT s.PlaceSnapshotId, s.SearchRunId, s.PlaceId, s.RankPosition, s.Rating, s.UserRatingCount, s.CapturedAtUtc,
+SELECT s.PlaceSnapshotId, s.SearchRunId, s.PlaceId, s.RankPosition,
+       CASE
+         WHEN audit.ResultCount IS NULL OR audit.ResultCount = 0 THEN NULL
+         WHEN audit.PossiblePoints <= 0 THEN 100
+         ELSE CAST(ROUND((audit.EarnedPoints * 100.0) / audit.PossiblePoints, 0) AS int)
+       END AS AuditScorePercentage,
+       s.Rating, s.UserRatingCount, s.CapturedAtUtc,
        p.DisplayName, p.PrimaryCategory, p.PhotoCount, p.NationalPhoneNumber, p.Lat, p.Lng, p.FormattedAddress, p.WebsiteUri, p.QuestionAnswerCount,
        COALESCE(updCount.UpdateCount, 0) AS UpdateCount,
        LEN(COALESCE(p.Description, N'')) AS DescriptionLength,
@@ -1349,6 +1355,30 @@ FROM dbo.PlaceSnapshot s
 JOIN dbo.Place p ON p.PlaceId=s.PlaceId
 LEFT JOIN dbo.PlacesFinancial pf ON pf.PlaceId=s.PlaceId
 LEFT JOIN dbo.PlaceReviewVelocityStats v ON v.PlaceId=s.PlaceId
+OUTER APPLY (
+  SELECT
+    COUNT(1) AS ResultCount,
+    SUM(CASE
+      WHEN ar.[Status] <> N'NotApplicable' THEN CASE WHEN r.FailScoreImpact > 0 THEN r.FailScoreImpact ELSE 0 END
+      ELSE 0
+    END) AS PossiblePoints,
+    SUM(CASE
+      WHEN ar.[Status] = N'Pass' THEN CASE WHEN r.FailScoreImpact > 0 THEN r.FailScoreImpact ELSE 0 END
+      WHEN ar.[Status] = N'Warning' THEN
+        CASE
+          WHEN r.FailScoreImpact <= 0 THEN 0
+          WHEN ar.ScoreImpactApplied <= 0 THEN r.FailScoreImpact
+          WHEN ar.ScoreImpactApplied >= r.FailScoreImpact THEN 0
+          ELSE r.FailScoreImpact - ar.ScoreImpactApplied
+        END
+      ELSE 0
+    END) AS EarnedPoints
+  FROM dbo.SeoAuditResult ar
+  JOIN dbo.SeoAuditRule r ON r.SeoAuditRuleId = ar.SeoAuditRuleId
+  WHERE ar.PlaceId = s.PlaceId
+    AND r.IsActive = 1
+    AND r.ShowInActionsTab = 1
+) audit
 OUTER APPLY (
   SELECT
     MAX(CAST(effective.EffectiveUpdateUtc AS date)) AS LastUpdateDate,

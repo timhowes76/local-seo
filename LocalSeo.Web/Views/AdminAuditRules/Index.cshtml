@@ -1,0 +1,99 @@
+@model SeoAuditRuleListViewModel
+@{
+    ViewData["Title"] = "Audit Rules";
+    var statusMessage = TempData["Status"] as string;
+}
+
+<div class="page-stack">
+    @if (!string.IsNullOrWhiteSpace(statusMessage))
+    {
+        <div class="notice">@statusMessage</div>
+    }
+
+    <section class="card">
+        <div class="toolbar">
+            <a href="/admin" class="btn btn-secondary">Back to Admin</a>
+            <a href="/admin/audit-rules/create" class="btn btn-primary">Create Rule</a>
+        </div>
+    </section>
+
+    <section class="card">
+        <h2 class="card-title">Recalculate Audits</h2>
+        <div class="toolbar">
+            <form method="post" action="/admin/audit-rules/recalculate-missing">
+                @Html.AntiForgeryToken()
+                <button type="submit" class="btn btn-secondary">Recalculate Missing</button>
+            </form>
+            <form method="post" action="/admin/audit-rules/recalculate-all">
+                @Html.AntiForgeryToken()
+                <button type="submit" class="btn btn-secondary">Recalculate All</button>
+            </form>
+        </div>
+        <form method="post" action="/admin/audit-rules/recalculate-place" class="form-grid">
+            @Html.AntiForgeryToken()
+            <label for="place-id-to-recalculate">PlaceId</label>
+            <input id="place-id-to-recalculate" name="placeId" type="text" maxlength="128" placeholder="Enter a PlaceId" />
+            <div class="toolbar">
+                <button type="submit" class="btn btn-secondary">Recalculate This Place</button>
+            </div>
+        </form>
+    </section>
+
+    <section class="card">
+        <h2 class="card-title">Audit Rules</h2>
+        @if (Model.Rows.Count == 0)
+        {
+            <p class="muted">No audit rules found.</p>
+        }
+        else
+        {
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Rule</th>
+                            <th>Mode</th>
+                            <th>Type</th>
+                            <th>Entity</th>
+                            <th>Warning</th>
+                            <th>Fail</th>
+                            <th>Sort</th>
+                            <th>Params</th>
+                            <th>Active</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    @foreach (var row in Model.Rows)
+                    {
+                        <tr>
+                            <td>
+                                <div><strong>@row.Name</strong></div>
+                                <div class="muted"><code>@row.RuleKey</code></div>
+                            </td>
+                            <td>@row.RuleMode</td>
+                            <td>@row.RuleType</td>
+                            <td>@row.EntityType</td>
+                            <td>@row.WarningScoreImpact</td>
+                            <td>@row.FailScoreImpact</td>
+                            <td>@row.SortOrder</td>
+                            <td>@row.ParameterCount</td>
+                            <td>@(row.IsActive ? "Yes" : "No")</td>
+                            <td>
+                                <div class="toolbar">
+                                    <a class="btn btn-secondary" href="/admin/audit-rules/@row.SeoAuditRuleId/edit">Edit</a>
+                                    <form method="post" action="/admin/audit-rules/@row.SeoAuditRuleId/toggle-active">
+                                        @Html.AntiForgeryToken()
+                                        <input type="hidden" name="isActive" value="@(row.IsActive ? "false" : "true")" />
+                                        <button type="submit" class="btn btn-secondary">@(row.IsActive ? "Deactivate" : "Activate")</button>
+                                    </form>
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </section>
+</div>
