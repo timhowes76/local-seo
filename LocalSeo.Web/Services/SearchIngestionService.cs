@@ -39,6 +39,7 @@ public sealed class SearchIngestionService(
     DataForSeoReviewsProvider dataForSeoReviewsProvider,
     IAdminSettingsService adminSettingsService,
     IReviewVelocityService reviewVelocityService,
+    IWebsiteClassifier websiteClassifier,
     ILogger<SearchIngestionService> logger) : ISearchIngestionService
 {
     private const string AppleBingTaskType = "apple_bing";
@@ -227,16 +228,17 @@ WHEN MATCHED THEN UPDATE SET
   Lng=@Lng,
   NationalPhoneNumber=@NationalPhoneNumber,
   WebsiteUri=@WebsiteUri,
+  WebsiteType=@WebsiteType,
   IsServiceAreaBusiness=@IsServiceAreaBusiness,
   BusinessStatus=@BusinessStatus,
   SearchLocationName=@SearchLocationName,
   RegularOpeningHoursJson=@RegularOpeningHoursJson,
   LastSeenUtc=SYSUTCDATETIME()
 WHEN NOT MATCHED THEN INSERT(
-  PlaceId,DisplayName,PrimaryType,PrimaryCategory,TypesCsv,FormattedAddress,Lat,Lng,NationalPhoneNumber,WebsiteUri,IsServiceAreaBusiness,BusinessStatus,SearchLocationName,RegularOpeningHoursJson
+  PlaceId,DisplayName,PrimaryType,PrimaryCategory,TypesCsv,FormattedAddress,Lat,Lng,NationalPhoneNumber,WebsiteUri,WebsiteType,IsServiceAreaBusiness,BusinessStatus,SearchLocationName,RegularOpeningHoursJson
 )
 VALUES(
-  @PlaceId,@DisplayName,@PrimaryType,@PrimaryCategory,@TypesCsv,@FormattedAddress,@Lat,@Lng,@NationalPhoneNumber,@WebsiteUri,@IsServiceAreaBusiness,@BusinessStatus,@SearchLocationName,@RegularOpeningHoursJson
+  @PlaceId,@DisplayName,@PrimaryType,@PrimaryCategory,@TypesCsv,@FormattedAddress,@Lat,@Lng,@NationalPhoneNumber,@WebsiteUri,@WebsiteType,@IsServiceAreaBusiness,@BusinessStatus,@SearchLocationName,@RegularOpeningHoursJson
 );",
                 new
                 {
@@ -247,10 +249,11 @@ VALUES(
                     p.TypesCsv,
                     p.FormattedAddress,
                     p.Lat,
-                    p.Lng,
-                    p.NationalPhoneNumber,
-                    p.WebsiteUri,
-                    p.IsServiceAreaBusiness,
+                        p.Lng,
+                        p.NationalPhoneNumber,
+                        p.WebsiteUri,
+                        WebsiteType = (byte)websiteClassifier.Classify(p.WebsiteUri),
+                        p.IsServiceAreaBusiness,
                     p.BusinessStatus,
                     SearchLocationName = placeLocationName,
                     RegularOpeningHoursJson = p.RegularOpeningHours.Count == 0 ? null : JsonSerializer.Serialize(p.RegularOpeningHours)
@@ -820,16 +823,17 @@ WHEN MATCHED THEN UPDATE SET
   Lng=@Lng,
   NationalPhoneNumber=@NationalPhoneNumber,
   WebsiteUri=@WebsiteUri,
+  WebsiteType=@WebsiteType,
   IsServiceAreaBusiness=@IsServiceAreaBusiness,
   BusinessStatus=@BusinessStatus,
   SearchLocationName=@SearchLocationName,
   RegularOpeningHoursJson=@RegularOpeningHoursJson,
   LastSeenUtc=SYSUTCDATETIME()
 WHEN NOT MATCHED THEN INSERT(
-  PlaceId,DisplayName,PrimaryType,PrimaryCategory,TypesCsv,FormattedAddress,Lat,Lng,NationalPhoneNumber,WebsiteUri,IsServiceAreaBusiness,BusinessStatus,SearchLocationName,RegularOpeningHoursJson
+  PlaceId,DisplayName,PrimaryType,PrimaryCategory,TypesCsv,FormattedAddress,Lat,Lng,NationalPhoneNumber,WebsiteUri,WebsiteType,IsServiceAreaBusiness,BusinessStatus,SearchLocationName,RegularOpeningHoursJson
 )
 VALUES(
-  @PlaceId,@DisplayName,@PrimaryType,@PrimaryCategory,@TypesCsv,@FormattedAddress,@Lat,@Lng,@NationalPhoneNumber,@WebsiteUri,@IsServiceAreaBusiness,@BusinessStatus,@SearchLocationName,@RegularOpeningHoursJson
+  @PlaceId,@DisplayName,@PrimaryType,@PrimaryCategory,@TypesCsv,@FormattedAddress,@Lat,@Lng,@NationalPhoneNumber,@WebsiteUri,@WebsiteType,@IsServiceAreaBusiness,@BusinessStatus,@SearchLocationName,@RegularOpeningHoursJson
 );",
                     new
                     {
@@ -840,10 +844,11 @@ VALUES(
                         p.TypesCsv,
                         p.FormattedAddress,
                         p.Lat,
-                        p.Lng,
-                        p.NationalPhoneNumber,
-                        p.WebsiteUri,
-                        p.IsServiceAreaBusiness,
+                    p.Lng,
+                    p.NationalPhoneNumber,
+                    p.WebsiteUri,
+                    WebsiteType = (byte)websiteClassifier.Classify(p.WebsiteUri),
+                    p.IsServiceAreaBusiness,
                         p.BusinessStatus,
                         SearchLocationName = placeLocationName,
                         RegularOpeningHoursJson = p.RegularOpeningHours.Count == 0 ? null : JsonSerializer.Serialize(p.RegularOpeningHours)
@@ -1329,7 +1334,7 @@ SELECT s.PlaceSnapshotId, s.SearchRunId, s.PlaceId, s.RankPosition,
          ELSE CAST(ROUND((audit.EarnedPoints * 100.0) / audit.PossiblePoints, 0) AS int)
        END AS AuditScorePercentage,
        s.Rating, s.UserRatingCount, s.CapturedAtUtc,
-       p.DisplayName, p.PrimaryCategory, p.PhotoCount, p.NationalPhoneNumber, p.Lat, p.Lng, p.FormattedAddress, p.WebsiteUri, p.QuestionAnswerCount,
+       p.DisplayName, p.PrimaryCategory, p.PhotoCount, p.NationalPhoneNumber, p.Lat, p.Lng, p.FormattedAddress, p.WebsiteUri, p.WebsiteType, p.QuestionAnswerCount,
        COALESCE(updCount.UpdateCount, 0) AS UpdateCount,
        LEN(COALESCE(p.Description, N'')) AS DescriptionLength,
        CASE

@@ -1,8 +1,13 @@
 using Dapper;
+using LocalSeo.Web.Models;
+using LocalSeo.Web.Services;
 
 namespace LocalSeo.Web.Data;
 
-public sealed class DbBootstrapper(ISqlConnectionFactory connectionFactory, ILogger<DbBootstrapper> logger)
+public sealed class DbBootstrapper(
+    ISqlConnectionFactory connectionFactory,
+    IWebsiteClassifier websiteClassifier,
+    ILogger<DbBootstrapper> logger)
 {
     public async Task EnsureSchemaAsync(CancellationToken ct)
     {
@@ -3164,6 +3169,219 @@ END;
 IF OBJECT_ID('dbo.LoginThrottle','U') IS NOT NULL
   DROP TABLE dbo.LoginThrottle;";
         await conn.ExecuteAsync(new CommandDefinition(sql, cancellationToken: ct));
+
+        var websiteTypeColumnSql = @"
+IF COL_LENGTH('dbo.Place', 'WebsiteType') IS NULL
+  ALTER TABLE dbo.Place ADD WebsiteType tinyint NOT NULL CONSTRAINT DF_Place_WebsiteType DEFAULT(0);";
+        await conn.ExecuteAsync(new CommandDefinition(websiteTypeColumnSql, cancellationToken: ct));
+
+        var websiteTypeConstraintSql = @"
+IF COL_LENGTH('dbo.Place', 'WebsiteType') IS NOT NULL
+  AND NOT EXISTS (
+  SELECT 1
+  FROM sys.check_constraints
+  WHERE name = 'CK_Place_WebsiteType_Valid'
+    AND parent_object_id = OBJECT_ID('dbo.Place')
+)
+  EXEC(N'ALTER TABLE dbo.Place WITH CHECK ADD CONSTRAINT CK_Place_WebsiteType_Valid CHECK (WebsiteType IN (0, 1, 2));');";
+        await conn.ExecuteAsync(new CommandDefinition(websiteTypeConstraintSql, cancellationToken: ct));
+
+        await BackfillPlaceWebsiteTypesAsync(conn, ct);
+
+        var websiteAuditRuleSql = @"
+UPDATE dbo.SeoAuditRule
+SET
+  [Description] = N'No proper website is stored, or only a social profile URL is present.',
+  WhyItMattersText = N'A proper website gives the business a direct conversion path. Social profile links alone do not count as a business website.',
+  RecommendedActionText = N'Add the correct business website URL to the profile. Social media profile links should not be used as the main website.',
+  UpdatedAtUtc = SYSUTCDATETIME()
+WHERE RuleKey = N'NoWebsite';";
+        await conn.ExecuteAsync(new CommandDefinition(websiteAuditRuleSql, cancellationToken: ct));
+        await SyncNoWebsiteAuditResultsAsync(conn, ct);
         logger.LogInformation("Schema bootstrap completed.");
     }
+
+    private async Task BackfillPlaceWebsiteTypesAsync(Microsoft.Data.SqlClient.SqlConnection conn, CancellationToken ct)
+    {
+        var rows = (await conn.QueryAsync<PlaceWebsiteBackfillRow>(new CommandDefinition(@"
+SELECT PlaceId, WebsiteUri, WebsiteType
+FROM dbo.Place;",
+            cancellationToken: ct))).ToList();
+
+        if (rows.Count == 0)
+            return;
+
+        await using var tx = await conn.BeginTransactionAsync(ct);
+        foreach (var row in rows)
+        {
+            var classified = (byte)websiteClassifier.Classify(row.WebsiteUri);
+            if (row.WebsiteType == classified)
+                continue;
+
+            await conn.ExecuteAsync(new CommandDefinition(@"
+UPDATE dbo.Place
+SET WebsiteType = @WebsiteType
+WHERE PlaceId = @PlaceId;",
+                new
+                {
+                    row.PlaceId,
+                    WebsiteType = classified
+                },
+                transaction: tx,
+                cancellationToken: ct));
+        }
+
+        await tx.CommitAsync(ct);
+    }
+
+    private async Task SyncNoWebsiteAuditResultsAsync(Microsoft.Data.SqlClient.SqlConnection conn, CancellationToken ct)
+    {
+        var rule = await conn.QuerySingleOrDefaultAsync<NoWebsiteRuleRow>(new CommandDefinition(@"
+SELECT TOP 1
+  SeoAuditRuleId,
+  FailScoreImpact,
+  SortOrder,
+  WhyItMattersText,
+  RecommendedActionText
+FROM dbo.SeoAuditRule
+WHERE RuleKey = N'NoWebsite'
+ORDER BY SeoAuditRuleId ASC;",
+            cancellationToken: ct));
+
+        if (rule is null)
+            return;
+
+        var places = (await conn.QueryAsync<NoWebsiteAuditPlaceRow>(new CommandDefinition(@"
+SELECT PlaceId, WebsiteType
+FROM dbo.Place;",
+            cancellationToken: ct))).ToList();
+
+        if (places.Count == 0)
+            return;
+
+        var nowUtc = DateTime.UtcNow;
+        await using var tx = await conn.BeginTransactionAsync(ct);
+        foreach (var place in places)
+        {
+            var status = place.WebsiteType == (byte)WebsiteType.RealWebsite ? "Pass" : "Fail";
+            var scoreImpactApplied = status == "Pass" ? 0 : rule.FailScoreImpact;
+            var actualValue = place.WebsiteType switch
+            {
+                (byte)WebsiteType.RealWebsite => "Proper website present",
+                (byte)WebsiteType.SocialProfile => "Social profile URL only",
+                _ => "No website"
+            };
+            var gapValue = status == "Pass" ? "0" : "1 missing proper website";
+            var summaryText = place.WebsiteType switch
+            {
+                (byte)WebsiteType.RealWebsite => "A proper business website is stored.",
+                (byte)WebsiteType.SocialProfile => "Business profile does not provide a proper website. Social media profile links do not count as a business website.",
+                _ => "No proper business website is stored."
+            };
+
+            var updated = await conn.ExecuteAsync(new CommandDefinition(@"
+UPDATE dbo.SeoAuditResult
+SET
+  [Status] = @Status,
+  ScoreImpactApplied = @ScoreImpactApplied,
+  ActualValue = @ActualValue,
+  ExpectedValue = N'Proper website present',
+  GapValue = @GapValue,
+  SummaryText = @SummaryText,
+  WhyItMattersText = @WhyItMattersText,
+  RecommendedActionText = @RecommendedActionText,
+  SortOrderSnapshot = @SortOrderSnapshot,
+  LastEvaluatedAtUtc = @NowUtc,
+  UpdatedAtUtc = @NowUtc
+WHERE PlaceId = @PlaceId
+  AND SeoAuditRuleId = @SeoAuditRuleId;",
+                new
+                {
+                    place.PlaceId,
+                    rule.SeoAuditRuleId,
+                    Status = status,
+                    ScoreImpactApplied = scoreImpactApplied,
+                    ActualValue = actualValue,
+                    GapValue = gapValue,
+                    SummaryText = summaryText,
+                    WhyItMattersText = rule.WhyItMattersText,
+                    RecommendedActionText = rule.RecommendedActionText,
+                    SortOrderSnapshot = rule.SortOrder,
+                    NowUtc = nowUtc
+                },
+                transaction: tx,
+                cancellationToken: ct));
+
+            if (updated > 0)
+                continue;
+
+            await conn.ExecuteAsync(new CommandDefinition(@"
+INSERT INTO dbo.SeoAuditResult(
+  PlaceId,
+  SeoAuditRuleId,
+  [Status],
+  ScoreImpactApplied,
+  ActualValue,
+  ExpectedValue,
+  GapValue,
+  SummaryText,
+  WhyItMattersText,
+  RecommendedActionText,
+  SortOrderSnapshot,
+  LastEvaluatedAtUtc,
+  CreatedAtUtc,
+  UpdatedAtUtc
+)
+VALUES(
+  @PlaceId,
+  @SeoAuditRuleId,
+  @Status,
+  @ScoreImpactApplied,
+  @ActualValue,
+  N'Proper website present',
+  @GapValue,
+  @SummaryText,
+  @WhyItMattersText,
+  @RecommendedActionText,
+  @SortOrderSnapshot,
+  @NowUtc,
+  @NowUtc,
+  @NowUtc
+);",
+                new
+                {
+                    place.PlaceId,
+                    rule.SeoAuditRuleId,
+                    Status = status,
+                    ScoreImpactApplied = scoreImpactApplied,
+                    ActualValue = actualValue,
+                    GapValue = gapValue,
+                    SummaryText = summaryText,
+                    WhyItMattersText = rule.WhyItMattersText,
+                    RecommendedActionText = rule.RecommendedActionText,
+                    SortOrderSnapshot = rule.SortOrder,
+                    NowUtc = nowUtc
+                },
+                transaction: tx,
+                cancellationToken: ct));
+        }
+
+        await tx.CommitAsync(ct);
+    }
+
+    private sealed record PlaceWebsiteBackfillRow(
+        string PlaceId,
+        string? WebsiteUri,
+        byte WebsiteType);
+
+    private sealed record NoWebsiteRuleRow(
+        long SeoAuditRuleId,
+        int FailScoreImpact,
+        int SortOrder,
+        string? WhyItMattersText,
+        string? RecommendedActionText);
+
+    private sealed record NoWebsiteAuditPlaceRow(
+        string PlaceId,
+        byte WebsiteType);
 }

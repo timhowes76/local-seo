@@ -224,7 +224,7 @@
                 <tbody>
                 @foreach (var s in Model.Snapshots)
                 {
-                    var websiteYes = !string.IsNullOrWhiteSpace(s.WebsiteUri);
+                    var websiteYes = s.WebsiteType == WebsiteType.RealWebsite;
                     var hasOtherCategories = s.HasOtherCategories ?? false;
                     var hasLogo = !string.IsNullOrWhiteSpace(s.LogoUrl);
                     var descriptionLength = Math.Max(0, s.DescriptionLength ?? 0);

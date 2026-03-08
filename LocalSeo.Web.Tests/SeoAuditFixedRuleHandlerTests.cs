@@ -28,6 +28,7 @@ public sealed class SeoAuditFixedRuleHandlerTests
             "place-1",
             new string('a', 300),
             "https://example.com",
+            WebsiteType.RealWebsite,
             5,
             2,
             "[\"Category A\"]",
@@ -66,6 +67,7 @@ public sealed class SeoAuditFixedRuleHandlerTests
             "place-2",
             "Useful description",
             "https://example.com",
+            WebsiteType.RealWebsite,
             2,
             0,
             "[]",
@@ -129,6 +131,25 @@ public sealed class SeoAuditFixedRuleHandlerTests
     }
 
     [Fact]
+    public void Evaluate_NoWebsite_ReturnsFail_WhenOnlySocialProfileUrlIsPresent()
+    {
+        var rule = CreateRule(
+            SeoAuditRuleKeys.NoWebsite,
+            warningScoreImpact: 0,
+            failScoreImpact: 8,
+            parameters: []);
+        var context = CreateContext(
+            websiteUri: "https://facebook.com/test",
+            websiteType: WebsiteType.SocialProfile);
+
+        var result = handler.Evaluate(rule, context);
+
+        Assert.Equal(SeoAuditStatuses.Fail, result.Status);
+        Assert.Equal(8, result.ScoreImpactApplied);
+        Assert.Contains("Social media profile links do not count", result.SummaryText, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Evaluate_BusinessHoursMissing_ReturnsFail_WhenHoursJsonIsBlank()
     {
         var rule = CreateRule(
@@ -175,6 +196,7 @@ public sealed class SeoAuditFixedRuleHandlerTests
     private static PlaceAuditContext CreateContext(
         string? description = "Useful description",
         string? websiteUri = "https://example.com",
+        WebsiteType? websiteType = null,
         int? photoCount = 5,
         int? storedQuestionAnswerCount = 2,
         string? otherCategoriesJson = "[\"Category A\"]",
@@ -195,6 +217,7 @@ public sealed class SeoAuditFixedRuleHandlerTests
             "place-test",
             description,
             websiteUri,
+            websiteType ?? (string.IsNullOrWhiteSpace(websiteUri) ? WebsiteType.None : WebsiteType.RealWebsite),
             photoCount,
             storedQuestionAnswerCount,
             otherCategoriesJson,

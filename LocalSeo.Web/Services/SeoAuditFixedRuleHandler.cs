@@ -354,9 +354,12 @@ public sealed class FixedSeoAuditRuleHandler(TimeProvider timeProvider) : ISeoAu
 
     private static SeoAuditEvaluationResult EvaluateNoWebsite(SeoAuditRuleDefinition rule, PlaceAuditContext context)
     {
-        return context.HasWebsite
-            ? BuildResult(rule, SeoAuditStatuses.Pass, 0, "Website present", "Website present", "0", "A website URL is stored.")
-            : BuildResult(rule, SeoAuditStatuses.Fail, rule.FailScoreImpact, "No website", "Website present", "1 missing website", "No website URL is stored.");
+        return context.WebsiteType switch
+        {
+            WebsiteType.RealWebsite => BuildResult(rule, SeoAuditStatuses.Pass, 0, "Proper website present", "Proper website present", "0", "A proper business website is stored."),
+            WebsiteType.SocialProfile => BuildResult(rule, SeoAuditStatuses.Fail, rule.FailScoreImpact, "Social profile URL only", "Proper website present", "1 missing proper website", "Business profile does not provide a proper website. Social media profile links do not count as a business website."),
+            _ => BuildResult(rule, SeoAuditStatuses.Fail, rule.FailScoreImpact, "No website", "Proper website present", "1 missing proper website", "No proper business website is stored.")
+        };
     }
 
     private static SeoAuditEvaluationResult EvaluateNoQas(SeoAuditRuleDefinition rule, PlaceAuditContext context)

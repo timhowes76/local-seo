@@ -287,6 +287,7 @@ builder.Services.AddScoped<IAppErrorLogger, AppErrorLogger>();
 builder.Services.AddSingleton<IAnnouncementHtmlSanitizer, AnnouncementHtmlSanitizer>();
 builder.Services.AddScoped<IAnnouncementRepository, AnnouncementRepository>();
 builder.Services.AddScoped<IAnnouncementService, AnnouncementService>();
+builder.Services.AddSingleton<IWebsiteClassifier, WebsiteClassifier>();
 builder.Services.AddScoped<ISeoAuditRepository, SeoAuditRepository>();
 builder.Services.AddScoped<ISeoAuditRuleHandler, FixedSeoAuditRuleHandler>();
 builder.Services.AddScoped<ISeoAuditService, SeoAuditService>();

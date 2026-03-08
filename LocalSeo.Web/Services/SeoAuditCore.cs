@@ -139,6 +139,7 @@ public sealed record PlaceAuditContext(
     string PlaceId,
     string? Description,
     string? WebsiteUri,
+    WebsiteType WebsiteType,
     int? PhotoCount,
     int? StoredQuestionAnswerCount,
     string? OtherCategoriesJson,
@@ -157,7 +158,9 @@ public sealed record PlaceAuditContext(
 {
     public int DescriptionLength => string.IsNullOrWhiteSpace(Description) ? 0 : Description.Trim().Length;
 
-    public bool HasWebsite => !string.IsNullOrWhiteSpace(WebsiteUri);
+    public bool HasRealWebsite => WebsiteType == WebsiteType.RealWebsite;
+
+    public bool HasSocialProfileOnlyWebsite => WebsiteType == WebsiteType.SocialProfile;
 
     public int QuestionAnswerCount => Math.Max(StoredQuestionAnswerCount.GetValueOrDefault(), QaTableCount);
 

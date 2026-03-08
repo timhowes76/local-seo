@@ -97,7 +97,7 @@ SELECT TOP (@Take)
     WHEN updTrend.Trend90Pct >= 30 AND DATEDIFF(day, upd.LastUpdateDate, CAST(SYSUTCDATETIME() AS date)) <= 30 THEN 'Accelerating'
     ELSE 'Healthy'
   END AS UpdateStatusLabel,
-  CASE WHEN NULLIF(LTRIM(RTRIM(p.WebsiteUri)), N'') IS NULL THEN CAST(0 AS bit) ELSE CAST(1 AS bit) END AS HasWebsite,
+  p.WebsiteType,
   LEN(COALESCE(p.Description, N'')) AS DescriptionLength,
   CASE
     WHEN p.OtherCategoriesJson IS NULL THEN CAST(0 AS bit)

@@ -112,7 +112,7 @@
                 <tbody>
                 @foreach (var row in Model.Rows)
                 {
-                    var websiteYes = row.HasWebsite ?? false;
+                    var websiteYes = row.WebsiteType == WebsiteType.RealWebsite;
                     var hasOtherCategories = row.HasOtherCategories ?? false;
                     var descriptionLength = Math.Max(0, row.DescriptionLength ?? 0);
                     var descriptionPercent = Math.Clamp((int)Math.Round((descriptionLength / 750.0) * 100.0), 0, 100);
