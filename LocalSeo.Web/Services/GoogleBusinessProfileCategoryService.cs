@@ -13,13 +13,14 @@ namespace LocalSeo.Web.Services;
 
 public interface IGoogleBusinessProfileCategoryService
 {
-    Task<GoogleBusinessProfileCategoryListResult> GetPagedAsync(string? statusFilter, string? search, int page, int pageSize, CancellationToken ct);
+    Task<GoogleBusinessProfileCategoryListResult> GetPagedAsync(string? statusFilter, string? popularFilter, string? search, int page, int pageSize, CancellationToken ct);
     Task<IReadOnlyList<GoogleBusinessProfileCategoryLookupItem>> GetActiveLookupAsync(string regionCode, string languageCode, CancellationToken ct);
     Task<GoogleBusinessProfileCategorySyncSummary?> GetLatestSyncSummaryAsync(string regionCode, string languageCode, CancellationToken ct);
     Task<GoogleBusinessProfileCategoryEditModel?> GetByIdAsync(string categoryId, CancellationToken ct);
     Task AddManualAsync(GoogleBusinessProfileCategoryCreateModel model, CancellationToken ct);
-    Task<bool> UpdateDisplayNameAsync(string categoryId, string displayName, CancellationToken ct);
+    Task<bool> UpdateAsync(string categoryId, string displayName, bool popular, CancellationToken ct);
     Task<bool> MarkInactiveAsync(string categoryId, CancellationToken ct);
+    Task<GoogleBusinessProfileCategoryPopularityApplyResult> ApplyCuratedPopularityAsync(CancellationToken ct);
     Task<GoogleBusinessProfileCategorySyncRunResult> SyncFromGoogleAsync(string regionCode, string languageCode, CancellationToken ct);
 }
 
@@ -27,15 +28,17 @@ public sealed class GoogleBusinessProfileCategoryService(
     ISqlConnectionFactory connectionFactory,
     IHttpClientFactory httpClientFactory,
     IGoogleBusinessProfileOAuthService googleBusinessProfileOAuthService,
+    IGoogleBusinessProfileCategoryPopularityService popularityService,
     IOptions<GoogleOptions> googleOptions,
     ILogger<GoogleBusinessProfileCategoryService> logger) : IGoogleBusinessProfileCategoryService
 {
     private const string StatusActive = "Active";
     private const string StatusInactive = "Inactive";
 
-    public async Task<GoogleBusinessProfileCategoryListResult> GetPagedAsync(string? statusFilter, string? search, int page, int pageSize, CancellationToken ct)
+    public async Task<GoogleBusinessProfileCategoryListResult> GetPagedAsync(string? statusFilter, string? popularFilter, string? search, int page, int pageSize, CancellationToken ct)
     {
         var normalizedFilter = NormalizeStatusFilter(statusFilter);
+        var normalizedPopularFilter = NormalizePopularFilter(popularFilter);
         var normalizedPageSize = Math.Clamp(pageSize, 10, 200);
         var normalizedPage = Math.Max(1, page);
         var normalizedSearch = (search ?? string.Empty).Trim();
@@ -43,6 +46,10 @@ public sealed class GoogleBusinessProfileCategoryService(
         var whereParts = new List<string>();
         if (normalizedFilter is not null)
             whereParts.Add("c.Status = @Status");
+        if (normalizedPopularFilter == PopularOnlyFilter)
+            whereParts.Add("c.Popular = 1");
+        else if (normalizedPopularFilter == NonPopularOnlyFilter)
+            whereParts.Add("c.Popular = 0");
         if (!string.IsNullOrWhiteSpace(normalizedSearch))
             whereParts.Add("(c.DisplayName LIKE @SearchPattern OR c.CategoryId LIKE @SearchPattern)");
 
@@ -78,6 +85,7 @@ FROM dbo.GoogleBusinessProfileCategory c
 SELECT
   c.CategoryId,
   c.DisplayName,
+  c.Popular,
   c.RegionCode,
   c.LanguageCode,
   c.Status,
@@ -86,7 +94,7 @@ SELECT
   c.LastSyncedUtc
 FROM dbo.GoogleBusinessProfileCategory c
 {whereSql}
-ORDER BY c.DisplayName ASC, c.CategoryId ASC
+ORDER BY c.Popular DESC, c.DisplayName ASC, c.CategoryId ASC
 OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY;", parameters, cancellationToken: ct))).ToList();
 
         return new GoogleBusinessProfileCategoryListResult(rows, totalCount, normalizedPage, normalizedPageSize, totalPages);
@@ -104,13 +112,14 @@ OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY;", parameters, cancellationTo
 SELECT
   CategoryId,
   DisplayName,
+  Popular,
   RegionCode,
   LanguageCode
 FROM dbo.GoogleBusinessProfileCategory
 WHERE Status = @StatusActive
   AND RegionCode = @RegionCode
   AND LanguageCode = @LanguageCode
-ORDER BY DisplayName ASC, CategoryId ASC;", new
+ORDER BY Popular DESC, DisplayName ASC, CategoryId ASC;", new
         {
             StatusActive,
             RegionCode = normalizedRegionCode,
@@ -154,6 +163,7 @@ ORDER BY GoogleBusinessProfileCategorySyncRunId DESC;", new
 SELECT
   CategoryId,
   DisplayName,
+  Popular,
   RegionCode,
   LanguageCode,
   Status
@@ -178,6 +188,14 @@ WHERE CategoryId = @CategoryId;", new { CategoryId = normalizedCategoryId }, can
             throw new InvalidOperationException("Language Code is required.");
 
         await using var conn = (SqlConnection)await connectionFactory.OpenConnectionAsync(ct);
+        await EnsureUniqueDisplayNameAsync(
+            conn,
+            normalizedDisplayName,
+            normalizedRegionCode,
+            normalizedLanguageCode,
+            categoryIdToExclude: null,
+            ct);
+
         var exists = await conn.ExecuteScalarAsync<int>(new CommandDefinition(@"
 SELECT COUNT(1)
 FROM dbo.GoogleBusinessProfileCategory
@@ -190,6 +208,7 @@ WHERE CategoryId = @CategoryId;", new { CategoryId = normalizedCategoryId }, can
 INSERT INTO dbo.GoogleBusinessProfileCategory(
   CategoryId,
   DisplayName,
+  Popular,
   RegionCode,
   LanguageCode,
   Status,
@@ -200,6 +219,7 @@ INSERT INTO dbo.GoogleBusinessProfileCategory(
 VALUES(
   @CategoryId,
   @DisplayName,
+  @Popular,
   @RegionCode,
   @LanguageCode,
   @Status,
@@ -210,6 +230,7 @@ VALUES(
         {
             CategoryId = normalizedCategoryId,
             DisplayName = normalizedDisplayName,
+            Popular = model.Popular,
             RegionCode = normalizedRegionCode,
             LanguageCode = normalizedLanguageCode,
             Status = StatusActive,
@@ -217,7 +238,7 @@ VALUES(
         }, cancellationToken: ct));
     }
 
-    public async Task<bool> UpdateDisplayNameAsync(string categoryId, string displayName, CancellationToken ct)
+    public async Task<bool> UpdateAsync(string categoryId, string displayName, bool popular, CancellationToken ct)
     {
         var normalizedCategoryId = NormalizeCategoryId(categoryId);
         var normalizedDisplayName = NormalizeDisplayName(displayName);
@@ -226,13 +247,37 @@ VALUES(
             return false;
 
         await using var conn = (SqlConnection)await connectionFactory.OpenConnectionAsync(ct);
+        var existing = await conn.QuerySingleOrDefaultAsync<GoogleBusinessProfileCategoryEditModel>(new CommandDefinition(@"
+SELECT
+  CategoryId,
+  DisplayName,
+  Popular,
+  RegionCode,
+  LanguageCode,
+  Status
+FROM dbo.GoogleBusinessProfileCategory
+WHERE CategoryId = @CategoryId;", new { CategoryId = normalizedCategoryId }, cancellationToken: ct));
+        if (existing is null)
+            return false;
+
+        await EnsureUniqueDisplayNameAsync(
+            conn,
+            normalizedDisplayName,
+            existing.RegionCode,
+            existing.LanguageCode,
+            normalizedCategoryId,
+            ct);
+
         var affected = await conn.ExecuteAsync(new CommandDefinition(@"
 UPDATE dbo.GoogleBusinessProfileCategory
-SET DisplayName = @DisplayName
+SET
+  DisplayName = @DisplayName,
+  Popular = @Popular
 WHERE CategoryId = @CategoryId;", new
         {
             CategoryId = normalizedCategoryId,
-            DisplayName = normalizedDisplayName
+            DisplayName = normalizedDisplayName,
+            Popular = popular
         }, cancellationToken: ct));
         return affected > 0;
     }
@@ -255,6 +300,45 @@ WHERE CategoryId = @CategoryId;", new
             StatusInactive = StatusInactive
         }, cancellationToken: ct));
         return affected > 0;
+    }
+
+    public async Task<GoogleBusinessProfileCategoryPopularityApplyResult> ApplyCuratedPopularityAsync(CancellationToken ct)
+    {
+        await using var conn = (SqlConnection)await connectionFactory.OpenConnectionAsync(ct);
+        var candidates = (await conn.QueryAsync<GoogleBusinessProfileCategoryMatchCandidate>(new CommandDefinition(@"
+SELECT
+  CategoryId,
+  DisplayName
+FROM dbo.GoogleBusinessProfileCategory;", cancellationToken: ct))).ToList();
+
+        var matchResult = popularityService.MatchCandidates(candidates);
+        var updatedCount = 0;
+        if (matchResult.MatchedCategoryCount > 0)
+        {
+            updatedCount = await conn.ExecuteAsync(new CommandDefinition(@"
+UPDATE dbo.GoogleBusinessProfileCategory
+SET Popular = 1
+WHERE Popular = 0
+  AND CategoryId IN @CategoryIds;", new { CategoryIds = matchResult.MatchedCategoryIds }, cancellationToken: ct));
+        }
+
+        var result = new GoogleBusinessProfileCategoryPopularityApplyResult(
+            matchResult.MatchedSourceCount,
+            matchResult.MatchedCategoryCount,
+            updatedCount,
+            matchResult.MatchedCategoryIds,
+            matchResult.MatchedSourceNames,
+            matchResult.UnmatchedSourceNames);
+
+        logger.LogInformation(
+            "Applied curated popular Google categories. Matched sources: {MatchedSourceCount}. Matched categories: {MatchedCategoryCount}. Updated categories: {UpdatedCategoryCount}. Matched: {MatchedSources}. Unmatched: {UnmatchedSources}.",
+            result.MatchedSourceCount,
+            result.MatchedCategoryCount,
+            result.UpdatedCategoryCount,
+            string.Join(", ", result.MatchedSourceNames),
+            string.Join(", ", result.UnmatchedSourceNames));
+
+        return result;
     }
 
     public async Task<GoogleBusinessProfileCategorySyncRunResult> SyncFromGoogleAsync(string regionCode, string languageCode, CancellationToken ct)
@@ -297,6 +381,7 @@ WHERE CategoryId = @CategoryId;", new
                 {
                     ranAtUtc = DateTime.UtcNow;
                     await RecordSyncRunAsync(conn, normalizedRegionCode, normalizedLanguageCode, ranAtUtc, totalAdded, totalUpdated, totalMarkedInactive, ct);
+                    await ApplyCuratedPopularityAsync(ct);
                     return new GoogleBusinessProfileCategorySyncRunResult(
                         ranAtUtc,
                         totalAdded,
@@ -353,6 +438,7 @@ WHERE CategoryId = @CategoryId;", new
             }
 
             await RecordSyncRunAsync(conn, normalizedRegionCode, normalizedLanguageCode, ranAtUtc, totalAdded, totalUpdated, totalMarkedInactive, ct);
+            await ApplyCuratedPopularityAsync(ct);
             return new GoogleBusinessProfileCategorySyncRunResult(
                 ranAtUtc,
                 totalAdded,
@@ -708,6 +794,57 @@ WHEN NOT MATCHED THEN
         if (string.Equals(statusFilter, "all", StringComparison.OrdinalIgnoreCase))
             return null;
         return StatusActive;
+    }
+
+    private async Task EnsureUniqueDisplayNameAsync(
+        SqlConnection conn,
+        string displayName,
+        string regionCode,
+        string languageCode,
+        string? categoryIdToExclude,
+        CancellationToken ct)
+    {
+        var comparisons = (await conn.QueryAsync<GoogleBusinessProfileCategoryMatchCandidate>(new CommandDefinition(@"
+SELECT
+  CategoryId,
+  DisplayName
+FROM dbo.GoogleBusinessProfileCategory
+WHERE RegionCode = @RegionCode
+  AND LanguageCode = @LanguageCode
+  AND (@CategoryIdToExclude IS NULL OR CategoryId <> @CategoryIdToExclude);", new
+        {
+            RegionCode = regionCode,
+            LanguageCode = languageCode,
+            CategoryIdToExclude = categoryIdToExclude
+        }, cancellationToken: ct))).ToList();
+
+        var normalizedDisplayName = NormalizeDuplicateCheckValue(displayName);
+        if (comparisons.Any(x => NormalizeDuplicateCheckValue(x.DisplayName) == normalizedDisplayName))
+            throw new InvalidOperationException($"Display Name '{displayName}' already exists for {regionCode}/{languageCode}.");
+    }
+
+    private const string PopularOnlyFilter = "popular";
+    private const string NonPopularOnlyFilter = "non-popular";
+
+    private static string NormalizePopularFilter(string? popularFilter)
+    {
+        if (string.Equals(popularFilter, PopularOnlyFilter, StringComparison.OrdinalIgnoreCase))
+            return PopularOnlyFilter;
+        if (string.Equals(popularFilter, NonPopularOnlyFilter, StringComparison.OrdinalIgnoreCase))
+            return NonPopularOnlyFilter;
+        return "all";
+    }
+
+    private static string NormalizeDuplicateCheckValue(string? value)
+    {
+        var trimmed = NormalizeDisplayName(value).ToLowerInvariant();
+        if (trimmed.Length == 0)
+            return string.Empty;
+
+        var chars = trimmed
+            .Select(ch => char.IsLetterOrDigit(ch) ? ch : ' ')
+            .ToArray();
+        return string.Join(' ', new string(chars).Split(' ', StringSplitOptions.RemoveEmptyEntries));
     }
 
     private static string NormalizeCategoryId(string? value)

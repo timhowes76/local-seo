@@ -4,22 +4,32 @@
     var statusMessage = TempData["Status"] as string;
     var currentSearch = (Model.Search ?? string.Empty).Trim();
     var currentStatus = (Model.StatusFilter ?? "active").Trim().ToLowerInvariant();
+    var currentPopular = (Model.PopularFilter ?? "all").Trim().ToLowerInvariant();
     var currentPage = Math.Max(1, Model.Page);
     var totalPages = Math.Max(1, Model.TotalPages);
     var hasPrev = currentPage > 1;
     var hasNext = currentPage < totalPages;
 
     var statusQuery = Uri.EscapeDataString(currentStatus);
+    var popularQuery = Uri.EscapeDataString(currentPopular);
     var pageSizeQuery = Model.PageSize.ToString();
     var searchQuery = string.IsNullOrWhiteSpace(currentSearch)
         ? string.Empty
         : $"&q={Uri.EscapeDataString(currentSearch)}";
 
     string BuildListUrl(int page) =>
-        $"/admin/data-lists/google-business-profile-categories?status={statusQuery}{searchQuery}&page={page}&pageSize={pageSizeQuery}";
+        $"/admin/data-lists/google-business-profile-categories?status={statusQuery}&popularFilter={popularQuery}{searchQuery}&page={page}&pageSize={pageSizeQuery}";
 
     string BuildActionQuery() =>
-        $"status={statusQuery}{searchQuery}&page={currentPage}&pageSize={pageSizeQuery}";
+        $"status={statusQuery}&popularFilter={popularQuery}{searchQuery}&page={currentPage}&pageSize={pageSizeQuery}";
+
+    string TruncateCategoryId(string value)
+    {
+        if (string.IsNullOrEmpty(value) || value.Length <= 25)
+            return value;
+
+        return $"{value[..25]}...";
+    }
 }
 
 <div class="page-stack">
@@ -33,12 +43,16 @@
             <a href="/admin/data-lists" class="btn btn-secondary">Back to Data Lists</a>
             <a href="/admin/google/connect" class="btn btn-secondary">Connect Google</a>
             <a href="/admin/data-lists/google-business-profile-categories/add?@BuildActionQuery()" class="btn btn-secondary">Add Category</a>
+            <form method="post" action="/admin/data-lists/google-business-profile-categories/apply-curated-popular?@BuildActionQuery()" onsubmit="return confirm('Apply curated popular category matching now?');">
+                @Html.AntiForgeryToken()
+                <button type="submit" class="btn btn-secondary">Apply Curated Popular</button>
+            </form>
             <form method="post" action="/admin/data-lists/google-business-profile-categories/sync-uk?@BuildActionQuery()" onsubmit="return confirm('Sync GBP categories from Google for GB/en-GB now?');">
                 @Html.AntiForgeryToken()
                 <button type="submit">Sync from Google (UK)</button>
             </form>
         </div>
-        <p class="muted">Sync resumes automatically from the last page token if Google rate limits a run. Click Sync again to continue.</p>
+        <p class="muted">Sync resumes automatically from the last page token if Google rate limits a run. Popular matching is safe to rerun and only promotes matched categories.</p>
     </section>
 
     <section class="card">
@@ -59,41 +73,77 @@
     <section class="card">
         <h2 class="card-title">Filters</h2>
         <form method="get" action="/admin/data-lists/google-business-profile-categories" class="places-filter-line">
-            <label for="search">Text Search</label>
-            <input id="search" name="q" type="text" value="@currentSearch" placeholder="Display Name or Category ID" />
+            <div class="places-filter-item places-filter-item-name">
+                <label for="search">Text Search</label>
+                <input id="search" name="q" type="text" value="@currentSearch" placeholder="Display Name or Category ID" />
+            </div>
 
-            <label for="statusFilter">Status</label>
-            <select id="statusFilter" name="status" class="js-searchable" data-placeholder="Search">
-                @if (currentStatus == "active")
-                {
-                    <option value="active" selected>Active</option>
-                }
-                else
-                {
-                    <option value="active">Active</option>
-                }
-                @if (currentStatus == "inactive")
-                {
-                    <option value="inactive" selected>Inactive</option>
-                }
-                else
-                {
-                    <option value="inactive">Inactive</option>
-                }
-                @if (currentStatus == "all")
-                {
-                    <option value="all" selected>All</option>
-                }
-                else
-                {
-                    <option value="all">All</option>
-                }
-            </select>
+            <div class="places-filter-item">
+                <label for="statusFilter">Status</label>
+                <select id="statusFilter" name="status" class="js-searchable" data-placeholder="Search">
+                    @if (currentStatus == "active")
+                    {
+                        <option value="active" selected>Active</option>
+                    }
+                    else
+                    {
+                        <option value="active">Active</option>
+                    }
+                    @if (currentStatus == "inactive")
+                    {
+                        <option value="inactive" selected>Inactive</option>
+                    }
+                    else
+                    {
+                        <option value="inactive">Inactive</option>
+                    }
+                    @if (currentStatus == "all")
+                    {
+                        <option value="all" selected>All</option>
+                    }
+                    else
+                    {
+                        <option value="all">All</option>
+                    }
+                </select>
+            </div>
 
-            <input type="hidden" name="page" value="1" />
-            <input type="hidden" name="pageSize" value="@Model.PageSize" />
-            <button type="submit" class="btn btn-secondary">Apply</button>
-            <a href="/admin/data-lists/google-business-profile-categories" class="btn btn-secondary">Clear</a>
+            <div class="places-filter-item">
+                <label for="popularFilter">Popular</label>
+                <select id="popularFilter" name="popularFilter" class="js-searchable" data-placeholder="Search">
+                    @if (currentPopular == "all")
+                    {
+                        <option value="all" selected>All</option>
+                    }
+                    else
+                    {
+                        <option value="all">All</option>
+                    }
+                    @if (currentPopular == "popular")
+                    {
+                        <option value="popular" selected>Popular Only</option>
+                    }
+                    else
+                    {
+                        <option value="popular">Popular Only</option>
+                    }
+                    @if (currentPopular == "non-popular")
+                    {
+                        <option value="non-popular" selected>Non-Popular Only</option>
+                    }
+                    else
+                    {
+                        <option value="non-popular">Non-Popular Only</option>
+                    }
+                </select>
+            </div>
+
+            <div class="places-filter-actions google-category-filter-actions">
+                <input type="hidden" name="page" value="1" />
+                <input type="hidden" name="pageSize" value="@Model.PageSize" />
+                <button type="submit" class="btn btn-secondary">Apply</button>
+                <a href="/admin/data-lists/google-business-profile-categories" class="btn btn-secondary">Clear</a>
+            </div>
         </form>
     </section>
 
@@ -111,11 +161,11 @@
                         <tr>
                             <th>Category ID (GCID / resource name)</th>
                             <th>Display Name</th>
+                            <th>Popular</th>
                             <th>Region Code</th>
                             <th>Language Code</th>
                             <th>Status</th>
                             <th>First Seen (UTC)</th>
-                            <th>Last Seen (UTC)</th>
                             <th>Last Synced (UTC)</th>
                             <th>Actions</th>
                         </tr>
@@ -127,13 +177,24 @@
                             ? "inactive"
                             : "active";
                         <tr>
-                            <td><code>@row.CategoryId</code></td>
+                            <td>
+                                <code class="google-category-id" title="@row.CategoryId">@TruncateCategoryId(row.CategoryId)</code>
+                            </td>
                             <td>@row.DisplayName</td>
+                            <td>
+                                @if (row.Popular)
+                                {
+                                    <span class="status-pill status-active">Yes</span>
+                                }
+                                else
+                                {
+                                    <span class="status-pill status-inactive">No</span>
+                                }
+                            </td>
                             <td>@row.RegionCode</td>
                             <td>@row.LanguageCode</td>
                             <td><span class="status-pill status-@statusKey">@row.Status</span></td>
                             <td>@row.FirstSeenUtc.ToString("dd MMM yyyy HH:mm")</td>
-                            <td>@row.LastSeenUtc.ToString("dd MMM yyyy HH:mm")</td>
                             <td>@row.LastSyncedUtc.ToString("dd MMM yyyy HH:mm")</td>
                             <td>
                                 <div class="toolbar">

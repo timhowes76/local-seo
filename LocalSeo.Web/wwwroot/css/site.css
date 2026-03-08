@@ -1303,6 +1303,11 @@ button:disabled,
     flex-wrap: wrap;
 }
 
+.google-category-filter-actions {
+    align-self: end;
+    white-space: nowrap;
+}
+
 .places-list-logo {
     width: 32px;
     height: 32px;
@@ -1539,6 +1544,15 @@ tbody tr:hover {
 
 .table-wrap {
     overflow-x: auto;
+}
+
+.google-category-id {
+    display: inline-block;
+    max-width: 25ch;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: bottom;
 }
 
 @media (max-width: 980px) {

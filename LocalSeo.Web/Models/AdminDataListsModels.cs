@@ -3,6 +3,7 @@ namespace LocalSeo.Web.Models;
 public sealed record GoogleBusinessProfileCategoryRow(
     string CategoryId,
     string DisplayName,
+    bool Popular,
     string RegionCode,
     string LanguageCode,
     string Status,
@@ -30,6 +31,7 @@ public sealed class GoogleBusinessProfileCategoryListViewModel
     public IReadOnlyList<GoogleBusinessProfileCategoryRow> Rows { get; init; } = [];
     public string Search { get; init; } = string.Empty;
     public string StatusFilter { get; init; } = "active";
+    public string PopularFilter { get; init; } = "all";
     public int Page { get; init; } = 1;
     public int PageSize { get; init; } = 50;
     public int TotalCount { get; init; }
@@ -49,6 +51,7 @@ public sealed class GoogleBusinessProfileCategoryCreateModel
 {
     public string CategoryId { get; set; } = string.Empty;
     public string DisplayName { get; set; } = string.Empty;
+    public bool Popular { get; set; }
     public string RegionCode { get; set; } = "GB";
     public string LanguageCode { get; set; } = "en-GB";
 }
@@ -56,6 +59,7 @@ public sealed class GoogleBusinessProfileCategoryCreateModel
 public sealed record GoogleBusinessProfileCategoryLookupItem(
     string CategoryId,
     string DisplayName,
+    bool Popular,
     string RegionCode,
     string LanguageCode);
 
@@ -63,10 +67,23 @@ public sealed class GoogleBusinessProfileCategoryEditModel
 {
     public string CategoryId { get; set; } = string.Empty;
     public string DisplayName { get; set; } = string.Empty;
+    public bool Popular { get; set; }
     public string RegionCode { get; set; } = string.Empty;
     public string LanguageCode { get; set; } = string.Empty;
     public string Status { get; set; } = string.Empty;
 }
+
+public sealed record GoogleBusinessProfileCategoryMatchCandidate(
+    string CategoryId,
+    string DisplayName);
+
+public sealed record GoogleBusinessProfileCategoryPopularityApplyResult(
+    int MatchedSourceCount,
+    int MatchedCategoryCount,
+    int UpdatedCategoryCount,
+    IReadOnlyList<string> MatchedCategoryIds,
+    IReadOnlyList<string> MatchedSourceNames,
+    IReadOnlyList<string> UnmatchedSourceNames);
 
 public sealed record GoogleOAuthConnectionResult(
     bool Success,

@@ -523,20 +523,22 @@ public class AdminController(
     }
 
     [HttpGet("/admin/data-lists/google-business-profile-categories")]
-    public async Task<IActionResult> GoogleBusinessProfileCategories([FromQuery] string? q, [FromQuery] string? status, [FromQuery] int page = 1, [FromQuery] int pageSize = 50, CancellationToken ct = default)
+    public async Task<IActionResult> GoogleBusinessProfileCategories([FromQuery] string? q, [FromQuery] string? status, [FromQuery(Name = "popularFilter")] string? popularFilter, [FromQuery] int page = 1, [FromQuery] int pageSize = 50, CancellationToken ct = default)
     {
         var normalizedStatus = NormalizeCategoryStatusFilter(status);
+        var normalizedPopular = NormalizeCategoryPopularFilter(popularFilter);
         var normalizedSearch = (q ?? string.Empty).Trim();
         var normalizedPage = Math.Max(1, page);
         var normalizedPageSize = Math.Clamp(pageSize, 10, 200);
 
-        var listResult = await googleBusinessProfileCategoryService.GetPagedAsync(normalizedStatus, normalizedSearch, normalizedPage, normalizedPageSize, ct);
+        var listResult = await googleBusinessProfileCategoryService.GetPagedAsync(normalizedStatus, normalizedPopular, normalizedSearch, normalizedPage, normalizedPageSize, ct);
         var syncSummary = await googleBusinessProfileCategoryService.GetLatestSyncSummaryAsync(UkRegionCode, UkLanguageCode, ct);
         var model = new GoogleBusinessProfileCategoryListViewModel
         {
             Rows = listResult.Rows,
             Search = normalizedSearch,
             StatusFilter = normalizedStatus,
+            PopularFilter = normalizedPopular,
             Page = listResult.Page,
             PageSize = listResult.PageSize,
             TotalCount = listResult.TotalCount,
@@ -551,11 +553,13 @@ public class AdminController(
     public IActionResult AddGoogleBusinessProfileCategory(
         [FromQuery] string? q,
         [FromQuery] string? status,
+        [FromQuery(Name = "popularFilter")] string? popularFilter,
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 50)
     {
         ViewBag.ReturnQ = (q ?? string.Empty).Trim();
         ViewBag.ReturnStatus = NormalizeCategoryStatusFilter(status);
+        ViewBag.ReturnPopular = NormalizeCategoryPopularFilter(popularFilter);
         ViewBag.ReturnPage = Math.Max(1, page);
         ViewBag.ReturnPageSize = Math.Clamp(pageSize, 10, 200);
         return View(new GoogleBusinessProfileCategoryCreateModel
@@ -571,21 +575,43 @@ public class AdminController(
         GoogleBusinessProfileCategoryCreateModel model,
         [FromQuery] string? q,
         [FromQuery] string? status,
+        [FromQuery(Name = "popularFilter")] string? popularFilter,
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 50,
         CancellationToken ct = default)
     {
+        if (string.IsNullOrWhiteSpace(model.CategoryId))
+            ModelState.AddModelError(nameof(model.CategoryId), "Category ID is required.");
+        if (string.IsNullOrWhiteSpace(model.DisplayName))
+            ModelState.AddModelError(nameof(model.DisplayName), "Display Name is required.");
+
+        if (!ModelState.IsValid)
+        {
+            ViewBag.ReturnQ = (q ?? string.Empty).Trim();
+            ViewBag.ReturnStatus = NormalizeCategoryStatusFilter(status);
+            ViewBag.ReturnPopular = NormalizeCategoryPopularFilter(popularFilter);
+            ViewBag.ReturnPage = Math.Max(1, page);
+            ViewBag.ReturnPageSize = Math.Clamp(pageSize, 10, 200);
+            return View("AddGoogleBusinessProfileCategory", model);
+        }
+
         try
         {
             await googleBusinessProfileCategoryService.AddManualAsync(model, ct);
             TempData["Status"] = $"Added category '{model.CategoryId}'.";
         }
-        catch (Exception ex)
+        catch (InvalidOperationException ex)
         {
-            TempData["Status"] = $"Manual add failed: {ex.Message}";
+            ModelState.AddModelError(string.Empty, ex.Message);
+            ViewBag.ReturnQ = (q ?? string.Empty).Trim();
+            ViewBag.ReturnStatus = NormalizeCategoryStatusFilter(status);
+            ViewBag.ReturnPopular = NormalizeCategoryPopularFilter(popularFilter);
+            ViewBag.ReturnPage = Math.Max(1, page);
+            ViewBag.ReturnPageSize = Math.Clamp(pageSize, 10, 200);
+            return View("AddGoogleBusinessProfileCategory", model);
         }
 
-        return RedirectToAction(nameof(GoogleBusinessProfileCategories), BuildCategoryListRouteValues(status, q, page, pageSize));
+        return RedirectToAction(nameof(GoogleBusinessProfileCategories), BuildCategoryListRouteValues(status, popularFilter, q, page, pageSize));
     }
 
     [HttpGet("/admin/data-lists/google-business-profile-categories/edit")]
@@ -593,6 +619,7 @@ public class AdminController(
         [FromQuery] string categoryId,
         [FromQuery] string? q,
         [FromQuery] string? status,
+        [FromQuery(Name = "popularFilter")] string? popularFilter,
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 50,
         CancellationToken ct = default)
@@ -606,6 +633,7 @@ public class AdminController(
 
         ViewBag.ReturnQ = (q ?? string.Empty).Trim();
         ViewBag.ReturnStatus = NormalizeCategoryStatusFilter(status);
+        ViewBag.ReturnPopular = NormalizeCategoryPopularFilter(popularFilter);
         ViewBag.ReturnPage = Math.Max(1, page);
         ViewBag.ReturnPageSize = Math.Clamp(pageSize, 10, 200);
         return View(model);
@@ -617,6 +645,7 @@ public class AdminController(
         GoogleBusinessProfileCategoryEditModel model,
         [FromQuery] string? q,
         [FromQuery] string? status,
+        [FromQuery(Name = "popularFilter")] string? popularFilter,
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 50,
         CancellationToken ct = default)
@@ -630,16 +659,30 @@ public class AdminController(
         {
             ViewBag.ReturnQ = (q ?? string.Empty).Trim();
             ViewBag.ReturnStatus = NormalizeCategoryStatusFilter(status);
+            ViewBag.ReturnPopular = NormalizeCategoryPopularFilter(popularFilter);
             ViewBag.ReturnPage = Math.Max(1, page);
             ViewBag.ReturnPageSize = Math.Clamp(pageSize, 10, 200);
             return View("EditGoogleBusinessProfileCategory", model);
         }
 
-        var updated = await googleBusinessProfileCategoryService.UpdateDisplayNameAsync(model.CategoryId, model.DisplayName, ct);
-        TempData["Status"] = updated
-            ? $"Updated category '{model.CategoryId}'."
-            : $"Category '{model.CategoryId}' was not found.";
-        return RedirectToAction(nameof(GoogleBusinessProfileCategories), BuildCategoryListRouteValues(status, q, page, pageSize));
+        try
+        {
+            var updated = await googleBusinessProfileCategoryService.UpdateAsync(model.CategoryId, model.DisplayName, model.Popular, ct);
+            TempData["Status"] = updated
+                ? $"Updated category '{model.CategoryId}'."
+                : $"Category '{model.CategoryId}' was not found.";
+            return RedirectToAction(nameof(GoogleBusinessProfileCategories), BuildCategoryListRouteValues(status, popularFilter, q, page, pageSize));
+        }
+        catch (InvalidOperationException ex)
+        {
+            ModelState.AddModelError(string.Empty, ex.Message);
+            ViewBag.ReturnQ = (q ?? string.Empty).Trim();
+            ViewBag.ReturnStatus = NormalizeCategoryStatusFilter(status);
+            ViewBag.ReturnPopular = NormalizeCategoryPopularFilter(popularFilter);
+            ViewBag.ReturnPage = Math.Max(1, page);
+            ViewBag.ReturnPageSize = Math.Clamp(pageSize, 10, 200);
+            return View("EditGoogleBusinessProfileCategory", model);
+        }
     }
 
     [HttpPost("/admin/data-lists/google-business-profile-categories/mark-inactive")]
@@ -648,6 +691,7 @@ public class AdminController(
         [FromForm] string categoryId,
         [FromQuery] string? q,
         [FromQuery] string? status,
+        [FromQuery(Name = "popularFilter")] string? popularFilter,
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 50,
         CancellationToken ct = default)
@@ -659,7 +703,23 @@ public class AdminController(
         TempData["Status"] = marked
             ? $"Marked '{categoryId}' as Inactive."
             : $"Category '{categoryId}' was not found.";
-        return RedirectToAction(nameof(GoogleBusinessProfileCategories), BuildCategoryListRouteValues(status, q, page, pageSize));
+        return RedirectToAction(nameof(GoogleBusinessProfileCategories), BuildCategoryListRouteValues(status, popularFilter, q, page, pageSize));
+    }
+
+    [HttpPost("/admin/data-lists/google-business-profile-categories/apply-curated-popular")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ApplyCuratedPopularGoogleBusinessProfileCategories(
+        [FromQuery] string? q,
+        [FromQuery] string? status,
+        [FromQuery(Name = "popularFilter")] string? popularFilter,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 50,
+        CancellationToken ct = default)
+    {
+        var result = await googleBusinessProfileCategoryService.ApplyCuratedPopularityAsync(ct);
+        TempData["Status"] =
+            $"Curated popular matching completed. Matched source names: {result.MatchedSourceCount}. Matched categories: {result.MatchedCategoryCount}. Newly updated: {result.UpdatedCategoryCount}. Unmatched source names: {result.UnmatchedSourceNames.Count}.";
+        return RedirectToAction(nameof(GoogleBusinessProfileCategories), BuildCategoryListRouteValues(status, popularFilter, q, page, pageSize));
     }
 
     [HttpPost("/admin/data-lists/google-business-profile-categories/sync-uk")]
@@ -667,6 +727,7 @@ public class AdminController(
     public async Task<IActionResult> SyncGoogleBusinessProfileCategoriesUk(
         [FromQuery] string? q,
         [FromQuery] string? status,
+        [FromQuery(Name = "popularFilter")] string? popularFilter,
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 50,
         CancellationToken ct = default)
@@ -692,7 +753,7 @@ public class AdminController(
             TempData["Status"] = $"Sync failed: {ex.Message}";
         }
 
-        return RedirectToAction(nameof(GoogleBusinessProfileCategories), BuildCategoryListRouteValues(status, q, page, pageSize));
+        return RedirectToAction(nameof(GoogleBusinessProfileCategories), BuildCategoryListRouteValues(status, popularFilter, q, page, pageSize));
     }
 
     [HttpGet("/admin/data-lists/counties-gb")]
@@ -1230,6 +1291,15 @@ public class AdminController(
         return "active";
     }
 
+    private static string NormalizeCategoryPopularFilter(string? popular)
+    {
+        if (string.Equals(popular, "popular", StringComparison.OrdinalIgnoreCase))
+            return "popular";
+        if (string.Equals(popular, "non-popular", StringComparison.OrdinalIgnoreCase))
+            return "non-popular";
+        return "all";
+    }
+
     private static string NormalizeActiveFilter(string? status)
     {
         if (string.Equals(status, "inactive", StringComparison.OrdinalIgnoreCase))
@@ -1239,13 +1309,15 @@ public class AdminController(
         return "active";
     }
 
-    private static object BuildCategoryListRouteValues(string? status, string? q, int page, int pageSize)
+    private static object BuildCategoryListRouteValues(string? status, string? popularFilter, string? q, int page, int pageSize)
     {
         var normalizedStatus = NormalizeCategoryStatusFilter(status);
+        var normalizedPopular = NormalizeCategoryPopularFilter(popularFilter);
         var normalizedSearch = string.IsNullOrWhiteSpace(q) ? null : q.Trim();
         return new
         {
             status = normalizedStatus,
+            popularFilter = normalizedPopular,
             q = normalizedSearch,
             page = Math.Max(1, page),
             pageSize = Math.Clamp(pageSize, 10, 200)

@@ -270,6 +270,7 @@ builder.Services.AddHttpClient<ICompaniesHouseAccountsSyncService, CompaniesHous
     client.Timeout = TimeSpan.FromSeconds(60);
 });
 builder.Services.AddScoped<IGoogleBusinessProfileCategoryService, GoogleBusinessProfileCategoryService>();
+builder.Services.AddSingleton<IGoogleBusinessProfileCategoryPopularityService, GoogleBusinessProfileCategoryPopularityService>();
 builder.Services.AddScoped<IDataForSeoAccountStatusService, DataForSeoAccountStatusService>();
 builder.Services.AddScoped<ISendGridEmailService, SendGridEmailService>();
 builder.Services.AddScoped<ICodeHasher, CodeHasher>();

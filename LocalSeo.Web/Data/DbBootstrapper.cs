@@ -7,6 +7,7 @@ namespace LocalSeo.Web.Data;
 public sealed class DbBootstrapper(
     ISqlConnectionFactory connectionFactory,
     IWebsiteClassifier websiteClassifier,
+    IGoogleBusinessProfileCategoryService googleBusinessProfileCategoryService,
     ILogger<DbBootstrapper> logger)
 {
     public async Task EnsureSchemaAsync(CancellationToken ct)
@@ -1290,6 +1291,7 @@ BEGIN
   CREATE TABLE dbo.GoogleBusinessProfileCategory(
     CategoryId nvarchar(255) NOT NULL PRIMARY KEY,
     DisplayName nvarchar(300) NOT NULL,
+    Popular bit NOT NULL CONSTRAINT DF_GoogleBusinessProfileCategory_Popular DEFAULT(0),
     RegionCode nvarchar(10) NOT NULL,
     LanguageCode nvarchar(20) NOT NULL,
     Status nvarchar(20) NOT NULL CONSTRAINT DF_GoogleBusinessProfileCategory_Status DEFAULT('Active'),
@@ -1301,6 +1303,8 @@ BEGIN
 END;
 IF COL_LENGTH('dbo.GoogleBusinessProfileCategory', 'DisplayName') IS NULL
   ALTER TABLE dbo.GoogleBusinessProfileCategory ADD DisplayName nvarchar(300) NOT NULL CONSTRAINT DF_GoogleBusinessProfileCategory_DisplayName DEFAULT N'';
+IF COL_LENGTH('dbo.GoogleBusinessProfileCategory', 'Popular') IS NULL
+  ALTER TABLE dbo.GoogleBusinessProfileCategory ADD Popular bit NOT NULL CONSTRAINT DF_GoogleBusinessProfileCategory_Popular_Alt DEFAULT(0);
 IF COL_LENGTH('dbo.GoogleBusinessProfileCategory', 'RegionCode') IS NULL
   ALTER TABLE dbo.GoogleBusinessProfileCategory ADD RegionCode nvarchar(10) NOT NULL CONSTRAINT DF_GoogleBusinessProfileCategory_RegionCode DEFAULT N'GB';
 IF COL_LENGTH('dbo.GoogleBusinessProfileCategory', 'LanguageCode') IS NULL
@@ -1334,6 +1338,8 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_GoogleBusinessProfileCat
   CREATE INDEX IX_GoogleBusinessProfileCategory_Region_Language_Status ON dbo.GoogleBusinessProfileCategory(RegionCode, LanguageCode, Status, CategoryId);
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_GoogleBusinessProfileCategory_Region_Language_Cycle' AND object_id=OBJECT_ID('dbo.GoogleBusinessProfileCategory'))
   CREATE INDEX IX_GoogleBusinessProfileCategory_Region_Language_Cycle ON dbo.GoogleBusinessProfileCategory(RegionCode, LanguageCode, LastSeenCycleId, CategoryId);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_GoogleBusinessProfileCategory_Status_Region_Language_Popular_DisplayName' AND object_id=OBJECT_ID('dbo.GoogleBusinessProfileCategory'))
+  CREATE INDEX IX_GoogleBusinessProfileCategory_Status_Region_Language_Popular_DisplayName ON dbo.GoogleBusinessProfileCategory(Status, RegionCode, LanguageCode, Popular DESC, DisplayName, CategoryId);
 
 IF OBJECT_ID('dbo.GoogleBusinessProfileCategorySyncRun','U') IS NULL
 BEGIN
@@ -3195,9 +3201,10 @@ SET
   WhyItMattersText = N'A proper website gives the business a direct conversion path. Social profile links alone do not count as a business website.',
   RecommendedActionText = N'Add the correct business website URL to the profile. Social media profile links should not be used as the main website.',
   UpdatedAtUtc = SYSUTCDATETIME()
-WHERE RuleKey = N'NoWebsite';";
+        WHERE RuleKey = N'NoWebsite';";
         await conn.ExecuteAsync(new CommandDefinition(websiteAuditRuleSql, cancellationToken: ct));
         await SyncNoWebsiteAuditResultsAsync(conn, ct);
+        await googleBusinessProfileCategoryService.ApplyCuratedPopularityAsync(ct);
         logger.LogInformation("Schema bootstrap completed.");
     }
 
