@@ -388,7 +388,7 @@ public class AdminController(
         return RedirectToAction(nameof(SettingsSecurity));
     }
 
-    [HttpGet("/admin/dataforseo-tasks")]
+    [HttpGet("/admin/logs/dataforseo-tasks")]
     public async Task<IActionResult> DataForSeoTasks([FromQuery] string? taskType, [FromQuery] string? status, CancellationToken ct)
     {
         var normalizedTaskType = NormalizeTaskTypeFilter(taskType);
@@ -399,7 +399,22 @@ public class AdminController(
         return View(rows);
     }
 
-    [HttpPost("/admin/dataforseo-tasks/refresh")]
+    [HttpGet("/admin/logs/dataforseo-tasks/{id:long}")]
+    public async Task<IActionResult> DataForSeoTaskDetails(long id, [FromQuery] string? taskType, [FromQuery] string? status, CancellationToken ct)
+    {
+        if (id <= 0)
+            return NotFound();
+
+        var row = await dataForSeoTaskTracker.GetTaskByIdAsync(id, ct);
+        if (row is null)
+            return NotFound();
+
+        ViewBag.TaskType = NormalizeTaskTypeFilter(taskType) ?? "all";
+        ViewBag.TaskStatus = NormalizeTaskStatusFilter(status) ?? "all";
+        return View(row);
+    }
+
+    [HttpPost("/admin/logs/dataforseo-tasks/refresh")]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> RefreshDataForSeoTasks([FromQuery] string? taskType, [FromQuery] string? status, CancellationToken ct)
     {
@@ -412,7 +427,7 @@ public class AdminController(
         });
     }
 
-    [HttpPost("/admin/dataforseo-tasks/delete-errors")]
+    [HttpPost("/admin/logs/dataforseo-tasks/delete-errors")]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> DeleteDataForSeoErrorTasks([FromQuery] string? taskType, [FromQuery] string? status, CancellationToken ct)
     {
@@ -426,7 +441,7 @@ public class AdminController(
         });
     }
 
-    [HttpPost("/admin/dataforseo-tasks/{id:long}/populate")]
+    [HttpPost("/admin/logs/dataforseo-tasks/{id:long}/populate")]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> PopulateDataForSeoTask(long id, [FromQuery] string? taskType, [FromQuery] string? status, CancellationToken ct)
     {
@@ -441,7 +456,7 @@ public class AdminController(
         });
     }
 
-    [HttpPost("/admin/dataforseo-tasks/populate-ready")]
+    [HttpPost("/admin/logs/dataforseo-tasks/populate-ready")]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> PopulateReadyDataForSeoTasks([FromQuery] string? taskType, [FromQuery] string? status, CancellationToken ct)
     {

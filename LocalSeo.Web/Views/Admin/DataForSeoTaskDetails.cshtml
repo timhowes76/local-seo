@@ -1,0 +1,113 @@
+@model DataForSeoTaskRow
+@{
+    ViewData["Title"] = $"DataForSEO Task {Model.DataForSeoReviewTaskId}";
+    var selectedTaskType = ViewBag.TaskType as string ?? "all";
+    var selectedStatus = ViewBag.TaskStatus as string ?? "all";
+    var backUrl = $"/admin/logs/dataforseo-tasks?taskType={Uri.EscapeDataString(selectedTaskType)}&status={Uri.EscapeDataString(selectedStatus)}";
+    var statusText = string.Equals(Model.Status, "NoData", StringComparison.OrdinalIgnoreCase)
+        ? "No Data"
+        : Model.Status;
+    var statusClass = Model.Status.ToLowerInvariant() switch
+    {
+        "ready" => "status-ready",
+        "error" => "status-error",
+        "nodata" => "status-nodata",
+        "pending" => "status-pending",
+        "created" => "status-pending",
+        "populated" => "status-healthy",
+        _ => "status-noreviews"
+    };
+}
+
+<div class="page-stack">
+    <section class="card">
+        <div class="toolbar">
+            <a href="@backUrl" class="btn btn-secondary">Back to DataForSEO Tasks</a>
+            <a href="/admin/logs" class="btn btn-secondary">Back to Logs</a>
+            @if (string.Equals(Model.Status, "Ready", StringComparison.OrdinalIgnoreCase))
+            {
+                <form method="post" action="/admin/logs/dataforseo-tasks/@Model.DataForSeoReviewTaskId/populate?taskType=@Uri.EscapeDataString(selectedTaskType)&status=@Uri.EscapeDataString(selectedStatus)">
+                    @Html.AntiForgeryToken()
+                    <button type="submit" class="btn btn-secondary">Populate Results</button>
+                </form>
+            }
+        </div>
+    </section>
+
+    <section class="card">
+        <h2 class="card-title">Task Summary</h2>
+        <div class="toolbar">
+            <span class="status-pill @statusClass">@statusText</span>
+        </div>
+        <dl class="details-grid">
+            <dt>ID</dt>
+            <dd><code>@Model.DataForSeoReviewTaskId</code></dd>
+
+            <dt>Task ID</dt>
+            <dd><code>@Model.DataForSeoTaskId</code></dd>
+
+            <dt>Task Type</dt>
+            <dd>@Model.TaskType</dd>
+
+            <dt>Place ID</dt>
+            <dd><code>@Model.PlaceId</code></dd>
+
+            <dt>Location</dt>
+            <dd>@(string.IsNullOrWhiteSpace(Model.LocationName) ? "N/A" : Model.LocationName)</dd>
+
+            <dt>Task Code</dt>
+            <dd>@(Model.TaskStatusCode?.ToString() ?? "N/A")</dd>
+
+            <dt>Task Message</dt>
+            <dd>@(string.IsNullOrWhiteSpace(Model.TaskStatusMessage) ? "N/A" : Model.TaskStatusMessage)</dd>
+
+            <dt>Created</dt>
+            <dd>@Model.CreatedAtUtc.ToString("dd MMM yyyy HH:mm") UTC</dd>
+
+            <dt>Last Checked</dt>
+            <dd>@(Model.LastCheckedUtc?.ToString("dd MMM yyyy HH:mm") ?? "N/A") UTC</dd>
+
+            <dt>Ready</dt>
+            <dd>@(Model.ReadyAtUtc?.ToString("dd MMM yyyy HH:mm") ?? "N/A") UTC</dd>
+
+            <dt>Populated</dt>
+            <dd>@(Model.PopulatedAtUtc?.ToString("dd MMM yyyy HH:mm") ?? "N/A") UTC</dd>
+
+            <dt>Last Attempted Populate</dt>
+            <dd>@(Model.LastAttemptedPopulateUtc?.ToString("dd MMM yyyy HH:mm") ?? "N/A") UTC</dd>
+
+            <dt>Callback At</dt>
+            <dd>@(Model.CallbackReceivedAtUtc?.ToString("dd MMM yyyy HH:mm") ?? "N/A") UTC</dd>
+
+            <dt>Callback Task ID</dt>
+            <dd>@(string.IsNullOrWhiteSpace(Model.CallbackTaskId) ? "N/A" : Model.CallbackTaskId)</dd>
+
+            <dt>Last Import Count</dt>
+            <dd>@(Model.LastPopulateReviewCount?.ToString() ?? "N/A")</dd>
+        </dl>
+    </section>
+
+    <section class="card">
+        <h2 class="card-title">Endpoint</h2>
+        @if (string.IsNullOrWhiteSpace(Model.Endpoint))
+        {
+            <p class="muted">N/A</p>
+        }
+        else
+        {
+            <pre class="code-block">@Model.Endpoint</pre>
+        }
+    </section>
+
+    <section class="card">
+        <h2 class="card-title">Error</h2>
+        @if (string.IsNullOrWhiteSpace(Model.LastError))
+        {
+            <p class="muted">No error stored.</p>
+        }
+        else
+        {
+            <pre class="code-block">@Model.LastError</pre>
+        }
+    </section>
+</div>

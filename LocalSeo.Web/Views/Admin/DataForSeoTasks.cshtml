@@ -6,6 +6,16 @@
     var selectedStatus = ViewBag.TaskStatus as string ?? "all";
     var selectedStatusKey = selectedStatus.ToLowerInvariant();
     var statusMessage = TempData["Status"] as string;
+    string TrimEndpoint(string? value, int maxLength)
+    {
+        var trimmed = (value ?? string.Empty).Trim();
+        if (trimmed.Length == 0)
+            return "N/A";
+
+        return trimmed.Length <= maxLength
+            ? trimmed
+            : $"{trimmed[..maxLength]}...";
+    }
 }
 
 <div class="page-stack">
@@ -34,6 +44,25 @@
             flex: 0 0 auto;
             align-self: end;
         }
+
+        .dataforseo-task-message-row td {
+            padding-top: 0;
+            border-top: 0;
+        }
+
+        .dataforseo-task-message {
+            display: block;
+            white-space: normal;
+            color: var(--muted);
+            font-size: .95rem;
+            line-height: 1.4;
+            padding: .2rem 0 .35rem;
+        }
+
+        .dataforseo-task-message-empty {
+            color: var(--muted);
+            font-style: italic;
+        }
     </style>
     @if (!string.IsNullOrWhiteSpace(statusMessage))
     {
@@ -45,7 +74,7 @@
             <a href="/admin/logs" class="btn btn-secondary">Back to Logs</a>
         </div>
 
-        <form method="get" action="/admin/dataforseo-tasks" class="inline-filter-line dataforseo-task-filters">
+        <form method="get" action="/admin/logs/dataforseo-tasks" class="inline-filter-line dataforseo-task-filters">
             <div class="form-row">
                 <label for="taskTypeFilter">Task Type</label>
                 <select id="taskTypeFilter" name="taskType">
@@ -200,15 +229,15 @@
         </form>
 
         <div class="toolbar">
-            <form method="post" action="/admin/dataforseo-tasks/refresh?taskType=@Uri.EscapeDataString(selectedTaskType)&status=@Uri.EscapeDataString(selectedStatus)">
+            <form method="post" action="/admin/logs/dataforseo-tasks/refresh?taskType=@Uri.EscapeDataString(selectedTaskType)&status=@Uri.EscapeDataString(selectedStatus)">
                 @Html.AntiForgeryToken()
                 <button type="submit" class="btn btn-secondary">Refresh Statuses</button>
             </form>
-            <form method="post" action="/admin/dataforseo-tasks/populate-ready?taskType=@Uri.EscapeDataString(selectedTaskType)&status=@Uri.EscapeDataString(selectedStatus)" onsubmit="return confirm('Populate results for all Ready tasks in the current filter?');">
+            <form method="post" action="/admin/logs/dataforseo-tasks/populate-ready?taskType=@Uri.EscapeDataString(selectedTaskType)&status=@Uri.EscapeDataString(selectedStatus)" onsubmit="return confirm('Populate results for all Ready tasks in the current filter?');">
                 @Html.AntiForgeryToken()
                 <button type="submit">Populate All Ready</button>
             </form>
-            <form method="post" action="/admin/dataforseo-tasks/delete-errors?taskType=@Uri.EscapeDataString(selectedTaskType)&status=@Uri.EscapeDataString(selectedStatus)" onsubmit="return confirm('Delete all Error rows for the current filter?');">
+            <form method="post" action="/admin/logs/dataforseo-tasks/delete-errors?taskType=@Uri.EscapeDataString(selectedTaskType)&status=@Uri.EscapeDataString(selectedStatus)" onsubmit="return confirm('Delete all Error rows for the current filter?');">
                 @Html.AntiForgeryToken()
                 <button type="submit">Delete Error Rows</button>
             </form>
@@ -228,20 +257,15 @@
                     <thead>
                         <tr>
                             <th>ID</th>
-                            <th>Task ID</th>
                             <th>Task Type</th>
                             <th>Place ID</th>
-                            <th>Location</th>
                             <th>Status</th>
                             <th>Task Code</th>
-                            <th>Task Message</th>
                             <th>Endpoint</th>
                             <th>Created</th>
                             <th>Last Checked</th>
                             <th>Ready</th>
                             <th>Populated</th>
-                            <th>Callback At</th>
-                            <th>Callback Task ID</th>
                             <th>Last Import Count</th>
                             <th>Error</th>
                             <th>Action</th>
@@ -264,30 +288,37 @@
                             _ => "status-noreviews"
                         };
                         <tr>
-                            <td>@row.DataForSeoReviewTaskId</td>
-                            <td><code>@row.DataForSeoTaskId</code></td>
+                            <td rowspan="2"><a href="/admin/logs/dataforseo-tasks/@row.DataForSeoReviewTaskId?taskType=@Uri.EscapeDataString(selectedTaskType)&status=@Uri.EscapeDataString(selectedStatus)"><code>@row.DataForSeoReviewTaskId</code></a></td>
                             <td>@row.TaskType</td>
                             <td><code>@row.PlaceId</code></td>
-                            <td>@(row.LocationName ?? "N/A")</td>
                             <td><span class="status-pill @statusClass">@statusText</span></td>
-                            <td>@(row.TaskStatusCode?.ToString() ?? "N/A")</td>
-                            <td>@(row.TaskStatusMessage ?? "N/A")</td>
-                            <td>@(row.Endpoint ?? "N/A")</td>
-                            <td>@row.CreatedAtUtc.ToString("dd MMM yyyy HH:mm")</td>
-                            <td>@(row.LastCheckedUtc?.ToString("dd MMM yyyy HH:mm") ?? "N/A")</td>
-                            <td>@(row.ReadyAtUtc?.ToString("dd MMM yyyy HH:mm") ?? "N/A")</td>
-                            <td>@(row.PopulatedAtUtc?.ToString("dd MMM yyyy HH:mm") ?? "N/A")</td>
-                            <td>@(row.CallbackReceivedAtUtc?.ToString("dd MMM yyyy HH:mm") ?? "N/A")</td>
-                            <td>@(row.CallbackTaskId ?? "N/A")</td>
-                            <td>@(row.LastPopulateReviewCount?.ToString() ?? "N/A")</td>
-                            <td>@(row.LastError ?? "N/A")</td>
-                            <td>
+                            <td rowspan="2">@(row.TaskStatusCode?.ToString() ?? "N/A")</td>
+                            <td rowspan="2" title="@(string.IsNullOrWhiteSpace(row.Endpoint) ? null : row.Endpoint)">@TrimEndpoint(row.Endpoint, 20)</td>
+                            <td rowspan="2">@row.CreatedAtUtc.ToString("dd MMM yyyy HH:mm")</td>
+                            <td rowspan="2">@(row.LastCheckedUtc?.ToString("dd MMM yyyy HH:mm") ?? "N/A")</td>
+                            <td rowspan="2">@(row.ReadyAtUtc?.ToString("dd MMM yyyy HH:mm") ?? "N/A")</td>
+                            <td rowspan="2">@(row.PopulatedAtUtc?.ToString("dd MMM yyyy HH:mm") ?? "N/A")</td>
+                            <td rowspan="2">@(row.LastPopulateReviewCount?.ToString() ?? "N/A")</td>
+                            <td rowspan="2">@(row.LastError ?? "N/A")</td>
+                            <td rowspan="2">
                                 @if (string.Equals(row.Status, "Ready", StringComparison.OrdinalIgnoreCase))
                                 {
-                                    <form method="post" action="/admin/dataforseo-tasks/@row.DataForSeoReviewTaskId/populate?taskType=@selectedTaskType&status=@selectedStatus">
+                                    <form method="post" action="/admin/logs/dataforseo-tasks/@row.DataForSeoReviewTaskId/populate?taskType=@selectedTaskType&status=@selectedStatus">
                                         @Html.AntiForgeryToken()
                                         <button type="submit" class="btn btn-secondary">Populate Results</button>
                                     </form>
+                                }
+                            </td>
+                        </tr>
+                        <tr class="dataforseo-task-message-row">
+                            <td colspan="3">
+                                @if (string.IsNullOrWhiteSpace(row.TaskStatusMessage))
+                                {
+                                    <span class="dataforseo-task-message dataforseo-task-message-empty">No task message.</span>
+                                }
+                                else
+                                {
+                                    <span class="dataforseo-task-message">@row.TaskStatusMessage</span>
                                 }
                             </td>
                         </tr>

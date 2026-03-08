@@ -301,6 +301,38 @@ ORDER BY
         return rows.ToList();
     }
 
+    public async Task<DataForSeoTaskRow?> GetTaskByIdAsync(long dataForSeoReviewTaskId, CancellationToken ct)
+    {
+        if (dataForSeoReviewTaskId <= 0)
+            return null;
+
+        await using var conn = (Microsoft.Data.SqlClient.SqlConnection)await connectionFactory.OpenConnectionAsync(ct);
+        return await conn.QuerySingleOrDefaultAsync<DataForSeoTaskRow>(new CommandDefinition(@"
+SELECT
+  DataForSeoReviewTaskId,
+  DataForSeoTaskId,
+  TaskType,
+  PlaceId,
+  LocationName,
+  Status,
+  TaskStatusCode,
+  TaskStatusMessage,
+  Endpoint,
+  CreatedAtUtc,
+  LastCheckedUtc,
+  ReadyAtUtc,
+  PopulatedAtUtc,
+  LastAttemptedPopulateUtc,
+  LastPopulateReviewCount,
+  CallbackReceivedAtUtc,
+  CallbackTaskId,
+  LastError
+FROM dbo.DataForSeoReviewTask
+WHERE DataForSeoReviewTaskId = @DataForSeoReviewTaskId;",
+            new { DataForSeoReviewTaskId = dataForSeoReviewTaskId },
+            cancellationToken: ct));
+    }
+
     public async Task<int> DeleteErrorTasksAsync(string? taskType, CancellationToken ct)
     {
         var normalizedTaskType = string.IsNullOrWhiteSpace(taskType) || string.Equals(taskType, "all", StringComparison.OrdinalIgnoreCase)

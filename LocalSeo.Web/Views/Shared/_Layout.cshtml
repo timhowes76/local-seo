@@ -114,15 +114,16 @@
         if (pathSegments.Length > 0)
         {
             var isDataForSeoTaskFromLogs =
-                pathSegments.Length == 2
+                pathSegments.Length == 3
                 && string.Equals(pathSegments[0], "admin", StringComparison.OrdinalIgnoreCase)
-                && string.Equals(pathSegments[1], "dataforseo-tasks", StringComparison.OrdinalIgnoreCase);
+                && string.Equals(pathSegments[1], "logs", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(pathSegments[2], "dataforseo-tasks", StringComparison.OrdinalIgnoreCase);
 
             if (isDataForSeoTaskFromLogs)
             {
                 breadcrumbs.Add(("Admin", "/admin", false));
                 breadcrumbs.Add(("Logs", "/admin/logs", false));
-                breadcrumbs.Add(("DataForSEO Tasks", "/admin/dataforseo-tasks", true));
+                breadcrumbs.Add(("DataForSEO Tasks", "/admin/logs/dataforseo-tasks", true));
             }
             else
             {
