@@ -200,6 +200,12 @@ public sealed class SeoAuditService(
         var applicableRows = orderedRows
             .Where(x => !string.Equals(x.Status, SeoAuditStatuses.NotApplicable, StringComparison.OrdinalIgnoreCase))
             .ToList();
+        var informationOnlyRows = applicableRows
+            .Where(x => string.Equals(x.Severity, SeoAuditSeverityLevels.Info, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        var actionRows = applicableRows
+            .Where(x => !string.Equals(x.Severity, SeoAuditSeverityLevels.Info, StringComparison.OrdinalIgnoreCase))
+            .ToList();
         var possiblePoints = applicableRows.Sum(x => Math.Max(0, x.PossiblePoints));
         var earnedPoints = applicableRows.Sum(x => x.Status switch
         {
@@ -224,11 +230,15 @@ public sealed class SeoAuditService(
                 .Select(x => x.LastSourceSearchRunId)
                 .FirstOrDefault(),
             HasResults = orderedRows.Count > 0,
-            ActionsNeeded = orderedRows
+            ActionsNeeded = actionRows
                 .Where(x => string.Equals(x.Status, SeoAuditStatuses.Warning, StringComparison.OrdinalIgnoreCase) || string.Equals(x.Status, SeoAuditStatuses.Fail, StringComparison.OrdinalIgnoreCase))
                 .ToList(),
-            AlreadyGood = orderedRows
+            AlreadyGood = actionRows
                 .Where(x => string.Equals(x.Status, SeoAuditStatuses.Pass, StringComparison.OrdinalIgnoreCase))
+                .ToList(),
+            InformationOnly = informationOnlyRows
+                .OrderBy(x => x.SortOrderSnapshot)
+                .ThenBy(x => x.SeoAuditRuleId)
                 .ToList()
         };
     }

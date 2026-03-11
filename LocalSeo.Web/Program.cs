@@ -291,6 +291,8 @@ builder.Services.AddScoped<IAnnouncementService, AnnouncementService>();
 builder.Services.AddSingleton<IWebsiteClassifier, WebsiteClassifier>();
 builder.Services.AddScoped<ISeoAuditRepository, SeoAuditRepository>();
 builder.Services.AddScoped<ISeoAuditRuleHandler, FixedSeoAuditRuleHandler>();
+builder.Services.AddScoped<ISeoAuditRuleHandler, BenchmarkSeoAuditRuleHandler>();
+builder.Services.AddScoped<ISeoAuditRuleHandler, CompetitorRelativeSeoAuditRuleHandler>();
 builder.Services.AddScoped<ISeoAuditService, SeoAuditService>();
 builder.Services.AddScoped<IApiStatusRepository, ApiStatusRepository>();
 builder.Services.AddScoped<IApiStatusCheckRunner, ApiStatusCheckRunner>();

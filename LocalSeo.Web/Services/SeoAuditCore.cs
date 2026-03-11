@@ -135,15 +135,30 @@ public sealed record PlaceQuestionAnswerAuditRow(
     string? AnswerText,
     DateTime? AnswerTimestampUtc);
 
+public sealed record PlaceAuditPeer(
+    string PlaceId,
+    decimal? Lat,
+    decimal? Lng);
+
 public sealed record PlaceAuditContext(
     string PlaceId,
+    string? DisplayName,
+    string? PrimaryCategory,
     string? Description,
+    string? FormattedAddress,
     string? WebsiteUri,
     WebsiteType WebsiteType,
     int? PhotoCount,
     int? StoredQuestionAnswerCount,
     string? OtherCategoriesJson,
     string? RegularOpeningHoursJson,
+    decimal? PlaceLat,
+    decimal? PlaceLng,
+    decimal? TownCenterLat,
+    decimal? TownCenterLng,
+    string? SourceCategoryId,
+    string? SourceKeyword,
+    string? SourceTownName,
     decimal? LatestRating,
     int? LatestUserRatingCount,
     long? LastSourceSearchRunId,
@@ -154,7 +169,8 @@ public sealed record PlaceAuditContext(
     IReadOnlyList<ReviewResponseTiming> ResponseTimings,
     IReadOnlyList<PlaceReviewAuditRow> Reviews,
     IReadOnlyList<PlaceUpdateAuditRow> Updates,
-    IReadOnlyList<PlaceQuestionAnswerAuditRow> QuestionsAndAnswers)
+    IReadOnlyList<PlaceQuestionAnswerAuditRow> QuestionsAndAnswers,
+    IReadOnlyList<PlaceAuditPeer> ComparablePlaces)
 {
     public int DescriptionLength => string.IsNullOrWhiteSpace(Description) ? 0 : Description.Trim().Length;
 

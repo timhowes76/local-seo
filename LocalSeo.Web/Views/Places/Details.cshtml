@@ -960,7 +960,7 @@ else
     <div class="actions-audit-header">
         <div class="actions-audit-heading">
             <h3 class="card-title">Actions</h3>
-            <p class="muted">Current GBP optimisation opportunities based on the latest stored place data.</p>
+            <p class="muted">Current GBP audit output based on the latest stored place data.</p>
         </div>
         <form method="post" action="@recalculateAuditUrl" class="actions-audit-recalculate">
             @Html.AntiForgeryToken()
@@ -1078,6 +1078,67 @@ else
                                 </td>
                                 <td>@(string.IsNullOrWhiteSpace(row.WhyItMattersText) ? "N/A" : row.WhyItMattersText)</td>
                                 <td class="actions-audit-nowrap"><span class="status-pill @AuditStatusClass(row.Status)">@row.Status</span></td>
+                            </tr>
+                        }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </section>
+
+        <section class="actions-audit-section">
+            <div class="actions-audit-section-header">
+                <h4>Information Only</h4>
+                <span class="muted">@auditSummary.InformationOnly.Count item@(auditSummary.InformationOnly.Count == 1 ? string.Empty : "s")</span>
+            </div>
+            @if (auditSummary.InformationOnly.Count == 0)
+            {
+                <p class="muted actions-audit-empty">No information-only items are currently stored.</p>
+            }
+            else
+            {
+                <div class="table-wrap">
+                    <table class="actions-audit-table actions-audit-table-good">
+                        <colgroup>
+                            <col class="actions-audit-col-issue" />
+                            <col class="actions-audit-col-why" />
+                        </colgroup>
+                        <thead>
+                            <tr>
+                                <th>Item</th>
+                                <th>Details</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        @foreach (var row in auditSummary.InformationOnly)
+                        {
+                            <tr>
+                                <td>
+                                    <strong>@row.Name</strong>
+                                </td>
+                                <td>
+                                    @if (!string.IsNullOrWhiteSpace(row.SummaryText))
+                                    {
+                                        <div>@row.SummaryText</div>
+                                    }
+                                    @if (!string.IsNullOrWhiteSpace(row.ActualValue) || !string.IsNullOrWhiteSpace(row.GapValue))
+                                    {
+                                        <div class="muted actions-audit-summary-text">
+                                            @if (!string.IsNullOrWhiteSpace(row.ActualValue))
+                                            {
+                                                <span>Distance: @row.ActualValue</span>
+                                            }
+                                            @if (!string.IsNullOrWhiteSpace(row.ActualValue) && !string.IsNullOrWhiteSpace(row.GapValue))
+                                            {
+                                                <span> | </span>
+                                            }
+                                            @if (!string.IsNullOrWhiteSpace(row.GapValue))
+                                            {
+                                                <span>Run position: @row.GapValue</span>
+                                            }
+                                        </div>
+                                    }
+                                </td>
                             </tr>
                         }
                         </tbody>

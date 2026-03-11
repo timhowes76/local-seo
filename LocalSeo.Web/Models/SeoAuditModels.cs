@@ -67,6 +67,10 @@ public static class SeoAuditRuleTypes
     public const string RatingTrend = "RatingTrend";
     public const string LowRatingShare = "LowRatingShare";
     public const string MissingHours = "MissingHours";
+    public const string TownCentreDistanceRank = "TownCentreDistanceRank";
+    public const string BusinessTitleKeywordMatch = "BusinessTitleKeywordMatch";
+    public const string PrimaryCategoryMatch = "PrimaryCategoryMatch";
+    public const string PhysicalAddressInSearchTown = "PhysicalAddressInSearchTown";
 
     public static readonly IReadOnlyList<string> All =
     [
@@ -92,7 +96,11 @@ public static class SeoAuditRuleTypes
         ReviewBurstiness,
         RatingTrend,
         LowRatingShare,
-        MissingHours
+        MissingHours,
+        TownCentreDistanceRank,
+        BusinessTitleKeywordMatch,
+        PrimaryCategoryMatch,
+        PhysicalAddressInSearchTown
     ];
 }
 
@@ -153,6 +161,10 @@ public static class SeoAuditRuleKeys
     public const string RatingTrendingDownward = "RatingTrendingDownward";
     public const string LowEngagementOnReviews = "LowEngagementOnReviews";
     public const string BusinessHoursMissing = "BusinessHoursMissing";
+    public const string TownCentreDistanceRelative = "TownCentreDistanceRelative";
+    public const string KeywordsInBusinessTitle = "KeywordsInBusinessTitle";
+    public const string PrimaryCategoryMatchesRun = "PrimaryCategoryMatchesRun";
+    public const string PhysicalAddressMatchesSearchTown = "PhysicalAddressMatchesSearchTown";
 }
 
 public sealed class SeoAuditRuleListRow
@@ -223,6 +235,7 @@ public sealed class SeoAuditPlaceResultRow
     public long SeoAuditRuleId { get; init; }
     public string RuleKey { get; init; } = string.Empty;
     public string Name { get; init; } = string.Empty;
+    public string Severity { get; init; } = string.Empty;
     public string Status { get; init; } = string.Empty;
     public int ScoreImpactApplied { get; init; }
     public int PossiblePoints { get; init; }
@@ -246,4 +259,5 @@ public sealed class SeoAuditPlaceSummary
     public bool HasResults { get; init; }
     public IReadOnlyList<SeoAuditPlaceResultRow> ActionsNeeded { get; init; } = [];
     public IReadOnlyList<SeoAuditPlaceResultRow> AlreadyGood { get; init; } = [];
+    public IReadOnlyList<SeoAuditPlaceResultRow> InformationOnly { get; init; } = [];
 }

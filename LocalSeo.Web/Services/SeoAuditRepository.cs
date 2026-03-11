@@ -354,15 +354,25 @@ WHERE SeoAuditRuleId = @SeoAuditRuleId;",
 
         await using var conn = (SqlConnection)await connectionFactory.OpenConnectionAsync(ct);
         using var grid = await conn.QueryMultipleAsync(new CommandDefinition(@"
-SELECT
-  p.PlaceId,
-  p.Description,
-  p.WebsiteUri,
-  p.WebsiteType,
+  SELECT
+    p.PlaceId,
+    p.DisplayName,
+    p.PrimaryCategory,
+    p.Description,
+    p.FormattedAddress,
+    p.WebsiteUri,
+    p.WebsiteType,
   p.PhotoCount,
+  p.Lat,
+  p.Lng,
   p.QuestionAnswerCount AS StoredQuestionAnswerCount,
   p.OtherCategoriesJson,
   p.RegularOpeningHoursJson,
+  town.Latitude AS TownCenterLat,
+  town.Longitude AS TownCenterLng,
+  sr.CategoryId AS SourceCategoryId,
+  cat.DisplayName AS SourceKeyword,
+  town.Name AS SourceTownName,
   latest.SearchRunId AS LastSourceSearchRunId,
   latest.Rating AS LatestRating,
   latest.UserRatingCount AS LatestUserRatingCount
@@ -376,6 +386,9 @@ OUTER APPLY (
   WHERE ps.PlaceId = p.PlaceId
   ORDER BY ps.CapturedAtUtc DESC, ps.PlaceSnapshotId DESC
 ) latest
+LEFT JOIN dbo.SearchRun sr ON sr.SearchRunId = latest.SearchRunId
+LEFT JOIN dbo.GbTown town ON town.TownId = sr.TownId
+LEFT JOIN dbo.GoogleBusinessProfileCategory cat ON cat.CategoryId = sr.CategoryId
 WHERE p.PlaceId = @PlaceId;
 
 SELECT
@@ -427,7 +440,24 @@ SELECT
   pqa.AnswerTimestampUtc
 FROM dbo.PlaceQuestionAnswer pqa
 WHERE pqa.PlaceId = @PlaceId
-ORDER BY COALESCE(pqa.QuestionTimestampUtc, pqa.LastSeenUtc) DESC, pqa.PlaceQuestionAnswerId DESC;",
+ORDER BY COALESCE(pqa.QuestionTimestampUtc, pqa.LastSeenUtc) DESC, pqa.PlaceQuestionAnswerId DESC;
+
+WITH LatestRun AS (
+  SELECT TOP 1
+    ps.SearchRunId
+  FROM dbo.PlaceSnapshot ps
+  WHERE ps.PlaceId = @PlaceId
+  ORDER BY ps.CapturedAtUtc DESC, ps.PlaceSnapshotId DESC
+)
+SELECT
+  p.PlaceId,
+  p.Lat,
+  p.Lng
+FROM LatestRun lr
+JOIN dbo.PlaceSnapshot ps ON ps.SearchRunId = lr.SearchRunId
+JOIN dbo.Place p ON p.PlaceId = ps.PlaceId
+GROUP BY p.PlaceId, p.Lat, p.Lng
+ORDER BY p.PlaceId ASC;",
             new { PlaceId = normalizedPlaceId },
             cancellationToken: ct));
 
@@ -461,17 +491,33 @@ ORDER BY COALESCE(pqa.QuestionTimestampUtc, pqa.LastSeenUtc) DESC, pqa.PlaceQues
                 x.AnswerText,
                 x.AnswerTimestampUtc))
             .ToList();
+        var comparablePlaces = (await grid.ReadAsync<PlaceAuditPeerRowData>())
+            .Select(x => new PlaceAuditPeer(
+                x.PlaceId,
+                x.Lat,
+                x.Lng))
+            .ToList();
         var respondedReviewCount = reviews.Count(x => x.HasOwnerResponse);
 
         return new PlaceAuditContext(
             place.PlaceId,
+            place.DisplayName,
+            place.PrimaryCategory,
             place.Description,
+            place.FormattedAddress,
             place.WebsiteUri,
             place.WebsiteType,
             place.PhotoCount,
             place.StoredQuestionAnswerCount,
             place.OtherCategoriesJson,
             place.RegularOpeningHoursJson,
+            place.Lat,
+            place.Lng,
+            place.TownCenterLat,
+            place.TownCenterLng,
+            place.SourceCategoryId,
+            place.SourceKeyword,
+            place.SourceTownName,
             place.LatestRating,
             place.LatestUserRatingCount,
             place.LastSourceSearchRunId,
@@ -482,7 +528,8 @@ ORDER BY COALESCE(pqa.QuestionTimestampUtc, pqa.LastSeenUtc) DESC, pqa.PlaceQues
             responseTimings,
             reviews,
             updates,
-            questionsAndAnswers);
+            questionsAndAnswers,
+            comparablePlaces);
     }
 
     public async Task UpsertAuditResultsAsync(string placeId, long? lastSourceSearchRunId, IReadOnlyList<SeoAuditEvaluationResult> results, DateTime nowUtc, CancellationToken ct)
@@ -581,6 +628,7 @@ SELECT
   ar.SeoAuditRuleId,
   r.RuleKey,
   r.[Name],
+  r.Severity,
   ar.[Status],
   ar.ScoreImpactApplied,
   r.FailScoreImpact AS PossiblePoints,
@@ -770,13 +818,23 @@ WHERE SeoAuditRuleParameterId IN @Ids;",
 
     private sealed record PlaceAuditContextRow(
         string PlaceId,
+        string? DisplayName,
+        string? PrimaryCategory,
         string? Description,
+        string? FormattedAddress,
         string? WebsiteUri,
         WebsiteType WebsiteType,
         int? PhotoCount,
+        decimal? Lat,
+        decimal? Lng,
         int? StoredQuestionAnswerCount,
         string? OtherCategoriesJson,
         string? RegularOpeningHoursJson,
+        decimal? TownCenterLat,
+        decimal? TownCenterLng,
+        string? SourceCategoryId,
+        string? SourceKeyword,
+        string? SourceTownName,
         long? LastSourceSearchRunId,
         decimal? LatestRating,
         int? LatestUserRatingCount);
@@ -795,4 +853,9 @@ WHERE SeoAuditRuleParameterId IN @Ids;",
     private sealed record PlaceQuestionAnswerAuditRowData(
         string? AnswerText,
         DateTime? AnswerTimestampUtc);
+
+    private sealed record PlaceAuditPeerRowData(
+        string PlaceId,
+        decimal? Lat,
+        decimal? Lng);
 }
