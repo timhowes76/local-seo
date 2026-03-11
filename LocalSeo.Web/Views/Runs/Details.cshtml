@@ -62,9 +62,17 @@
         .ToList();
     var capturedStampUtc = Model.Snapshots.FirstOrDefault()?.CapturedAtUtc;
     var keyphraseTraffic = Model.KeyphraseTraffic;
+    var statusMessage = TempData["Status"] as string;
 }
 
 <div class="page-stack">
+    @if (!string.IsNullOrWhiteSpace(statusMessage))
+    {
+        <section class="card">
+            <div class="muted">@statusMessage</div>
+        </section>
+    }
+
     <div class="run-summary-grid">
         <section class="card run-summary-card">
             <h2 class="card-title">Run @Model.Run.SearchRunId</h2>
@@ -142,7 +150,7 @@
             </div>
         </section>
         <section class="run-actions-grid">
-            <a href="/runs/@Model.Run.SearchRunId/compare-reviews" class="home-nav-card run-action-card">
+            <a href="/runs/@Model.Run.SearchRunId/compare-reviews" class="home-nav-card run-action-card run-action-card-wide">
                 <i class="bi bi-bar-chart-line home-nav-icon"></i>
                 <span class="home-nav-title">Compare Reviews</span>
                 <span class="home-nav-subtitle">Compare review velocity and trends for this run</span>
@@ -152,6 +160,14 @@
                 <span class="home-nav-title">Rerun</span>
                 <span class="home-nav-subtitle">Run this search again with the same inputs</span>
             </a>
+            <form method="post" action="/runs/@Model.Run.SearchRunId/actions/recalculate-audits" class="home-nav-card run-action-card">
+                @Html.AntiForgeryToken()
+                <button type="submit" class="run-action-submit">
+                    <i class="bi bi-clipboard-data home-nav-icon"></i>
+                    <span class="home-nav-title">Recalculate Audits</span>
+                    <span class="home-nav-subtitle">Loop through every place in this run and refresh the audit score</span>
+                </button>
+            </form>
         </section>
     </div>
 
