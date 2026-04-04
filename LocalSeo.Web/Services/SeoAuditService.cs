@@ -200,6 +200,9 @@ public sealed class SeoAuditService(
         var applicableRows = orderedRows
             .Where(x => !string.Equals(x.Status, SeoAuditStatuses.NotApplicable, StringComparison.OrdinalIgnoreCase))
             .ToList();
+        var notEvaluatedRows = orderedRows
+            .Where(x => string.Equals(x.Status, SeoAuditStatuses.NotApplicable, StringComparison.OrdinalIgnoreCase))
+            .ToList();
         var informationOnlyRows = applicableRows
             .Where(x => string.Equals(x.Severity, SeoAuditSeverityLevels.Info, StringComparison.OrdinalIgnoreCase))
             .ToList();
@@ -235,9 +238,18 @@ public sealed class SeoAuditService(
                 .ToList(),
             AlreadyGood = actionRows
                 .Where(x => string.Equals(x.Status, SeoAuditStatuses.Pass, StringComparison.OrdinalIgnoreCase))
+                .OrderByDescending(x => x.PossiblePoints)
+                .ThenBy(x => x.SortOrderSnapshot)
+                .ThenBy(x => x.SeoAuditRuleId)
                 .ToList(),
             InformationOnly = informationOnlyRows
-                .OrderBy(x => x.SortOrderSnapshot)
+                .OrderByDescending(x => x.PossiblePoints)
+                .ThenBy(x => x.SortOrderSnapshot)
+                .ThenBy(x => x.SeoAuditRuleId)
+                .ToList(),
+            NotEvaluated = notEvaluatedRows
+                .OrderByDescending(x => x.PossiblePoints)
+                .ThenBy(x => x.SortOrderSnapshot)
                 .ThenBy(x => x.SeoAuditRuleId)
                 .ToList()
         };

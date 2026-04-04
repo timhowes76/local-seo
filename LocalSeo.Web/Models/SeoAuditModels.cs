@@ -30,6 +30,7 @@ public static class SeoAuditEntityTypes
     public const string GbpQa = "GBP_QA";
     public const string GbpUpdates = "GBP_UPDATES";
     public const string GbpPhotos = "GBP_PHOTOS";
+    public const string Website = "WEBSITE";
 
     public static readonly IReadOnlyList<string> All =
     [
@@ -38,7 +39,8 @@ public static class SeoAuditEntityTypes
         GbpCategories,
         GbpQa,
         GbpUpdates,
-        GbpPhotos
+        GbpPhotos,
+        Website
     ];
 }
 
@@ -71,6 +73,15 @@ public static class SeoAuditRuleTypes
     public const string BusinessTitleKeywordMatch = "BusinessTitleKeywordMatch";
     public const string PrimaryCategoryMatch = "PrimaryCategoryMatch";
     public const string PhysicalAddressInSearchTown = "PhysicalAddressInSearchTown";
+    public const string HomepageNapMatch = "HomepageNapMatch";
+    public const string HomepageTitleKeywordMatch = "HomepageTitleKeywordMatch";
+    public const string HomepageHeadingKeywordMatch = "HomepageHeadingKeywordMatch";
+    public const string HomepageNicheFocus = "HomepageNicheFocus";
+    public const string HomepageTopicalKeywordRelevance = "HomepageTopicalKeywordRelevance";
+    public const string HomepageInternalLinking = "HomepageInternalLinking";
+    public const string HomepageAnchorTextKeywordMatch = "HomepageAnchorTextKeywordMatch";
+    public const string HomepageHttpsDefault = "HomepageHttpsDefault";
+    public const string DomainKeywordMatch = "DomainKeywordMatch";
 
     public static readonly IReadOnlyList<string> All =
     [
@@ -100,7 +111,16 @@ public static class SeoAuditRuleTypes
         TownCentreDistanceRank,
         BusinessTitleKeywordMatch,
         PrimaryCategoryMatch,
-        PhysicalAddressInSearchTown
+        PhysicalAddressInSearchTown,
+        HomepageNapMatch,
+        HomepageTitleKeywordMatch,
+        HomepageHeadingKeywordMatch,
+        HomepageNicheFocus,
+        HomepageTopicalKeywordRelevance,
+        HomepageInternalLinking,
+        HomepageAnchorTextKeywordMatch,
+        HomepageHttpsDefault,
+        DomainKeywordMatch
     ];
 }
 
@@ -165,6 +185,15 @@ public static class SeoAuditRuleKeys
     public const string KeywordsInBusinessTitle = "KeywordsInBusinessTitle";
     public const string PrimaryCategoryMatchesRun = "PrimaryCategoryMatchesRun";
     public const string PhysicalAddressMatchesSearchTown = "PhysicalAddressMatchesSearchTown";
+    public const string HtmlNapMatchesGbpNap = "HtmlNapMatchesGbpNap";
+    public const string KeywordsInLandingPageTitleTag = "KeywordsInLandingPageTitleTag";
+    public const string KeywordsInLandingPageHeadings = "KeywordsInLandingPageHeadings";
+    public const string HomepageNicheFocus = "HomepageNicheFocus";
+    public const string HomepageTopicalKeywordRelevance = "HomepageTopicalKeywordRelevance";
+    public const string HomepageInternalLinking = "HomepageInternalLinking";
+    public const string KeywordsInInternalLinkAnchorText = "KeywordsInInternalLinkAnchorText";
+    public const string WebsiteUsesHttpsByDefault = "WebsiteUsesHttpsByDefault";
+    public const string KeywordsInDomainName = "KeywordsInDomainName";
 }
 
 public sealed class SeoAuditRuleListRow
@@ -260,4 +289,5 @@ public sealed class SeoAuditPlaceSummary
     public IReadOnlyList<SeoAuditPlaceResultRow> ActionsNeeded { get; init; } = [];
     public IReadOnlyList<SeoAuditPlaceResultRow> AlreadyGood { get; init; } = [];
     public IReadOnlyList<SeoAuditPlaceResultRow> InformationOnly { get; init; } = [];
+    public IReadOnlyList<SeoAuditPlaceResultRow> NotEvaluated { get; init; } = [];
 }

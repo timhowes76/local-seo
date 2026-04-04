@@ -1,0 +1,80 @@
+@model CloudflareWorkerListViewModel
+@{
+    ViewData["Title"] = "Cloudflare Workers";
+    var statusMessage = TempData["Status"] as string;
+}
+
+<div class="page-stack">
+    @if (!string.IsNullOrWhiteSpace(statusMessage))
+    {
+        <div class="notice">@statusMessage</div>
+    }
+
+    <section class="card">
+        <div class="toolbar">
+            <a href="/admin/settings" class="btn btn-secondary">Back to Settings</a>
+            <a href="/admin/settings/cloudflare-workers/create" class="btn btn-primary">Create Worker</a>
+        </div>
+    </section>
+
+    <section class="card">
+        <div class="card-header">
+            <h2 class="card-title">Cloudflare Workers</h2>
+        </div>
+        <p class="muted">Manual worker endpoints used by staff-only tools such as homepage fetch analysis.</p>
+        @if (!string.IsNullOrWhiteSpace(Model.Message))
+        {
+            <div class="notice">@Model.Message</div>
+        }
+
+        <form method="get" class="toolbar">
+            <input type="text" name="search" value="@Model.Search" placeholder="Search by name or key" />
+            <button type="submit" class="btn btn-secondary">Search</button>
+            @if (!string.IsNullOrWhiteSpace(Model.Search))
+            {
+                <a href="/admin/settings/cloudflare-workers" class="btn btn-secondary">Clear</a>
+            }
+        </form>
+
+        @if (Model.Rows.Count == 0)
+        {
+            <p class="muted">No Cloudflare workers found.</p>
+        }
+        else
+        {
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Worker Key</th>
+                            <th>Base Url</th>
+                            <th>Route Path</th>
+                            <th>Enabled</th>
+                            <th>Timeout Seconds</th>
+                            <th>Updated</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    @foreach (var row in Model.Rows)
+                    {
+                        <tr>
+                            <td>@row.Name</td>
+                            <td><code>@row.WorkerKey</code></td>
+                            <td>@(string.IsNullOrWhiteSpace(row.BaseUrl) ? "N/A" : row.BaseUrl)</td>
+                            <td><code>@row.RoutePath</code></td>
+                            <td>@(row.IsEnabled ? "Yes" : "No")</td>
+                            <td>@row.TimeoutSeconds</td>
+                            <td>@row.UpdatedUtc.ToLocalTime().ToString("dd MMM yyyy HH:mm")</td>
+                            <td>
+                                <a href="/admin/settings/cloudflare-workers/@row.CloudflareWorkerId/edit" class="btn btn-secondary">Edit</a>
+                            </td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </section>
+</div>

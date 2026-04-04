@@ -250,6 +250,7 @@ public sealed class PlaceDetailsViewModel
     public string? ZohoLastError { get; init; }
     public FirstContactReportAvailability? FirstContactReportAvailability { get; set; }
     public SeoAuditPlaceSummary? AuditSummary { get; set; }
+    public PlaceWebsiteTabViewModel? WebsiteAnalysis { get; set; }
 }
 
 public sealed record PlaceCategorySuggestionRow(

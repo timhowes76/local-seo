@@ -140,12 +140,55 @@ public sealed record PlaceAuditPeer(
     decimal? Lat,
     decimal? Lng);
 
+public sealed record PlaceWebsiteAuditContext(
+    string? WebsiteUrl,
+    string? NormalizedWebsiteUrl,
+    string? HostName,
+    bool? IsHttps,
+    string? Status,
+    DateTime? LastCheckedUtc,
+    DateTime? LastSuccessfulFetchUtc);
+
+public sealed record PlaceWebsiteFetchAuditContext(
+    long PlaceWebsiteFetchId,
+    DateTime FetchStartedUtc,
+    DateTime? FetchCompletedUtc,
+    bool Success,
+    string RequestedUrl,
+    string? FinalUrl,
+    int? HttpStatusCode,
+    string? ErrorCode,
+    string? ErrorMessage);
+
+public sealed record PlaceWebsiteHomepageAuditContext(
+    long PlaceWebsiteFetchId,
+    string? TitleTag,
+    string? H1Text,
+    IReadOnlyList<string> H2Texts,
+    IReadOnlyList<string> H3Texts,
+    IReadOnlyList<string> PhoneNumbers,
+    IReadOnlyList<string> PostalAddresses,
+    IReadOnlyList<string> Postcodes,
+    IReadOnlyList<string> CityNames,
+    IReadOnlyList<string> BusinessNames,
+    IReadOnlyList<string> SchemaTypes,
+    bool HasLocalBusinessSchema,
+    string? PageScheme,
+    int? InternalLinkCount,
+    int? ServicePageLinkCount,
+    IReadOnlyList<string> InternalAnchorTexts,
+    IReadOnlyList<string> ServiceKeywords,
+    IReadOnlyList<string> LocationKeywords,
+    IReadOnlyList<string> ServiceTownCombinations,
+    IReadOnlyList<string> BrandNames);
+
 public sealed record PlaceAuditContext(
     string PlaceId,
     string? DisplayName,
     string? PrimaryCategory,
     string? Description,
     string? FormattedAddress,
+    string? NationalPhoneNumber,
     string? WebsiteUri,
     WebsiteType WebsiteType,
     int? PhotoCount,
@@ -170,7 +213,10 @@ public sealed record PlaceAuditContext(
     IReadOnlyList<PlaceReviewAuditRow> Reviews,
     IReadOnlyList<PlaceUpdateAuditRow> Updates,
     IReadOnlyList<PlaceQuestionAnswerAuditRow> QuestionsAndAnswers,
-    IReadOnlyList<PlaceAuditPeer> ComparablePlaces)
+    IReadOnlyList<PlaceAuditPeer> ComparablePlaces,
+    PlaceWebsiteAuditContext? Website,
+    PlaceWebsiteFetchAuditContext? LatestWebsiteFetch,
+    PlaceWebsiteHomepageAuditContext? LatestHomepageAudit)
 {
     public int DescriptionLength => string.IsNullOrWhiteSpace(Description) ? 0 : Description.Trim().Length;
 

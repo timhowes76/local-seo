@@ -23,15 +23,27 @@
         <h2 class="card-title">Add County</h2>
         <form method="post" action="@actionUrl" class="form-grid">
             @Html.AntiForgeryToken()
+            @Html.ValidationSummary(false)
 
             <div class="form-row">
                 <label for="Name">Name</label>
                 <input id="Name" name="Name" type="text" value="@Model.Name" required />
+                @Html.ValidationMessageFor(x => x.Name)
             </div>
 
             <div class="form-row">
                 <label for="Slug">Slug</label>
                 <input id="Slug" name="Slug" type="text" value="@Model.Slug" />
+                <div class="toolbar">
+                    <button type="button"
+                            class="btn btn-secondary btn-sm"
+                            data-slug-generator
+                            data-slug-source="Name"
+                            data-slug-target="Slug">
+                        Generate Slug
+                    </button>
+                </div>
+                @Html.ValidationMessageFor(x => x.Slug)
             </div>
 
             <div class="form-row">

@@ -54,6 +54,50 @@
         "Fail" => "status-error",
         _ => "status-noreviews"
     };
+    string WebsiteStatusClass(string? status) => (status ?? string.Empty) switch
+    {
+        "Fetched" => "status-healthy",
+        "Blocked" => "status-error",
+        "Failed" => "status-error",
+        "Disabled" => "status-nodata",
+        "Ineligible" => "status-error",
+        _ => "status-pending"
+    };
+    bool IsBlockedFetch(PlaceWebsiteFetchSummaryViewModel? fetch, string? currentStatus) =>
+        string.Equals(currentStatus, "Blocked", StringComparison.OrdinalIgnoreCase)
+        || (fetch is not null && fetch.HttpStatusCode is 401 or 403 or 406 or 429);
+    string WebsiteFetchSummaryStatus(PlaceWebsiteFetchSummaryViewModel? fetch, string? currentStatus)
+    {
+        if (fetch is null)
+            return "N/A";
+        if (fetch.Success)
+            return "Success";
+        return IsBlockedFetch(fetch, currentStatus) ? "Blocked" : "Failed";
+    }
+    string WebsiteFetchSummaryClass(PlaceWebsiteFetchSummaryViewModel? fetch, string? currentStatus)
+    {
+        if (fetch is null)
+            return "status-nodata";
+        if (fetch.Success)
+            return "status-ready";
+        return IsBlockedFetch(fetch, currentStatus) ? "status-pending" : "status-error";
+    }
+    string FormatUtcDateTime(DateTime? value) =>
+        value.HasValue ? $"{value.Value:dd MMM yyyy HH:mm} UTC" : "N/A";
+    string FormatWebsiteList(IReadOnlyList<string>? values, int maxItems = 8)
+    {
+        if (values is null || values.Count == 0)
+            return "N/A";
+
+        var items = values
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Take(maxItems)
+            .ToList();
+        if (items.Count == 0)
+            return "N/A";
+
+        return string.Join(", ", items) + (values.Count > items.Count ? ", ..." : string.Empty);
+    }
     string NormalizeMultilineText(string? text)
     {
         if (string.IsNullOrWhiteSpace(text))
@@ -258,6 +302,9 @@
     var recalculateAuditUrl = requestedRunId.HasValue
         ? $"/places/{Model.PlaceId}/actions/recalculate?runId={requestedRunId.Value}"
         : $"/places/{Model.PlaceId}/actions/recalculate";
+    var fetchHomePageUrl = requestedRunId.HasValue
+        ? $"/places/{Model.PlaceId}/website/fetch-homepage?runId={requestedRunId.Value}"
+        : $"/places/{Model.PlaceId}/website/fetch-homepage";
     var editSocialLinksUrl = requestedRunId.HasValue
         ? $"/places/{Model.PlaceId}/edit?runId={requestedRunId.Value}"
         : $"/places/{Model.PlaceId}/edit";
@@ -315,6 +362,8 @@
     var mainPhotoUrl = string.IsNullOrWhiteSpace(Model.MainPhotoUrl) ? null : Model.MainPhotoUrl;
     var financialInfo = Model.FinancialInfo;
     var hasFinancialInfo = financialInfo is not null;
+    var websitePanel = Model.WebsiteAnalysis;
+    var showWebsiteTab = websitePanel?.CanShowTab == true;
     var todayDate = DateTime.UtcNow.Date;
     var nextAccountsDueIsOverdue = IsPastDue(financialInfo?.NextAccountsDue, todayDate);
     var companyIsActive = IsCompanyActive(financialInfo?.CompanyStatus);
@@ -844,7 +893,11 @@ else
 
 <div class="details-tab-buttons">
     <button type="button" data-tab-button="details" class="details-tab-button">Detail</button>
-    <button type="button" data-tab-button="actions" class="details-tab-button">Actions</button>
+    <button type="button" data-tab-button="actions" class="details-tab-button">Audit</button>
+    @if (showWebsiteTab)
+    {
+        <button type="button" data-tab-button="website" class="details-tab-button">Website</button>
+    }
     <button type="button" data-tab-button="main-photo" class="details-tab-button">Main Photo</button>
     <button type="button" data-tab-button="reviews" class="details-tab-button">Reviews</button>
     <button type="button" data-tab-button="updates" class="details-tab-button">Updates</button>
@@ -959,8 +1012,8 @@ else
 <div id="tab-actions" class="details-tab-panel card is-hidden">
     <div class="actions-audit-header">
         <div class="actions-audit-heading">
-            <h3 class="card-title">Actions</h3>
-            <p class="muted">Current GBP audit output based on the latest stored place data.</p>
+            <h3 class="card-title">Audit</h3>
+            <p class="muted">Current audit output based on the latest stored place, GBP, and homepage data.</p>
         </div>
         <form method="post" action="@recalculateAuditUrl" class="actions-audit-recalculate">
             @Html.AntiForgeryToken()
@@ -1057,12 +1110,14 @@ else
                             <col class="actions-audit-col-item" />
                             <col class="actions-audit-col-why" />
                             <col class="actions-audit-col-status" />
+                            <col class="actions-audit-col-impact" />
                         </colgroup>
                         <thead>
                             <tr>
                                 <th>Item</th>
                                 <th>Why it matters</th>
                                 <th class="actions-audit-nowrap">Status</th>
+                                <th class="actions-audit-nowrap">Impact</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -1078,6 +1133,7 @@ else
                                 </td>
                                 <td>@(string.IsNullOrWhiteSpace(row.WhyItMattersText) ? "N/A" : row.WhyItMattersText)</td>
                                 <td class="actions-audit-nowrap"><span class="status-pill @AuditStatusClass(row.Status)">@row.Status</span></td>
+                                <td class="actions-audit-impact">@row.PossiblePoints</td>
                             </tr>
                         }
                         </tbody>
@@ -1102,11 +1158,13 @@ else
                         <colgroup>
                             <col class="actions-audit-col-issue" />
                             <col class="actions-audit-col-why" />
+                            <col class="actions-audit-col-impact" />
                         </colgroup>
                         <thead>
                             <tr>
                                 <th>Item</th>
                                 <th>Details</th>
+                                <th class="actions-audit-nowrap">Impact</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -1139,6 +1197,47 @@ else
                                         </div>
                                     }
                                 </td>
+                                <td class="actions-audit-impact">@row.PossiblePoints</td>
+                            </tr>
+                        }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </section>
+
+        <section class="actions-audit-section">
+            <div class="actions-audit-section-header">
+                <h4>Not Evaluated</h4>
+                <span class="muted">@auditSummary.NotEvaluated.Count item@(auditSummary.NotEvaluated.Count == 1 ? string.Empty : "s")</span>
+            </div>
+            @if (auditSummary.NotEvaluated.Count == 0)
+            {
+                <p class="muted actions-audit-empty">All current audit rules were evaluated.</p>
+            }
+            else
+            {
+                <div class="table-wrap">
+                    <table class="actions-audit-table actions-audit-table-good">
+                        <colgroup>
+                            <col class="actions-audit-col-issue" />
+                            <col class="actions-audit-col-why" />
+                            <col class="actions-audit-col-impact" />
+                        </colgroup>
+                        <thead>
+                            <tr>
+                                <th>Item</th>
+                                <th>Reason</th>
+                                <th class="actions-audit-nowrap">Impact</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        @foreach (var row in auditSummary.NotEvaluated)
+                        {
+                            <tr>
+                                <td><strong>@row.Name</strong></td>
+                                <td>@(string.IsNullOrWhiteSpace(row.SummaryText) ? "N/A" : row.SummaryText)</td>
+                                <td class="actions-audit-impact">@row.PossiblePoints</td>
                             </tr>
                         }
                         </tbody>
@@ -1148,6 +1247,378 @@ else
         </section>
     }
 </div>
+
+@if (showWebsiteTab && websitePanel is not null)
+{
+    var websiteLastFetch = websitePanel.LastFetch;
+    var websiteAudit = websitePanel.LatestHomepageAudit;
+    var websiteStatusText = websiteLastFetch is not null && !websiteLastFetch.FetchCompletedUtc.HasValue
+        ? "In Progress"
+        : websitePanel.CurrentStatus;
+
+    <div id="tab-website" class="details-tab-panel card is-hidden">
+        <div class="card-header">
+            <div>
+                <h3 class="card-title">Website</h3>
+                <p class="muted website-analysis-intro">Manual homepage analysis only. This does not crawl the rest of the site.</p>
+            </div>
+            <span class="status-pill @WebsiteStatusClass(websiteStatusText)">@websiteStatusText</span>
+        </div>
+
+        <div class="website-analysis-grid">
+            <section class="website-analysis-section">
+                <h4>Website Summary</h4>
+                <dl class="website-analysis-meta">
+                    <dt>Recorded Website</dt>
+                    <dd>
+                        @if (string.IsNullOrWhiteSpace(websitePanel.RecordedWebsiteUrl))
+                        {
+                            <span>N/A</span>
+                        }
+                        else
+                        {
+                            <a href="@websitePanel.RecordedWebsiteUrl" target="_blank" rel="noopener noreferrer">@websitePanel.RecordedWebsiteUrl</a>
+                        }
+                    </dd>
+                    <dt>Host Name</dt>
+                    <dd>@(string.IsNullOrWhiteSpace(websitePanel.HostName) ? "N/A" : websitePanel.HostName)</dd>
+                    <dt>Current Status</dt>
+                    <dd>@websitePanel.CurrentStatus</dd>
+                    <dt>Last Successful Fetch</dt>
+                    <dd>@FormatUtcDateTime(websitePanel.LastSuccessfulFetchUtc)</dd>
+                </dl>
+            </section>
+
+            <section class="website-analysis-section">
+                <h4>Action</h4>
+                <p class="muted">Fetches the current home page through the configured Cloudflare Worker and stores homepage-only signals.</p>
+                <form method="post" action="@fetchHomePageUrl" class="website-analysis-fetch-form" data-homepage-fetch-form>
+                    @Html.AntiForgeryToken()
+                    @if (websitePanel.CanFetchHomePage)
+                    {
+                        <button type="submit" class="btn btn-primary" data-homepage-fetch-button>Fetch Home Page</button>
+                    }
+                    else
+                    {
+                        <button type="submit" class="btn btn-primary" data-homepage-fetch-button disabled>Fetch Home Page</button>
+                    }
+                </form>
+                @if (!string.IsNullOrWhiteSpace(websitePanel.FetchDisabledReason))
+                {
+                    <p class="muted website-analysis-note">@websitePanel.FetchDisabledReason</p>
+                }
+            </section>
+        </div>
+
+        <section class="website-analysis-section">
+            <h4>Parsed Homepage Findings</h4>
+            @if (websiteAudit is null)
+            {
+                <p class="muted website-analysis-empty">No stored homepage analysis is available yet.</p>
+            }
+            else
+            {
+                <div class="stats-grid website-analysis-kpi-grid">
+                    <div class="website-analysis-kpi">
+                        <span class="run-summary-label">Title</span>
+                        <span class="run-summary-value">@(string.IsNullOrWhiteSpace(websiteAudit.TitleTag) ? "N/A" : websiteAudit.TitleTag)</span>
+                    </div>
+                    <div class="website-analysis-kpi">
+                        <span class="run-summary-label">Meta Description</span>
+                        <span class="run-summary-value">@(string.IsNullOrWhiteSpace(websiteAudit.MetaDescription) ? "N/A" : websiteAudit.MetaDescription)</span>
+                    </div>
+                    <div class="website-analysis-kpi">
+                        <span class="run-summary-label">H1</span>
+                        <span class="run-summary-value">@(string.IsNullOrWhiteSpace(websiteAudit.H1Text) ? "N/A" : websiteAudit.H1Text)</span>
+                    </div>
+                    <div class="website-analysis-kpi">
+                        <span class="run-summary-label">Word Count</span>
+                        <span class="run-summary-value">@(websiteAudit.VisibleWordCount?.ToString("N0") ?? "N/A")</span>
+                    </div>
+                    <div class="website-analysis-kpi">
+                        <span class="run-summary-label">H2 Count</span>
+                        <span class="run-summary-value">@(websiteAudit.H2Count?.ToString() ?? "N/A")</span>
+                    </div>
+                    <div class="website-analysis-kpi">
+                        <span class="run-summary-label">Phone Detected</span>
+                        <span class="run-summary-value">@(websiteAudit.HasPhoneNumber ? "Yes" : "No")</span>
+                    </div>
+                    <div class="website-analysis-kpi">
+                        <span class="run-summary-label">Postal Address</span>
+                        <span class="run-summary-value">@(websiteAudit.HasPostalAddress ? "Yes" : "No")</span>
+                    </div>
+                    <div class="website-analysis-kpi">
+                        <span class="run-summary-label">Postcode</span>
+                        <span class="run-summary-value">@(websiteAudit.HasPostcode ? "Yes" : "No")</span>
+                    </div>
+                    <div class="website-analysis-kpi">
+                        <span class="run-summary-label">City</span>
+                        <span class="run-summary-value">@(websiteAudit.HasCityName ? "Yes" : "No")</span>
+                    </div>
+                    <div class="website-analysis-kpi">
+                        <span class="run-summary-label">Business Name</span>
+                        <span class="run-summary-value">@(websiteAudit.HasBusinessName ? "Yes" : "No")</span>
+                    </div>
+                    <div class="website-analysis-kpi">
+                        <span class="run-summary-label">LocalBusiness Schema</span>
+                        <span class="run-summary-value">@(websiteAudit.HasLocalBusinessSchema ? "Yes" : "No")</span>
+                    </div>
+                    <div class="website-analysis-kpi">
+                        <span class="run-summary-label">CMS</span>
+                        <span class="run-summary-value">@(string.IsNullOrWhiteSpace(websiteAudit.DetectedCms) ? "N/A" : websiteAudit.DetectedCms)</span>
+                    </div>
+                    <div class="website-analysis-kpi">
+                        <span class="run-summary-label">HTTPS</span>
+                        <span class="run-summary-value">@((string.Equals(websiteAudit.PageScheme, "https", StringComparison.OrdinalIgnoreCase) || websitePanel.IsHttps == true) ? "Yes" : "No")</span>
+                    </div>
+                    <div class="website-analysis-kpi">
+                        <span class="run-summary-label">Internal Links</span>
+                        <span class="run-summary-value">@(websiteAudit.InternalLinkCount?.ToString("N0") ?? "N/A")</span>
+                    </div>
+                    <div class="website-analysis-kpi">
+                        <span class="run-summary-label">Service Page Links</span>
+                        <span class="run-summary-value">@(websiteAudit.ServicePageLinkCount?.ToString("N0") ?? "N/A")</span>
+                    </div>
+                    <div class="website-analysis-kpi">
+                        <span class="run-summary-label">Images / Missing Alt</span>
+                        <span class="run-summary-value">@($"{websiteAudit.ImageCount?.ToString("N0") ?? "N/A"} / {websiteAudit.ImagesMissingAltCount?.ToString("N0") ?? "N/A"}")</span>
+                    </div>
+                </div>
+
+                <div class="website-analysis-detail-grid">
+                    <div class="website-analysis-detail-card">
+                        <h5>Metadata</h5>
+                        <dl class="website-analysis-meta">
+                            <dt>Canonical Url</dt>
+                            <dd>@(string.IsNullOrWhiteSpace(websiteAudit.CanonicalUrl) ? "N/A" : websiteAudit.CanonicalUrl)</dd>
+                            <dt>Robots Meta</dt>
+                            <dd>@(string.IsNullOrWhiteSpace(websiteAudit.RobotsMeta) ? "N/A" : websiteAudit.RobotsMeta)</dd>
+                            <dt>HTML Lang</dt>
+                            <dd>@(string.IsNullOrWhiteSpace(websiteAudit.HtmlLang) ? "N/A" : websiteAudit.HtmlLang)</dd>
+                            <dt>Generator Meta</dt>
+                            <dd>@(string.IsNullOrWhiteSpace(websiteAudit.GeneratorMetaTag) ? "N/A" : websiteAudit.GeneratorMetaTag)</dd>
+                        </dl>
+                    </div>
+
+                    <div class="website-analysis-detail-card">
+                        <h5>Heading Structure</h5>
+                        <dl class="website-analysis-meta">
+                            <dt>H2 Texts</dt>
+                            <dd>
+                                @if (websiteAudit.H2Texts.Count == 0)
+                                {
+                                    <span>N/A</span>
+                                }
+                                else
+                                {
+                                    <details class="website-analysis-collapsible">
+                                        <summary>View H2 text list</summary>
+                                        <ul class="website-analysis-list">
+                                        @foreach (var h2Text in websiteAudit.H2Texts)
+                                        {
+                                            <li>@h2Text</li>
+                                        }
+                                        </ul>
+                                    </details>
+                                }
+                            </dd>
+                            <dt>H3 Texts</dt>
+                            <dd>
+                                @if (websiteAudit.H3Texts.Count == 0)
+                                {
+                                    <span>N/A</span>
+                                }
+                                else
+                                {
+                                    <details class="website-analysis-collapsible">
+                                        <summary>View H3 text list</summary>
+                                        <ul class="website-analysis-list">
+                                        @foreach (var h3Text in websiteAudit.H3Texts)
+                                        {
+                                            <li>@h3Text</li>
+                                        }
+                                        </ul>
+                                    </details>
+                                }
+                            </dd>
+                            <dt>Paragraph Count</dt>
+                            <dd>@(websiteAudit.ParagraphCount?.ToString("N0") ?? "N/A")</dd>
+                            <dt>Section Count</dt>
+                            <dd>@(websiteAudit.ContentSectionCount?.ToString("N0") ?? "N/A")</dd>
+                        </dl>
+                    </div>
+
+                    <div class="website-analysis-detail-card">
+                        <h5>Local Signals</h5>
+                        <dl class="website-analysis-meta">
+                            <dt>Phone Numbers</dt>
+                            <dd>@FormatWebsiteList(websiteAudit.PhoneNumbers)</dd>
+                            <dt>Postal Addresses</dt>
+                            <dd>@FormatWebsiteList(websiteAudit.PostalAddresses, 4)</dd>
+                            <dt>Postcodes</dt>
+                            <dd>@FormatWebsiteList(websiteAudit.Postcodes)</dd>
+                            <dt>City Names</dt>
+                            <dd>@FormatWebsiteList(websiteAudit.CityNames)</dd>
+                            <dt>Business Names</dt>
+                            <dd>@FormatWebsiteList(websiteAudit.BusinessNames)</dd>
+                        </dl>
+                    </div>
+
+                    <div class="website-analysis-detail-card">
+                        <h5>Structured Data</h5>
+                        <dl class="website-analysis-meta">
+                            <dt>Schema Types</dt>
+                            <dd>@FormatWebsiteList(websiteAudit.SchemaTypes)</dd>
+                            <dt>Organization Schema</dt>
+                            <dd>@(websiteAudit.HasOrganizationSchema ? "Yes" : "No")</dd>
+                            <dt>NAP In Schema</dt>
+                            <dd>@(websiteAudit.HasNapInSchema ? "Yes" : "No")</dd>
+                            <dt>Geo Coordinates In Schema</dt>
+                            <dd>@(websiteAudit.HasGeoCoordinatesInSchema ? "Yes" : "No")</dd>
+                        </dl>
+                    </div>
+
+                    <div class="website-analysis-detail-card">
+                        <h5>Linking</h5>
+                        <dl class="website-analysis-meta">
+                            <dt>Internal Anchor Texts</dt>
+                            <dd>
+                                @if (websiteAudit.InternalAnchorTexts.Count == 0)
+                                {
+                                    <span>N/A</span>
+                                }
+                                else
+                                {
+                                    <details class="website-analysis-collapsible">
+                                        <summary>View internal anchor text list</summary>
+                                        <ul class="website-analysis-list">
+                                        @foreach (var anchorText in websiteAudit.InternalAnchorTexts)
+                                        {
+                                            <li>@anchorText</li>
+                                        }
+                                        </ul>
+                                    </details>
+                                }
+                            </dd>
+                        </dl>
+                    </div>
+
+                    <div class="website-analysis-detail-card">
+                        <h5>Images And UX</h5>
+                        <dl class="website-analysis-meta">
+                            <dt>Homepage Images</dt>
+                            <dd>
+                                @if (websiteAudit.ImageFileNames.Count == 0 && websiteAudit.ImageAltTexts.Count == 0)
+                                {
+                                    <span>N/A</span>
+                                }
+                                else
+                                {
+                                    <details class="website-analysis-collapsible">
+                                        <summary>View homepage image list</summary>
+                                        <div class="table-wrap">
+                                            <table class="website-analysis-image-table">
+                                                <thead>
+                                                    <tr>
+                                                        <th>Image</th>
+                                                        <th>Alt Text</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                @{
+                                                    var imageRowCount = Math.Max(websiteAudit.ImageFileNames.Count, websiteAudit.ImageAltTexts.Count);
+                                                }
+                                                @for (var imageIndex = 0; imageIndex < imageRowCount; imageIndex++)
+                                                {
+                                                    var imageName = imageIndex < websiteAudit.ImageFileNames.Count
+                                                        ? websiteAudit.ImageFileNames[imageIndex]
+                                                        : "N/A";
+                                                    var altText = imageIndex < websiteAudit.ImageAltTexts.Count
+                                                        ? websiteAudit.ImageAltTexts[imageIndex]
+                                                        : "N/A";
+                                                    <tr>
+                                                        <td>@imageName</td>
+                                                        <td>@altText</td>
+                                                    </tr>
+                                                }
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </details>
+                                }
+                            </dd>
+                            <dt>Viewport Meta</dt>
+                            <dd>@(websiteAudit.HasViewportMeta ? "Yes" : "No")</dd>
+                            <dt>Responsive Indicators</dt>
+                            <dd>@(websiteAudit.HasResponsiveIndicators ? "Yes" : "No")</dd>
+                            <dt>Favicon</dt>
+                            <dd>@(websiteAudit.HasFavicon ? "Yes" : "No")</dd>
+                            <dt>Cookie Banner</dt>
+                            <dd>@(websiteAudit.HasCookieBanner ? "Yes" : "No")</dd>
+                        </dl>
+                    </div>
+
+                    <div class="website-analysis-detail-card">
+                        <h5>Keyword Summary</h5>
+                        <dl class="website-analysis-meta">
+                            <dt>Service Keywords</dt>
+                            <dd>
+                                @if (websiteAudit.ServiceKeywords.Count == 0)
+                                {
+                                    <span>N/A</span>
+                                }
+                                else
+                                {
+                                    <ul class="website-analysis-list">
+                                    @foreach (var serviceKeyword in websiteAudit.ServiceKeywords)
+                                    {
+                                        <li>@serviceKeyword</li>
+                                    }
+                                    </ul>
+                                }
+                            </dd>
+                            <dt>Location Keywords</dt>
+                            <dd>@FormatWebsiteList(websiteAudit.LocationKeywords, 10)</dd>
+                            <dt>Service + Town</dt>
+                            <dd>@FormatWebsiteList(websiteAudit.ServiceTownCombinations, 10)</dd>
+                            <dt>Brand Names</dt>
+                            <dd>@FormatWebsiteList(websiteAudit.BrandNames, 10)</dd>
+                        </dl>
+                    </div>
+                </div>
+            }
+        </section>
+
+        <section class="website-analysis-section">
+            <div class="website-analysis-section-header">
+                <h4>Last Fetch Summary</h4>
+                @if (websiteLastFetch is not null)
+                {
+                    <span class="status-pill @WebsiteFetchSummaryClass(websiteLastFetch, websitePanel.CurrentStatus)">@WebsiteFetchSummaryStatus(websiteLastFetch, websitePanel.CurrentStatus)</span>
+                }
+            </div>
+            @if (websiteLastFetch is null)
+            {
+                <p class="muted website-analysis-empty">No manual homepage fetch has been run yet.</p>
+            }
+            else
+            {
+                <dl class="website-analysis-meta">
+                    <dt>Fetch Started</dt>
+                    <dd>@FormatUtcDateTime(websiteLastFetch.FetchStartedUtc)</dd>
+                    <dt>Fetch Completed</dt>
+                    <dd>@FormatUtcDateTime(websiteLastFetch.FetchCompletedUtc)</dd>
+                    <dt>Requested Url</dt>
+                    <dd>@websiteLastFetch.RequestedUrl</dd>
+                    <dt>Final Url</dt>
+                    <dd>@(string.IsNullOrWhiteSpace(websiteLastFetch.FinalUrl) ? "N/A" : websiteLastFetch.FinalUrl)</dd>
+                    <dt>Error</dt>
+                    <dd>@(string.IsNullOrWhiteSpace(websiteLastFetch.ErrorMessage) ? "N/A" : websiteLastFetch.ErrorMessage)</dd>
+                </dl>
+            }
+        </section>
+    </div>
+}
 
 <div id="tab-main-photo" class="details-tab-panel card is-hidden">
     <h3>Main Photo</h3>
@@ -1958,6 +2429,16 @@ else
         const requestedTab = new URLSearchParams(window.location.search).get("tab");
         const availableTabs = new Set(Array.from(buttons).map(x => x.getAttribute("data-tab-button")));
         showTab(requestedTab && availableTabs.has(requestedTab) ? requestedTab : "details");
+
+        const fetchForms = document.querySelectorAll("[data-homepage-fetch-form]");
+        fetchForms.forEach(form => {
+            form.addEventListener("submit", () => {
+                const button = form.querySelector("[data-homepage-fetch-button]");
+                if (!(button instanceof HTMLButtonElement) || button.disabled) return;
+                button.disabled = true;
+                button.textContent = "Fetching...";
+            });
+        });
     })();
 </script>
 @if (!hasFinancialInfo)

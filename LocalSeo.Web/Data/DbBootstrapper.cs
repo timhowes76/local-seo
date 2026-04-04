@@ -1423,7 +1423,6 @@ BEGIN
     Slug nvarchar(200) NULL,
     Latitude decimal(9,6) NULL,
     Longitude decimal(9,6) NULL,
-    ExternalId nvarchar(128) NULL,
     IsActive bit NOT NULL CONSTRAINT DF_GbTown_IsActive DEFAULT(1),
     SortOrder int NULL,
     CreatedUtc datetime2(0) NOT NULL CONSTRAINT DF_GbTown_CreatedUtc DEFAULT SYSUTCDATETIME(),
@@ -1440,8 +1439,8 @@ IF COL_LENGTH('dbo.GbTown', 'Latitude') IS NULL
   ALTER TABLE dbo.GbTown ADD Latitude decimal(9,6) NULL;
 IF COL_LENGTH('dbo.GbTown', 'Longitude') IS NULL
   ALTER TABLE dbo.GbTown ADD Longitude decimal(9,6) NULL;
-IF COL_LENGTH('dbo.GbTown', 'ExternalId') IS NULL
-  ALTER TABLE dbo.GbTown ADD ExternalId nvarchar(128) NULL;
+IF COL_LENGTH('dbo.GbTown', 'ExternalId') IS NOT NULL
+  ALTER TABLE dbo.GbTown DROP COLUMN ExternalId;
 IF COL_LENGTH('dbo.GbTown', 'IsActive') IS NULL
   ALTER TABLE dbo.GbTown ADD IsActive bit NOT NULL CONSTRAINT DF_GbTown_IsActive_Alt DEFAULT(1);
 IF COL_LENGTH('dbo.GbTown', 'SortOrder') IS NULL
@@ -1880,17 +1879,17 @@ DECLARE @SeedDorsetCountyId bigint = (SELECT TOP 1 CountyId FROM dbo.GbCounty WH
 IF @SeedSomersetCountyId IS NOT NULL
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM dbo.GbTown WHERE CountyId = @SeedSomersetCountyId AND Name = N'Yeovil')
-    INSERT INTO dbo.GbTown(CountyId, Name, Slug, Latitude, Longitude, ExternalId, IsActive, SortOrder, CreatedUtc, UpdatedUtc)
-    VALUES(@SeedSomersetCountyId, N'Yeovil', N'yeovil', NULL, NULL, NULL, 1, 10, SYSUTCDATETIME(), SYSUTCDATETIME());
+    INSERT INTO dbo.GbTown(CountyId, Name, Slug, Latitude, Longitude, IsActive, SortOrder, CreatedUtc, UpdatedUtc)
+    VALUES(@SeedSomersetCountyId, N'Yeovil', N'yeovil', NULL, NULL, 1, 10, SYSUTCDATETIME(), SYSUTCDATETIME());
   IF NOT EXISTS (SELECT 1 FROM dbo.GbTown WHERE CountyId = @SeedSomersetCountyId AND Name = N'Taunton')
-    INSERT INTO dbo.GbTown(CountyId, Name, Slug, Latitude, Longitude, ExternalId, IsActive, SortOrder, CreatedUtc, UpdatedUtc)
-    VALUES(@SeedSomersetCountyId, N'Taunton', N'taunton', NULL, NULL, NULL, 1, 20, SYSUTCDATETIME(), SYSUTCDATETIME());
+    INSERT INTO dbo.GbTown(CountyId, Name, Slug, Latitude, Longitude, IsActive, SortOrder, CreatedUtc, UpdatedUtc)
+    VALUES(@SeedSomersetCountyId, N'Taunton', N'taunton', NULL, NULL, 1, 20, SYSUTCDATETIME(), SYSUTCDATETIME());
 END;
 IF @SeedDorsetCountyId IS NOT NULL
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM dbo.GbTown WHERE CountyId = @SeedDorsetCountyId AND Name = N'Dorchester')
-    INSERT INTO dbo.GbTown(CountyId, Name, Slug, Latitude, Longitude, ExternalId, IsActive, SortOrder, CreatedUtc, UpdatedUtc)
-    VALUES(@SeedDorsetCountyId, N'Dorchester', N'dorchester', NULL, NULL, NULL, 1, 10, SYSUTCDATETIME(), SYSUTCDATETIME());
+    INSERT INTO dbo.GbTown(CountyId, Name, Slug, Latitude, Longitude, IsActive, SortOrder, CreatedUtc, UpdatedUtc)
+    VALUES(@SeedDorsetCountyId, N'Dorchester', N'dorchester', NULL, NULL, 1, 10, SYSUTCDATETIME(), SYSUTCDATETIME());
 END;
 IF COL_LENGTH('dbo.SearchRun', 'CategoryId') IS NULL
   ALTER TABLE dbo.SearchRun ADD CategoryId nvarchar(255) NULL;
@@ -3053,7 +3052,16 @@ USING (VALUES
   (N''TownCentreDistanceRelative'', N''Distance from town centre'', N''Shows how close the business is to the town centre compared with other places in the same run.'', N''Location Context'', N''CompetitorRelative'', N''TownCentreDistanceRank'', N''GBP_PROFILE'', N''Info'', 3, 5, 240, 1, 1, N''This is contextual ranking information only and helps explain how central the business location is within the run.'', NULL),
   (N''KeywordsInBusinessTitle'', N''Keywords in business title'', N''Shows how closely the business title matches the run service phrase using close variants and the search town.'', N''Location Context'', N''Benchmark'', N''BusinessTitleKeywordMatch'', N''GBP_PROFILE'', N''Info'', 6, 9, 250, 1, 1, N''Keywords in the business title are widely considered a strong local ranking signal, so this helps explain title relevance against the run intent without rewarding vague generic words.'', NULL),
   (N''PrimaryCategoryMatchesRun'', N''Primary category matches run'', N''Checks whether the primary GBP category matches the category targeted by the run.'', N''Categories'', N''Benchmark'', N''PrimaryCategoryMatch'', N''GBP_CATEGORIES'', N''Critical'', 0, 10, 260, 1, 1, N''Primary category is one of the strongest local ranking signals and is directly configurable in the profile.'', N''Set the primary GBP category to the closest match for the service you want to rank for.''),
-  (N''PhysicalAddressMatchesSearchTown'', N''Physical address in search town'', N''Checks whether the formatted address appears to be located in the run town rather than only using the town as a postal area.'', N''Location Context'', N''Benchmark'', N''PhysicalAddressInSearchTown'', N''GBP_PROFILE'', N''Info'', 0, 8, 270, 1, 1, N''Being physically located in the searched town is widely considered a strong local relevance signal, so postal-town spillover should not be treated as a true match.'', NULL)
+  (N''PhysicalAddressMatchesSearchTown'', N''Physical address in search town'', N''Checks whether the formatted address appears to be located in the run town rather than only using the town as a postal area.'', N''Location Context'', N''Benchmark'', N''PhysicalAddressInSearchTown'', N''GBP_PROFILE'', N''Info'', 0, 8, 270, 1, 1, N''Being physically located in the searched town is widely considered a strong local relevance signal, so postal-town spillover should not be treated as a true match.'', NULL),
+  (N''HtmlNapMatchesGbpNap'', N''HTML NAP matching GBP NAP'', N''Checks whether the homepage NAP signals match the stored GBP business name, phone, and address closely enough to support consistency.'', N''Website'', N''Benchmark'', N''HomepageNapMatch'', N''WEBSITE'', N''Critical'', 77, 153, 280, 1, 1, N''Consistent homepage NAP helps reinforce local trust and relevance, and mismatches can create conversion friction.'', N''Align the homepage business name, phone, and address with the GBP profile.''),
+  (N''KeywordsInLandingPageTitleTag'', N''Keywords in GBP landing page title tag'', N''Checks whether the homepage title tag matches the run keyword and town using close variants.'', N''Website'', N''Benchmark'', N''HomepageTitleKeywordMatch'', N''WEBSITE'', N''Opportunity'', 73, 146, 290, 1, 1, N''Homepage title tags help communicate local service relevance and are one of the clearest homepage optimisation opportunities.'', N''Update the homepage title tag so it reflects the main service and town more clearly.''),
+  (N''KeywordsInLandingPageHeadings'', N''Keywords in GBP landing page headings'', N''Checks whether homepage headings such as H1, H2, and H3 reflect the run keyword and town using close variants.'', N''Website'', N''Benchmark'', N''HomepageHeadingKeywordMatch'', N''WEBSITE'', N''Opportunity'', 68, 135, 300, 1, 1, N''Homepage headings shape topical clarity for both users and search engines and often reveal weak page messaging.'', N''Strengthen the homepage heading structure so the main service and town are clearer.''),
+  (N''HomepageNicheFocus'', N''Website''''s degree of focus on a specific niche'', N''Uses homepage content only to judge whether the site appears strongly focused on one clear niche or service family.'', N''Website'', N''Benchmark'', N''HomepageNicheFocus'', N''WEBSITE'', N''Opportunity'', 59, 118, 310, 1, 1, N''A tightly focused homepage usually communicates expertise more clearly than broad generic messaging.'', N''Sharpen the homepage messaging around the strongest niche or service family.''),
+  (N''HomepageTopicalKeywordRelevance'', N''Topical keyword relevance across website'', N''Uses homepage content only as a proxy for how relevant the site appears to the run service and town terms.'', N''Website'', N''Benchmark'', N''HomepageTopicalKeywordRelevance'', N''WEBSITE'', N''Opportunity'', 59, 117, 320, 1, 1, N''Homepage topical relevance is a strong proxy for whether the site is supporting the target service intent.'', N''Make the homepage more topically relevant to the target service and town terms.''),
+  (N''HomepageInternalLinking'', N''Internal linking across website'', N''Uses homepage internal links only as a proxy for how well key service pages are linked from the homepage.'', N''Website'', N''Benchmark'', N''HomepageInternalLinking'', N''WEBSITE'', N''Opportunity'', 54, 107, 330, 1, 1, N''Homepage internal links help users and search engines reach important service pages quickly.'', N''Add clearer homepage links to the main service pages.''),
+  (N''KeywordsInInternalLinkAnchorText'', N''Keywords in anchor text of internal links'', N''Checks whether homepage internal anchor text reflects the run keyword and town using close variants.'', N''Website'', N''Benchmark'', N''HomepageAnchorTextKeywordMatch'', N''WEBSITE'', N''Opportunity'', 52, 103, 340, 1, 1, N''Homepage internal anchor text helps reinforce topical clarity and service relevance.'', N''Improve homepage internal link anchor text so it reflects real service and location intent.''),
+  (N''WebsiteUsesHttpsByDefault'', N''Website uses HTTPS by default'', N''Checks whether the fetched homepage resolves over HTTPS by default.'', N''Website'', N''Benchmark'', N''HomepageHttpsDefault'', N''WEBSITE'', N''Warning'', 0, 102, 350, 1, 1, N''HTTPS is a basic trust and technical quality expectation for business websites.'', N''Serve the homepage over HTTPS by default.''),
+  (N''KeywordsInDomainName'', N''Keywords in domain name'', N''Checks whether the domain name reflects the run keyword and town using close variants.'', N''Website'', N''Benchmark'', N''DomainKeywordMatch'', N''WEBSITE'', N''Info'', 49, 97, 360, 1, 1, N''A domain name that reflects service intent can reinforce relevance, even though it is not the only signal that matters.'', N''Consider whether the domain branding supports the target service and town positioning.'')
 ) AS source(RuleKey, [Name], [Description], RuleGroup, RuleMode, RuleType, EntityType, Severity, WarningScoreImpact, FailScoreImpact, SortOrder, IsActive, ShowInActionsTab, WhyItMattersText, RecommendedActionText)
 ON target.RuleKey = source.RuleKey
 WHEN MATCHED THEN
@@ -3196,6 +3204,185 @@ IF COL_LENGTH('dbo.Place', 'WebsiteType') IS NOT NULL
   EXEC(N'ALTER TABLE dbo.Place WITH CHECK ADD CONSTRAINT CK_Place_WebsiteType_Valid CHECK (WebsiteType IN (0, 1, 2));');";
         await conn.ExecuteAsync(new CommandDefinition(websiteTypeConstraintSql, cancellationToken: ct));
 
+        var cloudflareWorkerSql = @"
+IF OBJECT_ID('dbo.CloudflareWorker','U') IS NULL
+BEGIN
+  CREATE TABLE dbo.CloudflareWorker(
+    CloudflareWorkerId int IDENTITY(1,1) NOT NULL PRIMARY KEY,
+    [Name] nvarchar(200) NOT NULL,
+    WorkerKey nvarchar(200) NOT NULL,
+    BaseUrl nvarchar(1000) NOT NULL CONSTRAINT DF_CloudflareWorker_BaseUrl DEFAULT(N''),
+    RoutePath nvarchar(500) NOT NULL,
+    AuthHeaderName nvarchar(200) NULL,
+    AuthToken nvarchar(1000) NULL,
+    TimeoutSeconds int NOT NULL CONSTRAINT DF_CloudflareWorker_TimeoutSeconds DEFAULT(30),
+    IsEnabled bit NOT NULL CONSTRAINT DF_CloudflareWorker_IsEnabled DEFAULT(1),
+    DisplayOrder int NOT NULL CONSTRAINT DF_CloudflareWorker_DisplayOrder DEFAULT(0),
+    Notes nvarchar(2000) NULL,
+    CreatedUtc datetime2(3) NOT NULL CONSTRAINT DF_CloudflareWorker_CreatedUtc DEFAULT SYSUTCDATETIME(),
+    UpdatedUtc datetime2(3) NOT NULL CONSTRAINT DF_CloudflareWorker_UpdatedUtc DEFAULT SYSUTCDATETIME()
+  );
+END;
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='UX_CloudflareWorker_WorkerKey' AND object_id=OBJECT_ID('dbo.CloudflareWorker'))
+  CREATE UNIQUE INDEX UX_CloudflareWorker_WorkerKey ON dbo.CloudflareWorker(WorkerKey);
+MERGE dbo.CloudflareWorker AS target
+USING (VALUES
+  (N'Sales Local SEO - Home Page Fetch', N'SalesLocalSeoHomePageFetch', N'', N'/sales-local-seo-homepage-fetch', N'X-Worker-Token', N'', 30, 1, 10, NULL)
+) AS source([Name], WorkerKey, BaseUrl, RoutePath, AuthHeaderName, AuthToken, TimeoutSeconds, IsEnabled, DisplayOrder, Notes)
+ON target.WorkerKey = source.WorkerKey
+WHEN NOT MATCHED THEN
+  INSERT([Name], WorkerKey, BaseUrl, RoutePath, AuthHeaderName, AuthToken, TimeoutSeconds, IsEnabled, DisplayOrder, Notes, CreatedUtc, UpdatedUtc)
+  VALUES(source.[Name], source.WorkerKey, source.BaseUrl, source.RoutePath, source.AuthHeaderName, source.AuthToken, source.TimeoutSeconds, source.IsEnabled, source.DisplayOrder, source.Notes, SYSUTCDATETIME(), SYSUTCDATETIME());";
+        await conn.ExecuteAsync(new CommandDefinition(cloudflareWorkerSql, cancellationToken: ct));
+
+        var placeWebsiteSql = @"
+IF OBJECT_ID('dbo.PlaceWebsite','U') IS NULL
+BEGIN
+  CREATE TABLE dbo.PlaceWebsite(
+    PlaceWebsiteId int IDENTITY(1,1) NOT NULL PRIMARY KEY,
+    PlaceId nvarchar(128) NOT NULL,
+    WebsiteUrl nvarchar(1000) NOT NULL,
+    NormalizedWebsiteUrl nvarchar(1000) NULL,
+    HostName nvarchar(255) NULL,
+    IsHttps bit NULL,
+    SourceType nvarchar(50) NULL,
+    [Status] nvarchar(50) NULL,
+    FirstDiscoveredUtc datetime2(3) NOT NULL CONSTRAINT DF_PlaceWebsite_FirstDiscoveredUtc DEFAULT SYSUTCDATETIME(),
+    LastCheckedUtc datetime2(3) NULL,
+    LastSuccessfulFetchUtc datetime2(3) NULL,
+    CreatedUtc datetime2(3) NOT NULL CONSTRAINT DF_PlaceWebsite_CreatedUtc DEFAULT SYSUTCDATETIME(),
+    UpdatedUtc datetime2(3) NOT NULL CONSTRAINT DF_PlaceWebsite_UpdatedUtc DEFAULT SYSUTCDATETIME()
+  );
+END;
+IF NOT EXISTS (
+  SELECT 1
+  FROM sys.foreign_key_columns fkc
+  JOIN sys.columns pc ON pc.object_id = fkc.parent_object_id AND pc.column_id = fkc.parent_column_id
+  JOIN sys.columns rc ON rc.object_id = fkc.referenced_object_id AND rc.column_id = fkc.referenced_column_id
+  WHERE fkc.parent_object_id = OBJECT_ID('dbo.PlaceWebsite')
+    AND fkc.referenced_object_id = OBJECT_ID('dbo.Place')
+    AND pc.name = 'PlaceId'
+    AND rc.name = 'PlaceId'
+)
+  ALTER TABLE dbo.PlaceWebsite WITH CHECK ADD CONSTRAINT FK_PlaceWebsite_Place FOREIGN KEY (PlaceId) REFERENCES dbo.Place(PlaceId);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='UX_PlaceWebsite_PlaceId' AND object_id=OBJECT_ID('dbo.PlaceWebsite'))
+  CREATE UNIQUE INDEX UX_PlaceWebsite_PlaceId ON dbo.PlaceWebsite(PlaceId);
+
+IF OBJECT_ID('dbo.PlaceWebsiteFetch','U') IS NULL
+BEGIN
+  CREATE TABLE dbo.PlaceWebsiteFetch(
+    PlaceWebsiteFetchId bigint IDENTITY(1,1) NOT NULL PRIMARY KEY,
+    PlaceWebsiteId int NOT NULL,
+    FetchStartedUtc datetime2(3) NOT NULL,
+    FetchCompletedUtc datetime2(3) NULL,
+    Success bit NOT NULL,
+    RequestedUrl nvarchar(1000) NOT NULL,
+    FinalUrl nvarchar(1000) NULL,
+    HttpStatusCode int NULL,
+    ErrorCode nvarchar(100) NULL,
+    ErrorMessage nvarchar(2000) NULL,
+    ContentType nvarchar(200) NULL,
+    ResponseSizeBytes int NULL,
+    RedirectCount int NULL,
+    UsedWorker bit NOT NULL CONSTRAINT DF_PlaceWebsiteFetch_UsedWorker DEFAULT(1),
+    WorkerKey nvarchar(200) NULL,
+    HtmlHash char(64) NULL,
+    CreatedUtc datetime2(3) NOT NULL CONSTRAINT DF_PlaceWebsiteFetch_CreatedUtc DEFAULT SYSUTCDATETIME()
+  );
+END;
+IF NOT EXISTS (
+  SELECT 1
+  FROM sys.foreign_key_columns fkc
+  JOIN sys.columns pc ON pc.object_id = fkc.parent_object_id AND pc.column_id = fkc.parent_column_id
+  JOIN sys.columns rc ON rc.object_id = fkc.referenced_object_id AND rc.column_id = fkc.referenced_column_id
+  WHERE fkc.parent_object_id = OBJECT_ID('dbo.PlaceWebsiteFetch')
+    AND fkc.referenced_object_id = OBJECT_ID('dbo.PlaceWebsite')
+    AND pc.name = 'PlaceWebsiteId'
+    AND rc.name = 'PlaceWebsiteId'
+)
+  ALTER TABLE dbo.PlaceWebsiteFetch WITH CHECK ADD CONSTRAINT FK_PlaceWebsiteFetch_PlaceWebsite FOREIGN KEY (PlaceWebsiteId) REFERENCES dbo.PlaceWebsite(PlaceWebsiteId);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_PlaceWebsiteFetch_PlaceWebsiteId_FetchStartedUtc' AND object_id=OBJECT_ID('dbo.PlaceWebsiteFetch'))
+  CREATE INDEX IX_PlaceWebsiteFetch_PlaceWebsiteId_FetchStartedUtc ON dbo.PlaceWebsiteFetch(PlaceWebsiteId, FetchStartedUtc DESC);
+
+IF OBJECT_ID('dbo.PlaceWebsiteHomepageAudit','U') IS NULL
+BEGIN
+  CREATE TABLE dbo.PlaceWebsiteHomepageAudit(
+    PlaceWebsiteHomepageAuditId bigint IDENTITY(1,1) NOT NULL PRIMARY KEY,
+    PlaceWebsiteFetchId bigint NOT NULL,
+    TitleTag nvarchar(1000) NULL,
+    TitleTagLength int NULL,
+    MetaDescription nvarchar(2000) NULL,
+    MetaDescriptionLength int NULL,
+    CanonicalUrl nvarchar(1000) NULL,
+    RobotsMeta nvarchar(500) NULL,
+    HtmlLang nvarchar(50) NULL,
+    H1Text nvarchar(1000) NULL,
+    H1Count int NULL,
+    H2Count int NULL,
+    H3Count int NULL,
+    H2TextsJson nvarchar(max) NULL,
+    H3TextsJson nvarchar(max) NULL,
+    VisibleWordCount int NULL,
+    ParagraphCount int NULL,
+    BulletListCount int NULL,
+    ContentSectionCount int NULL,
+    HasPhoneNumber bit NOT NULL CONSTRAINT DF_PlaceWebsiteHomepageAudit_HasPhoneNumber DEFAULT(0),
+    PhoneNumbersJson nvarchar(max) NULL,
+    HasPostalAddress bit NOT NULL CONSTRAINT DF_PlaceWebsiteHomepageAudit_HasPostalAddress DEFAULT(0),
+    PostalAddressesJson nvarchar(max) NULL,
+    HasPostcode bit NOT NULL CONSTRAINT DF_PlaceWebsiteHomepageAudit_HasPostcode DEFAULT(0),
+    PostcodesJson nvarchar(max) NULL,
+    HasCityName bit NOT NULL CONSTRAINT DF_PlaceWebsiteHomepageAudit_HasCityName DEFAULT(0),
+    CityNamesJson nvarchar(max) NULL,
+    HasBusinessName bit NOT NULL CONSTRAINT DF_PlaceWebsiteHomepageAudit_HasBusinessName DEFAULT(0),
+    BusinessNamesJson nvarchar(max) NULL,
+    SchemaTypesJson nvarchar(max) NULL,
+    HasLocalBusinessSchema bit NOT NULL CONSTRAINT DF_PlaceWebsiteHomepageAudit_HasLocalBusinessSchema DEFAULT(0),
+    HasOrganizationSchema bit NOT NULL CONSTRAINT DF_PlaceWebsiteHomepageAudit_HasOrganizationSchema DEFAULT(0),
+    HasProductSchema bit NOT NULL CONSTRAINT DF_PlaceWebsiteHomepageAudit_HasProductSchema DEFAULT(0),
+    HasFaqSchema bit NOT NULL CONSTRAINT DF_PlaceWebsiteHomepageAudit_HasFaqSchema DEFAULT(0),
+    HasBreadcrumbSchema bit NOT NULL CONSTRAINT DF_PlaceWebsiteHomepageAudit_HasBreadcrumbSchema DEFAULT(0),
+    HasNapInSchema bit NOT NULL CONSTRAINT DF_PlaceWebsiteHomepageAudit_HasNapInSchema DEFAULT(0),
+    HasGeoCoordinatesInSchema bit NOT NULL CONSTRAINT DF_PlaceWebsiteHomepageAudit_HasGeoCoordinatesInSchema DEFAULT(0),
+    PageScheme nvarchar(10) NULL,
+    CanonicalScheme nvarchar(10) NULL,
+    RedirectsToHttps bit NULL,
+    HasMixedContent bit NULL,
+    InternalLinkCount int NULL,
+    ServicePageLinkCount int NULL,
+    InternalAnchorTextsJson nvarchar(max) NULL,
+    ImageCount int NULL,
+    ImagesMissingAltCount int NULL,
+    ImageAltTextsJson nvarchar(max) NULL,
+    ImageFileNamesJson nvarchar(max) NULL,
+    DetectedCms nvarchar(100) NULL,
+    GeneratorMetaTag nvarchar(255) NULL,
+    HasViewportMeta bit NOT NULL CONSTRAINT DF_PlaceWebsiteHomepageAudit_HasViewportMeta DEFAULT(0),
+    HasResponsiveIndicators bit NOT NULL CONSTRAINT DF_PlaceWebsiteHomepageAudit_HasResponsiveIndicators DEFAULT(0),
+    HasFavicon bit NOT NULL CONSTRAINT DF_PlaceWebsiteHomepageAudit_HasFavicon DEFAULT(0),
+    HasCookieBanner bit NOT NULL CONSTRAINT DF_PlaceWebsiteHomepageAudit_HasCookieBanner DEFAULT(0),
+    ServiceKeywordsJson nvarchar(max) NULL,
+    LocationKeywordsJson nvarchar(max) NULL,
+    ServiceTownCombinationsJson nvarchar(max) NULL,
+    BrandNamesJson nvarchar(max) NULL,
+    CreatedUtc datetime2(3) NOT NULL CONSTRAINT DF_PlaceWebsiteHomepageAudit_CreatedUtc DEFAULT SYSUTCDATETIME()
+  );
+END;
+IF NOT EXISTS (
+  SELECT 1
+  FROM sys.foreign_key_columns fkc
+  JOIN sys.columns pc ON pc.object_id = fkc.parent_object_id AND pc.column_id = fkc.parent_column_id
+  JOIN sys.columns rc ON rc.object_id = fkc.referenced_object_id AND rc.column_id = fkc.referenced_column_id
+  WHERE fkc.parent_object_id = OBJECT_ID('dbo.PlaceWebsiteHomepageAudit')
+    AND fkc.referenced_object_id = OBJECT_ID('dbo.PlaceWebsiteFetch')
+    AND pc.name = 'PlaceWebsiteFetchId'
+    AND rc.name = 'PlaceWebsiteFetchId'
+)
+  ALTER TABLE dbo.PlaceWebsiteHomepageAudit WITH CHECK ADD CONSTRAINT FK_PlaceWebsiteHomepageAudit_PlaceWebsiteFetch FOREIGN KEY (PlaceWebsiteFetchId) REFERENCES dbo.PlaceWebsiteFetch(PlaceWebsiteFetchId);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='UX_PlaceWebsiteHomepageAudit_PlaceWebsiteFetchId' AND object_id=OBJECT_ID('dbo.PlaceWebsiteHomepageAudit'))
+  CREATE UNIQUE INDEX UX_PlaceWebsiteHomepageAudit_PlaceWebsiteFetchId ON dbo.PlaceWebsiteHomepageAudit(PlaceWebsiteFetchId);";
+        await conn.ExecuteAsync(new CommandDefinition(placeWebsiteSql, cancellationToken: ct));
+
         await BackfillPlaceWebsiteTypesAsync(conn, ct);
 
         var websiteAuditRuleSql = @"
@@ -3207,6 +3394,125 @@ SET
   UpdatedAtUtc = SYSUTCDATETIME()
         WHERE RuleKey = N'NoWebsite';";
         await conn.ExecuteAsync(new CommandDefinition(websiteAuditRuleSql, cancellationToken: ct));
+
+        var auditWeightAlignmentSql = @"
+UPDATE dbo.SeoAuditRule
+SET
+  WarningScoreImpact = CASE RuleKey
+    WHEN N'MissingDescription' THEN 0
+    WHEN N'DescriptionTooShort' THEN 0
+    WHEN N'MissingSecondaryCategories' THEN 0
+    WHEN N'NoResponsesToReviews' THEN 0
+    WHEN N'NotAlwaysRespondingToReviews' THEN 0
+    WHEN N'TimeToLeaveReviewResponse' THEN 13
+    WHEN N'NoQas' THEN 0
+    WHEN N'NoUpdates' THEN 0
+    WHEN N'NoPhotos' THEN 0
+    WHEN N'OverallRatingBelow4' THEN 2
+    WHEN N'NoRecentReviews' THEN 0
+    WHEN N'LowReviewCount' THEN 0
+    WHEN N'NoReviewsWithText' THEN 1
+    WHEN N'NoOwnerResponsesToRecentReviews' THEN 0
+    WHEN N'NoRecentPosts' THEN 1
+    WHEN N'VeryFewPhotos' THEN 0
+    WHEN N'QasPresentButUnanswered' THEN 0
+    WHEN N'ReviewVelocity' THEN 4
+    WHEN N'BurstyReviews' THEN 0
+    WHEN N'RatingTrendingDownward' THEN 0
+    WHEN N'LowEngagementOnReviews' THEN 1
+    WHEN N'BusinessHoursMissing' THEN 0
+    WHEN N'TownCentreDistanceRelative' THEN 2
+    WHEN N'KeywordsInBusinessTitle' THEN 0
+    WHEN N'PrimaryCategoryMatchesRun' THEN 0
+    WHEN N'PhysicalAddressMatchesSearchTown' THEN 0
+    WHEN N'HtmlNapMatchesGbpNap' THEN 0
+    WHEN N'KeywordsInLandingPageTitleTag' THEN 0
+    WHEN N'KeywordsInLandingPageHeadings' THEN 0
+    WHEN N'HomepageNicheFocus' THEN 0
+    WHEN N'HomepageTopicalKeywordRelevance' THEN 0
+    WHEN N'HomepageInternalLinking' THEN 2
+    WHEN N'KeywordsInInternalLinkAnchorText' THEN 0
+    WHEN N'WebsiteUsesHttpsByDefault' THEN 0
+    WHEN N'KeywordsInDomainName' THEN 0
+    ELSE WarningScoreImpact
+  END,
+  FailScoreImpact = CASE RuleKey
+    WHEN N'MissingDescription' THEN 0
+    WHEN N'DescriptionTooShort' THEN 0
+    WHEN N'MissingSecondaryCategories' THEN 2
+    WHEN N'NoResponsesToReviews' THEN 20
+    WHEN N'NotAlwaysRespondingToReviews' THEN 0
+    WHEN N'TimeToLeaveReviewResponse' THEN 20
+    WHEN N'NoQas' THEN 0
+    WHEN N'NoUpdates' THEN 1
+    WHEN N'NoPhotos' THEN 0
+    WHEN N'OverallRatingBelow4' THEN 3
+    WHEN N'NoRecentReviews' THEN 0
+    WHEN N'LowReviewCount' THEN 2
+    WHEN N'NoReviewsWithText' THEN 1
+    WHEN N'NoOwnerResponsesToRecentReviews' THEN 0
+    WHEN N'NoRecentPosts' THEN 1
+    WHEN N'VeryFewPhotos' THEN 0
+    WHEN N'QasPresentButUnanswered' THEN 0
+    WHEN N'ReviewVelocity' THEN 4
+    WHEN N'BurstyReviews' THEN 0
+    WHEN N'RatingTrendingDownward' THEN 0
+    WHEN N'LowEngagementOnReviews' THEN 2
+    WHEN N'BusinessHoursMissing' THEN 1
+    WHEN N'TownCentreDistanceRelative' THEN 11
+    WHEN N'KeywordsInBusinessTitle' THEN 0
+    WHEN N'PrimaryCategoryMatchesRun' THEN 4
+    WHEN N'PhysicalAddressMatchesSearchTown' THEN 0
+    WHEN N'HtmlNapMatchesGbpNap' THEN 0
+    WHEN N'KeywordsInLandingPageTitleTag' THEN 0
+    WHEN N'KeywordsInLandingPageHeadings' THEN 1
+    WHEN N'HomepageNicheFocus' THEN 1
+    WHEN N'HomepageTopicalKeywordRelevance' THEN 3
+    WHEN N'HomepageInternalLinking' THEN 2
+    WHEN N'KeywordsInInternalLinkAnchorText' THEN 4
+    WHEN N'WebsiteUsesHttpsByDefault' THEN 0
+    WHEN N'KeywordsInDomainName' THEN 0
+    ELSE FailScoreImpact
+  END,
+  UpdatedAtUtc = SYSUTCDATETIME()
+WHERE RuleKey IN (
+  N'MissingDescription',
+  N'DescriptionTooShort',
+  N'MissingSecondaryCategories',
+  N'NoResponsesToReviews',
+  N'NotAlwaysRespondingToReviews',
+  N'TimeToLeaveReviewResponse',
+  N'NoQas',
+  N'NoUpdates',
+  N'NoPhotos',
+  N'OverallRatingBelow4',
+  N'NoRecentReviews',
+  N'LowReviewCount',
+  N'NoReviewsWithText',
+  N'NoOwnerResponsesToRecentReviews',
+  N'NoRecentPosts',
+  N'VeryFewPhotos',
+  N'QasPresentButUnanswered',
+  N'ReviewVelocity',
+  N'BurstyReviews',
+  N'RatingTrendingDownward',
+  N'LowEngagementOnReviews',
+  N'BusinessHoursMissing',
+  N'TownCentreDistanceRelative',
+  N'KeywordsInBusinessTitle',
+  N'PrimaryCategoryMatchesRun',
+  N'PhysicalAddressMatchesSearchTown',
+  N'HtmlNapMatchesGbpNap',
+  N'KeywordsInLandingPageTitleTag',
+  N'KeywordsInLandingPageHeadings',
+  N'HomepageNicheFocus',
+  N'HomepageTopicalKeywordRelevance',
+  N'HomepageInternalLinking',
+  N'KeywordsInInternalLinkAnchorText',
+  N'WebsiteUsesHttpsByDefault',
+  N'KeywordsInDomainName'
+);";
+        await conn.ExecuteAsync(new CommandDefinition(auditWeightAlignmentSql, cancellationToken: ct));
         await SyncNoWebsiteAuditResultsAsync(conn, ct);
         await googleBusinessProfileCategoryService.ApplyCuratedPopularityAsync(ct);
         logger.LogInformation("Schema bootstrap completed.");

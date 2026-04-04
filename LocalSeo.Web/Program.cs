@@ -233,6 +233,13 @@ builder.Services.AddScoped<IAppleBingMapLinksService, AppleBingMapLinksService>(
 builder.Services.AddScoped<ISearchIngestionService, SearchIngestionService>();
 builder.Services.AddSingleton<ISearchRunExecutor, SearchRunExecutor>();
 builder.Services.AddScoped<IAdminSettingsService, AdminSettingsService>();
+builder.Services.AddScoped<ICloudflareWorkerService, CloudflareWorkerService>();
+builder.Services.AddHttpClient<IHomePageFetchWorkerClient, HomePageFetchWorkerClient>(client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(60);
+});
+builder.Services.AddScoped<IHomePageAuditParser, HomePageAuditParser>();
+builder.Services.AddScoped<IPlaceWebsiteService, PlaceWebsiteService>();
 builder.Services.AddScoped<IRobotsTxtWriter, RobotsTxtWriter>();
 builder.Services.AddScoped<ISecuritySettingsProvider, SecuritySettingsProvider>();
 builder.Services.AddScoped<IGbLocationDataListService, GbLocationDataListService>();
@@ -283,6 +290,7 @@ builder.Services.AddScoped<IReviewVelocityService, ReviewVelocityService>();
 builder.Services.AddScoped<ICompetitorVelocityAdapter, NullCompetitorVelocityAdapter>();
 builder.Services.AddScoped<IReportsService, ReportsService>();
 builder.Services.AddSingleton<IUserAgentInfoParser, UserAgentInfoParser>();
+builder.Services.AddSingleton<ILocationSlugService, LocationSlugService>();
 builder.Services.AddScoped<IAppErrorRepository, AppErrorRepository>();
 builder.Services.AddScoped<IAppErrorLogger, AppErrorLogger>();
 builder.Services.AddSingleton<IAnnouncementHtmlSanitizer, AnnouncementHtmlSanitizer>();
@@ -291,6 +299,7 @@ builder.Services.AddScoped<IAnnouncementService, AnnouncementService>();
 builder.Services.AddSingleton<IWebsiteClassifier, WebsiteClassifier>();
 builder.Services.AddScoped<ISeoAuditRepository, SeoAuditRepository>();
 builder.Services.AddScoped<ISeoAuditRuleHandler, FixedSeoAuditRuleHandler>();
+builder.Services.AddScoped<ISeoAuditRuleHandler, WebsiteBenchmarkSeoAuditRuleHandler>();
 builder.Services.AddScoped<ISeoAuditRuleHandler, BenchmarkSeoAuditRuleHandler>();
 builder.Services.AddScoped<ISeoAuditRuleHandler, CompetitorRelativeSeoAuditRuleHandler>();
 builder.Services.AddScoped<ISeoAuditService, SeoAuditService>();

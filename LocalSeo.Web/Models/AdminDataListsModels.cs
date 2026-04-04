@@ -156,7 +156,6 @@ public sealed record GbTownRow(
     string? Slug,
     decimal? Latitude,
     decimal? Longitude,
-    string? ExternalId,
     bool IsActive,
     int? SortOrder,
     DateTime CreatedUtc,
@@ -176,7 +175,6 @@ public sealed class GbTownCreateModel
     public string? Slug { get; set; }
     public decimal? Latitude { get; set; }
     public decimal? Longitude { get; set; }
-    public string? ExternalId { get; set; }
     public bool IsActive { get; set; } = true;
     public int? SortOrder { get; set; }
     public IReadOnlyList<GbCountyLookupItem> CountyOptions { get; set; } = [];
@@ -190,7 +188,6 @@ public sealed class GbTownEditModel
     public string? Slug { get; set; }
     public decimal? Latitude { get; set; }
     public decimal? Longitude { get; set; }
-    public string? ExternalId { get; set; }
     public bool IsActive { get; set; } = true;
     public int? SortOrder { get; set; }
     public IReadOnlyList<GbCountyLookupItem> CountyOptions { get; set; } = [];

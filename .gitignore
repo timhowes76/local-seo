@@ -19,3 +19,6 @@ publish/
 deploy-publish.ps1
 deploy-msdeploy.ps1
 agents.md
+**_out
+**LocalSeo.Web/_out
+**LocalSeo.Web/node_modules

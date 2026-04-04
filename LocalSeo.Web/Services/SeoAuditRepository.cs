@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Dapper;
 using LocalSeo.Web.Data;
 using LocalSeo.Web.Models;
@@ -360,6 +361,7 @@ WHERE SeoAuditRuleId = @SeoAuditRuleId;",
     p.PrimaryCategory,
     p.Description,
     p.FormattedAddress,
+    p.NationalPhoneNumber,
     p.WebsiteUri,
     p.WebsiteType,
   p.PhotoCount,
@@ -457,7 +459,123 @@ FROM LatestRun lr
 JOIN dbo.PlaceSnapshot ps ON ps.SearchRunId = lr.SearchRunId
 JOIN dbo.Place p ON p.PlaceId = ps.PlaceId
 GROUP BY p.PlaceId, p.Lat, p.Lng
-ORDER BY p.PlaceId ASC;",
+ORDER BY p.PlaceId ASC;
+
+IF OBJECT_ID(N'dbo.PlaceWebsite', N'U') IS NOT NULL
+BEGIN
+  SELECT TOP 1
+    PlaceWebsiteId,
+    WebsiteUrl,
+    NormalizedWebsiteUrl,
+    HostName,
+    IsHttps,
+    [Status],
+    LastCheckedUtc,
+    LastSuccessfulFetchUtc
+  FROM dbo.PlaceWebsite
+  WHERE PlaceId = @PlaceId
+  ORDER BY PlaceWebsiteId DESC;
+END
+ELSE
+BEGIN
+  SELECT
+    CAST(NULL AS int) AS PlaceWebsiteId,
+    CAST(NULL AS nvarchar(1000)) AS WebsiteUrl,
+    CAST(NULL AS nvarchar(1000)) AS NormalizedWebsiteUrl,
+    CAST(NULL AS nvarchar(255)) AS HostName,
+    CAST(NULL AS bit) AS IsHttps,
+    CAST(NULL AS nvarchar(50)) AS [Status],
+    CAST(NULL AS datetime2(3)) AS LastCheckedUtc,
+    CAST(NULL AS datetime2(3)) AS LastSuccessfulFetchUtc;
+END;
+
+IF OBJECT_ID(N'dbo.PlaceWebsiteFetch', N'U') IS NOT NULL AND OBJECT_ID(N'dbo.PlaceWebsite', N'U') IS NOT NULL
+BEGIN
+  SELECT TOP 1
+    f.PlaceWebsiteFetchId,
+    f.FetchStartedUtc,
+    f.FetchCompletedUtc,
+    f.Success,
+    f.RequestedUrl,
+    f.FinalUrl,
+    f.HttpStatusCode,
+    f.ErrorCode,
+    f.ErrorMessage
+  FROM dbo.PlaceWebsiteFetch f
+  JOIN dbo.PlaceWebsite w ON w.PlaceWebsiteId = f.PlaceWebsiteId
+  WHERE w.PlaceId = @PlaceId
+  ORDER BY f.FetchStartedUtc DESC, f.PlaceWebsiteFetchId DESC;
+END
+ELSE
+BEGIN
+  SELECT
+    CAST(NULL AS bigint) AS PlaceWebsiteFetchId,
+    CAST(NULL AS datetime2(3)) AS FetchStartedUtc,
+    CAST(NULL AS datetime2(3)) AS FetchCompletedUtc,
+    CAST(0 AS bit) AS Success,
+    CAST(NULL AS nvarchar(1000)) AS RequestedUrl,
+    CAST(NULL AS nvarchar(1000)) AS FinalUrl,
+    CAST(NULL AS int) AS HttpStatusCode,
+    CAST(NULL AS nvarchar(100)) AS ErrorCode,
+    CAST(NULL AS nvarchar(2000)) AS ErrorMessage;
+END;
+
+IF OBJECT_ID(N'dbo.PlaceWebsiteHomepageAudit', N'U') IS NOT NULL
+   AND OBJECT_ID(N'dbo.PlaceWebsiteFetch', N'U') IS NOT NULL
+   AND OBJECT_ID(N'dbo.PlaceWebsite', N'U') IS NOT NULL
+BEGIN
+  SELECT TOP 1
+    a.PlaceWebsiteFetchId,
+    a.TitleTag,
+    a.H1Text,
+    a.H2TextsJson,
+    a.H3TextsJson,
+    a.PhoneNumbersJson,
+    a.PostalAddressesJson,
+    a.PostcodesJson,
+    a.CityNamesJson,
+    a.BusinessNamesJson,
+    a.SchemaTypesJson,
+    a.HasLocalBusinessSchema,
+    a.PageScheme,
+    a.InternalLinkCount,
+    a.ServicePageLinkCount,
+    a.InternalAnchorTextsJson,
+    a.ServiceKeywordsJson,
+    a.LocationKeywordsJson,
+    a.ServiceTownCombinationsJson,
+    a.BrandNamesJson
+  FROM dbo.PlaceWebsiteHomepageAudit a
+  JOIN dbo.PlaceWebsiteFetch f ON f.PlaceWebsiteFetchId = a.PlaceWebsiteFetchId
+  JOIN dbo.PlaceWebsite w ON w.PlaceWebsiteId = f.PlaceWebsiteId
+  WHERE w.PlaceId = @PlaceId
+    AND f.Success = 1
+  ORDER BY f.FetchStartedUtc DESC, a.PlaceWebsiteHomepageAuditId DESC;
+END
+ELSE
+BEGIN
+  SELECT
+    CAST(NULL AS bigint) AS PlaceWebsiteFetchId,
+    CAST(NULL AS nvarchar(1000)) AS TitleTag,
+    CAST(NULL AS nvarchar(1000)) AS H1Text,
+    CAST(NULL AS nvarchar(max)) AS H2TextsJson,
+    CAST(NULL AS nvarchar(max)) AS H3TextsJson,
+    CAST(NULL AS nvarchar(max)) AS PhoneNumbersJson,
+    CAST(NULL AS nvarchar(max)) AS PostalAddressesJson,
+    CAST(NULL AS nvarchar(max)) AS PostcodesJson,
+    CAST(NULL AS nvarchar(max)) AS CityNamesJson,
+    CAST(NULL AS nvarchar(max)) AS BusinessNamesJson,
+    CAST(NULL AS nvarchar(max)) AS SchemaTypesJson,
+    CAST(0 AS bit) AS HasLocalBusinessSchema,
+    CAST(NULL AS nvarchar(10)) AS PageScheme,
+    CAST(NULL AS int) AS InternalLinkCount,
+    CAST(NULL AS int) AS ServicePageLinkCount,
+    CAST(NULL AS nvarchar(max)) AS InternalAnchorTextsJson,
+    CAST(NULL AS nvarchar(max)) AS ServiceKeywordsJson,
+    CAST(NULL AS nvarchar(max)) AS LocationKeywordsJson,
+    CAST(NULL AS nvarchar(max)) AS ServiceTownCombinationsJson,
+    CAST(NULL AS nvarchar(max)) AS BrandNamesJson;
+END;",
             new { PlaceId = normalizedPlaceId },
             cancellationToken: ct));
 
@@ -497,6 +615,9 @@ ORDER BY p.PlaceId ASC;",
                 x.Lat,
                 x.Lng))
             .ToList();
+        var website = await grid.ReadSingleOrDefaultAsync<PlaceWebsiteAuditContextRow>();
+        var latestWebsiteFetch = await grid.ReadSingleOrDefaultAsync<PlaceWebsiteFetchAuditContextRow>();
+        var latestHomepageAudit = await grid.ReadSingleOrDefaultAsync<PlaceWebsiteHomepageAuditContextRow>();
         var respondedReviewCount = reviews.Count(x => x.HasOwnerResponse);
 
         return new PlaceAuditContext(
@@ -505,6 +626,7 @@ ORDER BY p.PlaceId ASC;",
             place.PrimaryCategory,
             place.Description,
             place.FormattedAddress,
+            place.NationalPhoneNumber,
             place.WebsiteUri,
             place.WebsiteType,
             place.PhotoCount,
@@ -529,7 +651,23 @@ ORDER BY p.PlaceId ASC;",
             reviews,
             updates,
             questionsAndAnswers,
-            comparablePlaces);
+            comparablePlaces,
+            website is null || website.PlaceWebsiteId <= 0
+                ? null
+                : new PlaceWebsiteAuditContext(
+                    website.WebsiteUrl,
+                    website.NormalizedWebsiteUrl,
+                    website.HostName,
+                    website.IsHttps,
+                    website.Status,
+                    website.LastCheckedUtc,
+                    website.LastSuccessfulFetchUtc),
+            latestWebsiteFetch is null || latestWebsiteFetch.PlaceWebsiteFetchId <= 0
+                ? null
+                : BuildLatestWebsiteFetch(latestWebsiteFetch),
+            latestHomepageAudit is null || latestHomepageAudit.PlaceWebsiteFetchId <= 0
+                ? null
+                : BuildLatestHomepageAudit(latestHomepageAudit));
     }
 
     public async Task UpsertAuditResultsAsync(string placeId, long? lastSourceSearchRunId, IReadOnlyList<SeoAuditEvaluationResult> results, DateTime nowUtc, CancellationToken ct)
@@ -787,6 +925,60 @@ WHERE SeoAuditRuleParameterId IN @Ids;",
         return Math.Max(0, (ownerTimestampUtc.Date - reviewTimestampUtc.Date).Days);
     }
 
+    private static IReadOnlyList<string> DeserializeJsonList(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+            return [];
+
+        try
+        {
+            return JsonSerializer.Deserialize<List<string>>(json) ?? [];
+        }
+        catch
+        {
+            return [];
+        }
+    }
+
+    private static PlaceWebsiteFetchAuditContext BuildLatestWebsiteFetch(PlaceWebsiteFetchAuditContextRow row)
+    {
+        return new PlaceWebsiteFetchAuditContext(
+            row.PlaceWebsiteFetchId.GetValueOrDefault(),
+            row.FetchStartedUtc ?? DateTime.MinValue,
+            row.FetchCompletedUtc,
+            row.Success,
+            row.RequestedUrl ?? string.Empty,
+            row.FinalUrl,
+            row.HttpStatusCode,
+            row.ErrorCode,
+            row.ErrorMessage);
+    }
+
+    private static PlaceWebsiteHomepageAuditContext BuildLatestHomepageAudit(PlaceWebsiteHomepageAuditContextRow row)
+    {
+        return new PlaceWebsiteHomepageAuditContext(
+            row.PlaceWebsiteFetchId.GetValueOrDefault(),
+            row.TitleTag,
+            row.H1Text,
+            DeserializeJsonList(row.H2TextsJson),
+            DeserializeJsonList(row.H3TextsJson),
+            DeserializeJsonList(row.PhoneNumbersJson),
+            DeserializeJsonList(row.PostalAddressesJson),
+            DeserializeJsonList(row.PostcodesJson),
+            DeserializeJsonList(row.CityNamesJson),
+            DeserializeJsonList(row.BusinessNamesJson),
+            DeserializeJsonList(row.SchemaTypesJson),
+            row.HasLocalBusinessSchema,
+            row.PageScheme,
+            row.InternalLinkCount,
+            row.ServicePageLinkCount,
+            DeserializeJsonList(row.InternalAnchorTextsJson),
+            DeserializeJsonList(row.ServiceKeywordsJson),
+            DeserializeJsonList(row.LocationKeywordsJson),
+            DeserializeJsonList(row.ServiceTownCombinationsJson),
+            DeserializeJsonList(row.BrandNamesJson));
+    }
+
     private sealed record SeoAuditRuleDataRow(
         long SeoAuditRuleId,
         string RuleKey,
@@ -822,6 +1014,7 @@ WHERE SeoAuditRuleParameterId IN @Ids;",
         string? PrimaryCategory,
         string? Description,
         string? FormattedAddress,
+        string? NationalPhoneNumber,
         string? WebsiteUri,
         WebsiteType WebsiteType,
         int? PhotoCount,
@@ -838,6 +1031,49 @@ WHERE SeoAuditRuleParameterId IN @Ids;",
         long? LastSourceSearchRunId,
         decimal? LatestRating,
         int? LatestUserRatingCount);
+
+    private sealed record PlaceWebsiteAuditContextRow(
+        int? PlaceWebsiteId,
+        string? WebsiteUrl,
+        string? NormalizedWebsiteUrl,
+        string? HostName,
+        bool? IsHttps,
+        string? Status,
+        DateTime? LastCheckedUtc,
+        DateTime? LastSuccessfulFetchUtc);
+
+    private sealed record PlaceWebsiteFetchAuditContextRow(
+        long? PlaceWebsiteFetchId,
+        DateTime? FetchStartedUtc,
+        DateTime? FetchCompletedUtc,
+        bool Success,
+        string? RequestedUrl,
+        string? FinalUrl,
+        int? HttpStatusCode,
+        string? ErrorCode,
+        string? ErrorMessage);
+
+    private sealed record PlaceWebsiteHomepageAuditContextRow(
+        long? PlaceWebsiteFetchId,
+        string? TitleTag,
+        string? H1Text,
+        string? H2TextsJson,
+        string? H3TextsJson,
+        string? PhoneNumbersJson,
+        string? PostalAddressesJson,
+        string? PostcodesJson,
+        string? CityNamesJson,
+        string? BusinessNamesJson,
+        string? SchemaTypesJson,
+        bool HasLocalBusinessSchema,
+        string? PageScheme,
+        int? InternalLinkCount,
+        int? ServicePageLinkCount,
+        string? InternalAnchorTextsJson,
+        string? ServiceKeywordsJson,
+        string? LocationKeywordsJson,
+        string? ServiceTownCombinationsJson,
+        string? BrandNamesJson);
 
     private sealed record PlaceReviewAuditRowData(
         DateTime? ReviewTimestampUtc,

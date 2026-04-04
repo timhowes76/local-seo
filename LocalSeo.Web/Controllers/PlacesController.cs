@@ -13,7 +13,8 @@ public class PlacesController(
     IReviewsProviderResolver reviewsProviderResolver,
     IZohoLeadSyncService zohoLeadSyncService,
     IReportsService reportsService,
-    ISeoAuditService seoAuditService) : Controller
+    ISeoAuditService seoAuditService,
+    IPlaceWebsiteService placeWebsiteService) : Controller
 {
     private static readonly int[] AllowedTakeOptions = [25, 50, 100, 500, 1000];
 
@@ -75,6 +76,7 @@ public class PlacesController(
             };
         }
 
+        model.WebsiteAnalysis = await placeWebsiteService.GetTabViewModelAsync(id, ct);
         ViewBag.RequestedRunId = runId;
         return View(model);
     }
@@ -94,6 +96,15 @@ public class PlacesController(
         }
 
         return RedirectToAction(nameof(Details), new { id, runId, tab = "actions" });
+    }
+
+    [HttpPost("/places/{id}/website/fetch-homepage")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> FetchHomePage(string id, [FromQuery] long? runId, CancellationToken ct)
+    {
+        var result = await placeWebsiteService.FetchHomePageAsync(id, ct);
+        TempData["Status"] = result.Message;
+        return RedirectToAction(nameof(Details), new { id, runId, tab = "website" });
     }
 
     [HttpGet("/places/{id}/edit")]

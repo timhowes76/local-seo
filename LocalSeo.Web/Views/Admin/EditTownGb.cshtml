@@ -27,6 +27,7 @@
         <h2 class="card-title">Edit Town</h2>
         <form method="post" action="@actionUrl" class="form-grid">
             @Html.AntiForgeryToken()
+            @Html.ValidationSummary(false)
             <input type="hidden" name="TownId" value="@Model.TownId" />
 
             <div class="form-row">
@@ -63,6 +64,7 @@
             <div class="form-row">
                 <label for="Slug">Slug</label>
                 <input id="Slug" name="Slug" type="text" value="@Model.Slug" />
+                @Html.ValidationMessageFor(x => x.Slug)
             </div>
 
             <div class="form-row">
@@ -73,11 +75,6 @@
             <div class="form-row">
                 <label for="Longitude">Longitude</label>
                 <input id="Longitude" name="Longitude" type="number" step="0.000001" value="@Model.Longitude" />
-            </div>
-
-            <div class="form-row">
-                <label for="ExternalId">External ID</label>
-                <input id="ExternalId" name="ExternalId" type="text" value="@Model.ExternalId" />
             </div>
 
             <div class="form-row">

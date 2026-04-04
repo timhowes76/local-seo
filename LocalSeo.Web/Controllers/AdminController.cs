@@ -13,6 +13,7 @@ public class AdminController(
     IRobotsTxtWriter robotsTxtWriter,
     IEmailSignatureSettingsService emailSignatureSettingsService,
     IGbLocationDataListService gbLocationDataListService,
+    ILocationSlugService locationSlugService,
     IGoogleBusinessProfileCategoryService googleBusinessProfileCategoryService,
     IGoogleBusinessProfileOAuthService googleBusinessProfileOAuthService) : Controller
 {
@@ -785,10 +786,7 @@ public class AdminController(
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 50)
     {
-        ViewBag.ReturnQ = (q ?? string.Empty).Trim();
-        ViewBag.ReturnStatus = NormalizeActiveFilter(status);
-        ViewBag.ReturnPage = Math.Max(1, page);
-        ViewBag.ReturnPageSize = Math.Clamp(pageSize, 10, 200);
+        PopulateCountyReturnContext(q, status, page, pageSize);
         return View(new GbCountyCreateModel { IsActive = true });
     }
 
@@ -802,17 +800,30 @@ public class AdminController(
         [FromQuery] int pageSize = 50,
         CancellationToken ct = default)
     {
+        ValidateCountyModel(model);
+        if (!ModelState.IsValid)
+        {
+            PopulateCountyReturnContext(q, status, page, pageSize);
+            return View(model);
+        }
+
         try
         {
             await gbLocationDataListService.AddCountyAsync(model, ct);
             TempData["Status"] = $"Added county '{model.Name}'.";
+            return RedirectToAction(nameof(CountiesGb), BuildCountyListRouteValues(status, q, page, pageSize));
+        }
+        catch (InvalidOperationException ex)
+        {
+            AddGbLocationModelError(nameof(model.Slug), ex.Message);
+            PopulateCountyReturnContext(q, status, page, pageSize);
+            return View(model);
         }
         catch (Exception ex)
         {
             TempData["Status"] = $"Add county failed: {ex.Message}";
+            return RedirectToAction(nameof(CountiesGb), BuildCountyListRouteValues(status, q, page, pageSize));
         }
-
-        return RedirectToAction(nameof(CountiesGb), BuildCountyListRouteValues(status, q, page, pageSize));
     }
 
     [HttpGet("/admin/data-lists/counties-gb/edit")]
@@ -850,15 +861,11 @@ public class AdminController(
     {
         if (model.CountyId <= 0)
             return BadRequest("County ID is required.");
-        if (string.IsNullOrWhiteSpace(model.Name))
-            ModelState.AddModelError(nameof(model.Name), "Name is required.");
+        ValidateCountyModel(model);
 
         if (!ModelState.IsValid)
         {
-            ViewBag.ReturnQ = (q ?? string.Empty).Trim();
-            ViewBag.ReturnStatus = NormalizeActiveFilter(status);
-            ViewBag.ReturnPage = Math.Max(1, page);
-            ViewBag.ReturnPageSize = Math.Clamp(pageSize, 10, 200);
+            PopulateCountyReturnContext(q, status, page, pageSize);
             return View("EditCountyGb", model);
         }
 
@@ -868,12 +875,19 @@ public class AdminController(
             TempData["Status"] = touched
                 ? $"Updated county '{model.Name}'."
                 : "County was not found.";
+            return RedirectToAction(nameof(CountiesGb), BuildCountyListRouteValues(status, q, page, pageSize));
+        }
+        catch (InvalidOperationException ex)
+        {
+            AddGbLocationModelError(nameof(model.Slug), ex.Message);
+            PopulateCountyReturnContext(q, status, page, pageSize);
+            return View("EditCountyGb", model);
         }
         catch (Exception ex)
         {
             TempData["Status"] = $"Update county failed: {ex.Message}";
+            return RedirectToAction(nameof(CountiesGb), BuildCountyListRouteValues(status, q, page, pageSize));
         }
-        return RedirectToAction(nameof(CountiesGb), BuildCountyListRouteValues(status, q, page, pageSize));
     }
 
     [HttpPost("/admin/data-lists/counties-gb/mark-inactive")]
@@ -990,11 +1004,7 @@ public class AdminController(
         if (normalizedCountyId <= 0 || counties.All(x => x.CountyId != normalizedCountyId))
             normalizedCountyId = counties.FirstOrDefault(x => x.IsActive)?.CountyId ?? counties.FirstOrDefault()?.CountyId ?? 0;
 
-        ViewBag.ReturnQ = (q ?? string.Empty).Trim();
-        ViewBag.ReturnStatus = NormalizeActiveFilter(status);
-        ViewBag.ReturnCountyId = countyId.HasValue && countyId.Value > 0 ? countyId : null;
-        ViewBag.ReturnPage = Math.Max(1, page);
-        ViewBag.ReturnPageSize = Math.Clamp(pageSize, 10, 200);
+        PopulateTownReturnContext(q, status, countyId, page, pageSize);
 
         var model = new GbTownCreateModel
         {
@@ -1016,17 +1026,32 @@ public class AdminController(
         [FromQuery] int pageSize = 50,
         CancellationToken ct = default)
     {
+        ValidateTownModel(model);
+        if (!ModelState.IsValid)
+        {
+            await PopulateTownCreateModelAsync(model, ct);
+            PopulateTownReturnContext(q, status, countyId, page, pageSize);
+            return View(model);
+        }
+
         try
         {
             await gbLocationDataListService.AddTownAsync(model, ct);
             TempData["Status"] = $"Added town '{model.Name}'.";
+            return RedirectToAction(nameof(TownsGb), BuildTownListRouteValues(status, q, countyId, page, pageSize));
+        }
+        catch (InvalidOperationException ex)
+        {
+            AddGbLocationModelError(nameof(model.Slug), ex.Message);
+            await PopulateTownCreateModelAsync(model, ct);
+            PopulateTownReturnContext(q, status, countyId, page, pageSize);
+            return View(model);
         }
         catch (Exception ex)
         {
             TempData["Status"] = $"Add town failed: {ex.Message}";
+            return RedirectToAction(nameof(TownsGb), BuildTownListRouteValues(status, q, countyId, page, pageSize));
         }
-
-        return RedirectToAction(nameof(TownsGb), BuildTownListRouteValues(status, q, countyId, page, pageSize));
     }
 
     [HttpGet("/admin/data-lists/towns-gb/edit")]
@@ -1145,20 +1170,12 @@ public class AdminController(
     {
         if (model.TownId <= 0)
             return BadRequest("Town ID is required.");
-        if (model.CountyId <= 0)
-            ModelState.AddModelError(nameof(model.CountyId), "County is required.");
-        if (string.IsNullOrWhiteSpace(model.Name))
-            ModelState.AddModelError(nameof(model.Name), "Name is required.");
+        ValidateTownModel(model);
 
         if (!ModelState.IsValid)
         {
-            var counties = await gbLocationDataListService.GetCountyLookupAsync(includeInactive: true, ct);
-            model.CountyOptions = counties;
-            ViewBag.ReturnQ = (q ?? string.Empty).Trim();
-            ViewBag.ReturnStatus = NormalizeActiveFilter(status);
-            ViewBag.ReturnCountyId = countyId.HasValue && countyId.Value > 0 ? countyId : null;
-            ViewBag.ReturnPage = Math.Max(1, page);
-            ViewBag.ReturnPageSize = Math.Clamp(pageSize, 10, 200);
+            await PopulateTownEditModelAsync(model, ct);
+            PopulateTownReturnContext(q, status, countyId, page, pageSize);
             return View("EditTownGb", model);
         }
 
@@ -1168,13 +1185,20 @@ public class AdminController(
             TempData["Status"] = touched
                 ? $"Updated town '{model.Name}'."
                 : "Town was not found.";
+            return RedirectToAction(nameof(TownsGb), BuildTownListRouteValues(status, q, countyId, page, pageSize));
+        }
+        catch (InvalidOperationException ex)
+        {
+            AddGbLocationModelError(nameof(model.Slug), ex.Message);
+            await PopulateTownEditModelAsync(model, ct);
+            PopulateTownReturnContext(q, status, countyId, page, pageSize);
+            return View("EditTownGb", model);
         }
         catch (Exception ex)
         {
             TempData["Status"] = $"Update town failed: {ex.Message}";
+            return RedirectToAction(nameof(TownsGb), BuildTownListRouteValues(status, q, countyId, page, pageSize));
         }
-
-        return RedirectToAction(nameof(TownsGb), BuildTownListRouteValues(status, q, countyId, page, pageSize));
     }
 
     [HttpPost("/admin/data-lists/towns-gb/mark-inactive")]
@@ -1196,6 +1220,115 @@ public class AdminController(
             ? "Town marked as inactive."
             : "Town was not found.";
         return RedirectToAction(nameof(TownsGb), BuildTownListRouteValues(status, q, countyId, page, pageSize));
+    }
+
+    private void ValidateCountyModel(GbCountyCreateModel model)
+    {
+        model.Name = (model.Name ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(model.Name))
+            ModelState.AddModelError(nameof(model.Name), "Name is required.");
+
+        var slugResult = locationSlugService.NormalizeOptionalSlug(model.Slug);
+        if (!slugResult.Success)
+        {
+            ModelState.AddModelError(nameof(model.Slug), slugResult.ErrorMessage ?? "Slug is invalid.");
+        }
+        else
+        {
+            model.Slug = slugResult.Value;
+        }
+    }
+
+    private void ValidateCountyModel(GbCountyEditModel model)
+    {
+        model.Name = (model.Name ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(model.Name))
+            ModelState.AddModelError(nameof(model.Name), "Name is required.");
+
+        var slugResult = locationSlugService.NormalizeOptionalSlug(model.Slug);
+        if (!slugResult.Success)
+        {
+            ModelState.AddModelError(nameof(model.Slug), slugResult.ErrorMessage ?? "Slug is invalid.");
+        }
+        else
+        {
+            model.Slug = slugResult.Value;
+        }
+    }
+
+    private void ValidateTownModel(GbTownCreateModel model)
+    {
+        if (model.CountyId <= 0)
+            ModelState.AddModelError(nameof(model.CountyId), "County is required.");
+
+        model.Name = (model.Name ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(model.Name))
+            ModelState.AddModelError(nameof(model.Name), "Name is required.");
+
+        var slugResult = locationSlugService.NormalizeOptionalSlug(model.Slug);
+        if (!slugResult.Success)
+        {
+            ModelState.AddModelError(nameof(model.Slug), slugResult.ErrorMessage ?? "Slug is invalid.");
+        }
+        else
+        {
+            model.Slug = slugResult.Value;
+        }
+    }
+
+    private void ValidateTownModel(GbTownEditModel model)
+    {
+        if (model.CountyId <= 0)
+            ModelState.AddModelError(nameof(model.CountyId), "County is required.");
+
+        model.Name = (model.Name ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(model.Name))
+            ModelState.AddModelError(nameof(model.Name), "Name is required.");
+
+        var slugResult = locationSlugService.NormalizeOptionalSlug(model.Slug);
+        if (!slugResult.Success)
+        {
+            ModelState.AddModelError(nameof(model.Slug), slugResult.ErrorMessage ?? "Slug is invalid.");
+        }
+        else
+        {
+            model.Slug = slugResult.Value;
+        }
+    }
+
+    private void AddGbLocationModelError(string slugFieldName, string message)
+    {
+        if (message.Contains("slug", StringComparison.OrdinalIgnoreCase))
+            ModelState.AddModelError(slugFieldName, message);
+        else
+            ModelState.AddModelError(string.Empty, message);
+    }
+
+    private void PopulateCountyReturnContext(string? q, string? status, int page, int pageSize)
+    {
+        ViewBag.ReturnQ = (q ?? string.Empty).Trim();
+        ViewBag.ReturnStatus = NormalizeActiveFilter(status);
+        ViewBag.ReturnPage = Math.Max(1, page);
+        ViewBag.ReturnPageSize = Math.Clamp(pageSize, 10, 200);
+    }
+
+    private void PopulateTownReturnContext(string? q, string? status, long? countyId, int page, int pageSize)
+    {
+        ViewBag.ReturnQ = (q ?? string.Empty).Trim();
+        ViewBag.ReturnStatus = NormalizeActiveFilter(status);
+        ViewBag.ReturnCountyId = countyId.HasValue && countyId.Value > 0 ? countyId : null;
+        ViewBag.ReturnPage = Math.Max(1, page);
+        ViewBag.ReturnPageSize = Math.Clamp(pageSize, 10, 200);
+    }
+
+    private async Task PopulateTownCreateModelAsync(GbTownCreateModel model, CancellationToken ct)
+    {
+        model.CountyOptions = await gbLocationDataListService.GetCountyLookupAsync(includeInactive: true, ct);
+    }
+
+    private async Task PopulateTownEditModelAsync(GbTownEditModel model, CancellationToken ct)
+    {
+        model.CountyOptions = await gbLocationDataListService.GetCountyLookupAsync(includeInactive: true, ct);
     }
 
     private void ValidateNonNegative(string fieldName, int value, string unitLabel)

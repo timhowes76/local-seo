@@ -8,7 +8,8 @@ namespace LocalSeo.Web.Controllers;
 [Authorize(Policy = "StaffOnly")]
 public class RunsController(
     ISearchIngestionService ingestionService,
-    ISeoAuditService seoAuditService) : Controller
+    ISeoAuditService seoAuditService,
+    IPlaceWebsiteService placeWebsiteService) : Controller
 {
     [HttpGet("/runs")]
     public async Task<IActionResult> Index(CancellationToken ct)
@@ -55,6 +56,44 @@ public class RunsController(
 
         var evaluated = await seoAuditService.EvaluatePlacesAsync(placeIds!, ct);
         TempData["Status"] = $"Recalculated audits for {evaluated} place(s) in run {id}.";
+        return RedirectToAction(nameof(Details), new { id });
+    }
+
+    [HttpPost("/runs/{id:long}/actions/fetch-websites")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> FetchWebsites(long id, CancellationToken ct)
+    {
+        if (id <= 0)
+            return NotFound();
+
+        var run = await ingestionService.GetRunAsync(id, ct);
+        if (run is null)
+            return NotFound();
+
+        var snapshots = await ingestionService.GetRunSnapshotsAsync(id, ct);
+        var placeIds = snapshots
+            .Where(x => !string.IsNullOrWhiteSpace(x.PlaceId)
+                && !string.IsNullOrWhiteSpace(x.WebsiteUri)
+                && x.WebsiteType == WebsiteType.RealWebsite)
+            .Select(x => x.PlaceId)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (placeIds.Count == 0)
+        {
+            TempData["Status"] = $"Run {id} has no eligible websites to fetch.";
+            return RedirectToAction(nameof(Details), new { id });
+        }
+
+        var result = await placeWebsiteService.FetchHomePagesAsync(placeIds, ct);
+        var statusMessage = $"Fetched website home pages for {result.SuccessCount} of {result.TotalCount} eligible place(s) in run {id}.";
+        if (result.FailedCount > 0)
+        {
+            statusMessage += $" Failed: {result.FailedCount}.";
+            if (result.FailureMessages.Count > 0)
+                statusMessage += $" {string.Join(" | ", result.FailureMessages.Distinct(StringComparer.OrdinalIgnoreCase))}";
+        }
+
+        TempData["Status"] = statusMessage;
         return RedirectToAction(nameof(Details), new { id });
     }
 

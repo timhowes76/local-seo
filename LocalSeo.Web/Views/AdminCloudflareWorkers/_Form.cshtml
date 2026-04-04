@@ -1,0 +1,84 @@
+@model CloudflareWorkerEditViewModel
+@{
+    var worker = Model.Worker;
+    var isEdit = string.Equals(Model.Mode, "edit", StringComparison.OrdinalIgnoreCase);
+    var heading = isEdit ? "Edit Cloudflare Worker" : "Create Cloudflare Worker";
+}
+
+<div class="page-stack">
+    @if (!string.IsNullOrWhiteSpace(Model.Message))
+    {
+        <div class="notice">@Model.Message</div>
+    }
+
+    <section class="card">
+        <div class="card-header">
+            <h2 class="card-title">@heading</h2>
+            <a class="btn btn-secondary" href="/admin/settings/cloudflare-workers">Back to Cloudflare Workers</a>
+        </div>
+
+        <form method="post" class="form-grid">
+            @Html.AntiForgeryToken()
+            <div class="form-row">
+                <label asp-for="Worker.Name"></label>
+                <input asp-for="Worker.Name" />
+                <span asp-validation-for="Worker.Name" class="form-help form-help-error"></span>
+            </div>
+            <div class="form-row">
+                <label asp-for="Worker.WorkerKey">Worker Key</label>
+                <input asp-for="Worker.WorkerKey" />
+                <span asp-validation-for="Worker.WorkerKey" class="form-help form-help-error"></span>
+            </div>
+            <div class="form-row">
+                <label asp-for="Worker.BaseUrl">Base Url</label>
+                <input asp-for="Worker.BaseUrl" placeholder="https://example.workers.dev" />
+                <span asp-validation-for="Worker.BaseUrl" class="form-help form-help-error"></span>
+            </div>
+            <div class="form-row">
+                <label asp-for="Worker.RoutePath">Route Path</label>
+                <input asp-for="Worker.RoutePath" placeholder="/sales-local-seo-homepage-fetch" />
+                <span asp-validation-for="Worker.RoutePath" class="form-help form-help-error"></span>
+            </div>
+            <div class="form-row">
+                <label asp-for="Worker.AuthHeaderName">Auth Header Name</label>
+                <input asp-for="Worker.AuthHeaderName" placeholder="X-Worker-Token" />
+                <span asp-validation-for="Worker.AuthHeaderName" class="form-help form-help-error"></span>
+            </div>
+            <div class="form-row">
+                <label asp-for="Worker.AuthToken">Auth Token</label>
+                <input asp-for="Worker.AuthToken" type="password" autocomplete="new-password" />
+                <span asp-validation-for="Worker.AuthToken" class="form-help form-help-error"></span>
+                @if (isEdit && !string.IsNullOrWhiteSpace(worker.AuthTokenMasked))
+                {
+                    <span class="form-help">Stored token: @worker.AuthTokenMasked. Leave blank to keep the current value.</span>
+                }
+            </div>
+            <div class="search-location-row">
+                <div class="form-row">
+                    <label asp-for="Worker.TimeoutSeconds">Timeout Seconds</label>
+                    <input asp-for="Worker.TimeoutSeconds" type="number" min="1" max="300" />
+                    <span asp-validation-for="Worker.TimeoutSeconds" class="form-help form-help-error"></span>
+                </div>
+                <div class="form-row">
+                    <label asp-for="Worker.DisplayOrder">Display Order</label>
+                    <input asp-for="Worker.DisplayOrder" type="number" min="0" />
+                    <span asp-validation-for="Worker.DisplayOrder" class="form-help form-help-error"></span>
+                </div>
+            </div>
+            <div class="form-row">
+                <label class="checkbox-row">
+                    <input asp-for="Worker.IsEnabled" type="checkbox" />
+                    <span>Enabled</span>
+                </label>
+            </div>
+            <div class="form-row">
+                <label asp-for="Worker.Notes"></label>
+                <textarea asp-for="Worker.Notes" rows="5"></textarea>
+                <span asp-validation-for="Worker.Notes" class="form-help form-help-error"></span>
+            </div>
+            <div class="toolbar">
+                <button type="submit">Save</button>
+            </div>
+        </form>
+    </section>
+</div>

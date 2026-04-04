@@ -29,7 +29,9 @@ public interface IGbLocationDataListService
     Task<IReadOnlyList<SearchRun>> GetRunsByCountyAsync(long countyId, CancellationToken ct);
 }
 
-public sealed class GbLocationDataListService(ISqlConnectionFactory connectionFactory) : IGbLocationDataListService
+public sealed class GbLocationDataListService(
+    ISqlConnectionFactory connectionFactory,
+    ILocationSlugService locationSlugService) : IGbLocationDataListService
 {
     public async Task<GbCountyListResult> GetCountiesPagedAsync(string? statusFilter, string? search, int page, int pageSize, CancellationToken ct)
     {
@@ -152,7 +154,7 @@ WHERE CountyId = @CountyId;", new { CountyId = countyId }, cancellationToken: ct
     public async Task AddCountyAsync(GbCountyCreateModel model, CancellationToken ct)
     {
         var normalizedName = NormalizeRequiredName(model.Name, "County name");
-        var normalizedSlug = NormalizeNullable(model.Slug);
+        var normalizedSlug = NormalizeSlug(model.Slug);
 
         await using var conn = (SqlConnection)await connectionFactory.OpenConnectionAsync(ct);
         var nextSortOrder = await conn.ExecuteScalarAsync<int>(new CommandDefinition(@"
@@ -172,7 +174,7 @@ VALUES(@Name, @Slug, @IsActive, @SortOrder, SYSUTCDATETIME(), SYSUTCDATETIME());
     public async Task<bool> UpdateCountyAsync(GbCountyEditModel model, CancellationToken ct)
     {
         var normalizedName = NormalizeRequiredName(model.Name, "County name");
-        var normalizedSlug = NormalizeNullable(model.Slug);
+        var normalizedSlug = NormalizeSlug(model.Slug);
 
         await using var conn = (SqlConnection)await connectionFactory.OpenConnectionAsync(ct);
         var touched = await conn.ExecuteAsync(new CommandDefinition(@"
@@ -279,7 +281,7 @@ WHERE t.TownId = @TownId;", new { TownId = townId }, cancellationToken: ct));
         if (normalizedStatus is not null)
             whereParts.Add("t.IsActive = @IsActiveFilter");
         if (!string.IsNullOrWhiteSpace(normalizedSearch))
-            whereParts.Add("(t.Name LIKE @SearchPattern OR t.Slug LIKE @SearchPattern OR t.ExternalId LIKE @SearchPattern)");
+            whereParts.Add("(t.Name LIKE @SearchPattern OR t.Slug LIKE @SearchPattern)");
         if (countyId.HasValue && countyId.Value > 0)
             whereParts.Add("t.CountyId = @CountyIdFilter");
         var whereSql = whereParts.Count == 0 ? string.Empty : $"WHERE {string.Join(" AND ", whereParts)}";
@@ -323,7 +325,6 @@ SELECT
   t.Slug,
   t.Latitude,
   t.Longitude,
-  t.ExternalId,
   t.IsActive,
   t.SortOrder,
   t.CreatedUtc,
@@ -358,7 +359,6 @@ SELECT
   t.Slug,
   t.Latitude,
   t.Longitude,
-  t.ExternalId,
   t.IsActive,
   t.SortOrder,
   t.CreatedUtc,
@@ -410,7 +410,6 @@ SELECT
   Slug,
   Latitude,
   Longitude,
-  ExternalId,
   IsActive,
   SortOrder
 FROM dbo.GbTown
@@ -420,8 +419,7 @@ WHERE TownId = @TownId;", new { TownId = townId }, cancellationToken: ct));
     public async Task AddTownAsync(GbTownCreateModel model, CancellationToken ct)
     {
         var normalizedName = NormalizeRequiredName(model.Name, "Town name");
-        var normalizedSlug = NormalizeNullable(model.Slug);
-        var normalizedExternalId = NormalizeNullable(model.ExternalId);
+        var normalizedSlug = NormalizeSlug(model.Slug);
         if (model.CountyId <= 0)
             throw new InvalidOperationException("County is required.");
 
@@ -456,7 +454,6 @@ SET
   Slug = @Slug,
   Latitude = COALESCE(@Latitude, Latitude),
   Longitude = COALESCE(@Longitude, Longitude),
-  ExternalId = @ExternalId,
   IsActive = @IsActive,
   UpdatedUtc = SYSUTCDATETIME()
 WHERE TownId = @TownId;", new
@@ -465,7 +462,6 @@ WHERE TownId = @TownId;", new
                 Slug = normalizedSlug,
                 Latitude = (decimal?)null,
                 Longitude = (decimal?)null,
-                ExternalId = normalizedExternalId,
                 model.IsActive
             }, cancellationToken: ct));
             return;
@@ -477,15 +473,14 @@ FROM dbo.GbTown
 WHERE CountyId = @CountyId;", new { model.CountyId }, cancellationToken: ct));
 
         await conn.ExecuteAsync(new CommandDefinition(@"
-INSERT INTO dbo.GbTown(CountyId, Name, Slug, Latitude, Longitude, ExternalId, IsActive, SortOrder, CreatedUtc, UpdatedUtc)
-VALUES(@CountyId, @Name, @Slug, @Latitude, @Longitude, @ExternalId, @IsActive, @SortOrder, SYSUTCDATETIME(), SYSUTCDATETIME());", new
+INSERT INTO dbo.GbTown(CountyId, Name, Slug, Latitude, Longitude, IsActive, SortOrder, CreatedUtc, UpdatedUtc)
+VALUES(@CountyId, @Name, @Slug, @Latitude, @Longitude, @IsActive, @SortOrder, SYSUTCDATETIME(), SYSUTCDATETIME());", new
         {
             model.CountyId,
             Name = normalizedName,
             Slug = normalizedSlug,
             Latitude = (decimal?)null,
             Longitude = (decimal?)null,
-            ExternalId = normalizedExternalId,
             model.IsActive,
             SortOrder = nextSortOrder
         }, cancellationToken: ct));
@@ -494,8 +489,7 @@ VALUES(@CountyId, @Name, @Slug, @Latitude, @Longitude, @ExternalId, @IsActive, @
     public async Task<bool> UpdateTownAsync(GbTownEditModel model, CancellationToken ct)
     {
         var normalizedName = NormalizeRequiredName(model.Name, "Town name");
-        var normalizedSlug = NormalizeNullable(model.Slug);
-        var normalizedExternalId = NormalizeNullable(model.ExternalId);
+        var normalizedSlug = NormalizeSlug(model.Slug);
         await ValidateTownInputsAsync(model.CountyId, normalizedName, model.TownId, ct);
 
         await using var conn = (SqlConnection)await connectionFactory.OpenConnectionAsync(ct);
@@ -507,7 +501,6 @@ SET
   Slug = @Slug,
   Latitude = @Latitude,
   Longitude = @Longitude,
-  ExternalId = @ExternalId,
   IsActive = @IsActive,
   UpdatedUtc = SYSUTCDATETIME()
 WHERE TownId = @TownId;", new
@@ -518,7 +511,6 @@ WHERE TownId = @TownId;", new
             Slug = normalizedSlug,
             model.Latitude,
             model.Longitude,
-            ExternalId = normalizedExternalId,
             model.IsActive
         }, cancellationToken: ct));
         return touched > 0;
@@ -652,6 +644,15 @@ WHERE CountyId = @CountyId
     {
         var normalized = (value ?? string.Empty).Trim();
         return string.IsNullOrWhiteSpace(normalized) ? null : normalized;
+    }
+
+    private string? NormalizeSlug(string? value)
+    {
+        var result = locationSlugService.NormalizeOptionalSlug(value);
+        if (!result.Success)
+            throw new InvalidOperationException(result.ErrorMessage ?? "Slug is invalid.");
+
+        return result.Value;
     }
 
     private sealed record ExistingTownRow(long TownId, bool IsActive);

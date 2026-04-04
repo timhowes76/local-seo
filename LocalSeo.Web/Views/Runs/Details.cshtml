@@ -150,7 +150,7 @@
             </div>
         </section>
         <section class="run-actions-grid">
-            <a href="/runs/@Model.Run.SearchRunId/compare-reviews" class="home-nav-card run-action-card run-action-card-wide">
+            <a href="/runs/@Model.Run.SearchRunId/compare-reviews" class="home-nav-card run-action-card">
                 <i class="bi bi-bar-chart-line home-nav-icon"></i>
                 <span class="home-nav-title">Compare Reviews</span>
                 <span class="home-nav-subtitle">Compare review velocity and trends for this run</span>
@@ -160,7 +160,15 @@
                 <span class="home-nav-title">Rerun</span>
                 <span class="home-nav-subtitle">Run this search again with the same inputs</span>
             </a>
-            <form method="post" action="/runs/@Model.Run.SearchRunId/actions/recalculate-audits" class="home-nav-card run-action-card">
+            <form method="post" action="/runs/@Model.Run.SearchRunId/actions/fetch-websites" class="home-nav-card run-action-card" data-run-action-form>
+                @Html.AntiForgeryToken()
+                <button type="submit" class="run-action-submit">
+                    <i class="bi bi-globe2 home-nav-icon"></i>
+                    <span class="home-nav-title">Fetch Websites</span>
+                    <span class="home-nav-subtitle">Loop through eligible run places and fetch homepage analysis</span>
+                </button>
+            </form>
+            <form method="post" action="/runs/@Model.Run.SearchRunId/actions/recalculate-audits" class="home-nav-card run-action-card" data-run-action-form>
                 @Html.AntiForgeryToken()
                 <button type="submit" class="run-action-submit">
                     <i class="bi bi-clipboard-data home-nav-icon"></i>
@@ -804,3 +812,17 @@
         }
     </section>
 </div>
+
+<script>
+    (() => {
+        const actionForms = document.querySelectorAll("[data-run-action-form]");
+        actionForms.forEach(form => {
+            form.addEventListener("submit", () => {
+                const button = form.querySelector("button[type='submit']");
+                if (!(button instanceof HTMLButtonElement) || button.disabled) return;
+                button.disabled = true;
+                button.textContent = "Working...";
+            });
+        });
+    })();
+</script>
