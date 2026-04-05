@@ -17,6 +17,7 @@ public sealed record SearchRun(
     bool FetchGoogleQuestionsAndAnswers,
     bool FetchGoogleSocialProfiles,
     bool FetchAppleBing,
+    bool IsActive,
     DateTime RanAtUtc);
 
 public sealed record SearchRunProgressSnapshot(
@@ -128,6 +129,13 @@ public sealed record RunDetailsViewModel(
     IReadOnlyList<RunTaskProgressRow> TaskProgress)
 {
     public RunKeyphraseTrafficSummary? KeyphraseTraffic { get; init; }
+}
+
+public sealed record RunListViewModel(
+    IReadOnlyList<SearchRun> Rows,
+    string StatusFilter)
+{
+    public bool ShowingActive => !string.Equals(StatusFilter, "inactive", StringComparison.OrdinalIgnoreCase);
 }
 
 public sealed record RunKeyphraseTrafficSummary(

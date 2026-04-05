@@ -146,6 +146,7 @@ BEGIN
     FetchGoogleQuestionsAndAnswers bit NOT NULL CONSTRAINT DF_SearchRun_FetchGoogleQuestionsAndAnswers DEFAULT(0),
     FetchGoogleSocialProfiles bit NOT NULL CONSTRAINT DF_SearchRun_FetchGoogleSocialProfiles DEFAULT(0),
     FetchAppleBing bit NOT NULL CONSTRAINT DF_SearchRun_FetchAppleBing DEFAULT(0),
+    IsActive bit NOT NULL CONSTRAINT DF_SearchRun_IsActive DEFAULT(1),
     [Status] nvarchar(20) NOT NULL CONSTRAINT DF_SearchRun_Status DEFAULT(N'Completed'),
     TotalApiCalls int NULL,
     CompletedApiCalls int NULL,
@@ -169,6 +170,8 @@ IF COL_LENGTH('dbo.SearchRun', 'FetchGoogleSocialProfiles') IS NULL
   ALTER TABLE dbo.SearchRun ADD FetchGoogleSocialProfiles bit NOT NULL CONSTRAINT DF_SearchRun_FetchGoogleSocialProfiles_Alt DEFAULT(0);
 IF COL_LENGTH('dbo.SearchRun', 'FetchAppleBing') IS NULL
   ALTER TABLE dbo.SearchRun ADD FetchAppleBing bit NOT NULL CONSTRAINT DF_SearchRun_FetchAppleBing_Alt DEFAULT(0);
+IF COL_LENGTH('dbo.SearchRun', 'IsActive') IS NULL
+  ALTER TABLE dbo.SearchRun ADD IsActive bit NOT NULL CONSTRAINT DF_SearchRun_IsActive_Alt DEFAULT(1);
 IF COL_LENGTH('dbo.SearchRun', 'Status') IS NULL
   ALTER TABLE dbo.SearchRun ADD [Status] nvarchar(20) NOT NULL CONSTRAINT DF_SearchRun_Status_Alt DEFAULT(N'Completed');
 IF COL_LENGTH('dbo.SearchRun', 'TotalApiCalls') IS NULL
@@ -191,6 +194,13 @@ BEGIN
   UPDATE dbo.SearchRun
   SET [Status] = N''Completed''
   WHERE [Status] IS NULL OR LTRIM(RTRIM([Status])) = N'''';');
+END;
+IF COL_LENGTH('dbo.SearchRun', 'IsActive') IS NOT NULL
+BEGIN
+  EXEC(N'
+  UPDATE dbo.SearchRun
+  SET IsActive = 1
+  WHERE IsActive IS NULL;');
 END;
 IF COL_LENGTH('dbo.SearchRun', 'LastUpdatedUtc') IS NOT NULL
 BEGIN

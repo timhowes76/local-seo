@@ -12,8 +12,12 @@ public class RunsController(
     IPlaceWebsiteService placeWebsiteService) : Controller
 {
     [HttpGet("/runs")]
-    public async Task<IActionResult> Index(CancellationToken ct)
-        => View(await ingestionService.GetLatestRunsAsync(20, ct));
+    public async Task<IActionResult> Index([FromQuery] string? status, CancellationToken ct)
+    {
+        var normalizedStatus = NormalizeRunStatusFilter(status);
+        var rows = await ingestionService.GetLatestRunsAsync(20, normalizedStatus, ct);
+        return View(new RunListViewModel(rows, normalizedStatus ? "active" : "inactive"));
+    }
 
     [HttpGet("/runs/{id:long}")]
     public async Task<IActionResult> Details(long id, CancellationToken ct)
@@ -106,4 +110,22 @@ public class RunsController(
 
         return View(model);
     }
+
+    [HttpPost("/runs/{id:long}/actions/set-active")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> SetActive(long id, [FromForm] bool isActive, CancellationToken ct)
+    {
+        if (id <= 0)
+            return NotFound();
+
+        var changed = await ingestionService.SetRunActiveAsync(id, isActive, ct);
+        if (!changed)
+            return NotFound();
+
+        TempData["Status"] = isActive ? "Run marked as active." : "Run marked as inactive.";
+        return RedirectToAction(nameof(Details), new { id });
+    }
+
+    private static bool NormalizeRunStatusFilter(string? status)
+        => !string.Equals(status, "inactive", StringComparison.OrdinalIgnoreCase);
 }

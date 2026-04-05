@@ -107,6 +107,13 @@
                 </article>
                 <article class="run-summary-item">
                     <div class="run-summary-item-head">
+                        <i class="bi bi-toggle-on run-summary-icon" aria-hidden="true"></i>
+                        <span class="run-summary-label">Run Status</span>
+                    </div>
+                    <span class="status-pill @(Model.Run.IsActive ? "status-active" : "status-inactive")">@(Model.Run.IsActive ? "Active" : "Inactive")</span>
+                </article>
+                <article class="run-summary-item">
+                    <div class="run-summary-item-head">
                         <i class="bi bi-stars run-summary-icon" aria-hidden="true"></i>
                         <span class="run-summary-label">Enhanced Google Data</span>
                     </div>
@@ -810,6 +817,19 @@
             </script>
             <script async defer src="https://maps.googleapis.com/maps/api/js?key=@System.Uri.EscapeDataString(apiKey)&libraries=geometry&callback=initRunMap"></script>
         }
+    </section>
+
+    <section class="card">
+        <div class="card-header">
+            <h2 class="card-title">Run State</h2>
+            <span class="status-pill @(Model.Run.IsActive ? "status-active" : "status-inactive")">@(Model.Run.IsActive ? "Active" : "Inactive")</span>
+        </div>
+        <p class="muted">Use this toggle to move the run between the active and inactive runs lists.</p>
+        <form method="post" action="/runs/@Model.Run.SearchRunId/actions/set-active" class="toolbar" data-run-action-form>
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="isActive" value="@((!Model.Run.IsActive).ToString().ToLowerInvariant())" />
+            <button type="submit" class="btn btn-secondary">@(Model.Run.IsActive ? "Mark Inactive" : "Mark Active")</button>
+        </form>
     </section>
 </div>
 

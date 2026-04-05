@@ -1,11 +1,27 @@
-@model IReadOnlyList<SearchRun>
+@model RunListViewModel
 @{
     ViewData["Title"] = "Runs";
+    var showingActive = Model.ShowingActive;
 }
 
 <div class="page-stack">
     <section class="card">
-        <h2 class="card-title">Recent Runs</h2>
+        <div class="card-header">
+            <h2 class="card-title">Runs</h2>
+            <div class="toolbar">
+                @if (showingActive)
+                {
+                    <button type="button" class="btn" disabled>Active</button>
+                    <a href="/runs?status=inactive" class="btn btn-secondary">Inactive</a>
+                }
+                else
+                {
+                    <a href="/runs?status=active" class="btn btn-secondary">Active</a>
+                    <button type="button" class="btn" disabled>Inactive</button>
+                }
+            </div>
+        </div>
+        <p class="muted">Showing @(showingActive ? "active" : "inactive") runs.</p>
         <div class="table-wrap">
             <table>
                 <thead>
@@ -20,12 +36,13 @@
                         <th>Get Google Question &amp; Answers</th>
                         <th>Get Social Profiles</th>
                         <th>Get Apple/Bing</th>
+                        <th>Status</th>
                         <th>Ran</th>
                         <th>Details</th>
                     </tr>
                 </thead>
                 <tbody>
-                @foreach (var r in Model)
+                @foreach (var r in Model.Rows)
                 {
                     <tr>
                         <td>@r.SearchRunId</td>
@@ -92,6 +109,7 @@
                                 <span class="status-pill status-noreviews">No</span>
                             }
                         </td>
+                        <td><span class="status-pill @(r.IsActive ? "status-active" : "status-inactive")">@(r.IsActive ? "Active" : "Inactive")</span></td>
                         <td>@r.RanAtUtc</td>
                         <td><a href="/runs/@r.SearchRunId">View</a></td>
                     </tr>

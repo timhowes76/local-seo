@@ -15,8 +15,9 @@ public interface ISearchIngestionService
     Task<long> CreateQueuedRunAsync(SearchFormModel model, CancellationToken ct);
     Task ExecuteQueuedRunAsync(long runId, CancellationToken ct);
     Task<SearchRunProgressSnapshot?> GetRunProgressAsync(long runId, CancellationToken ct);
-    Task<IReadOnlyList<SearchRun>> GetLatestRunsAsync(int take, CancellationToken ct);
+    Task<IReadOnlyList<SearchRun>> GetLatestRunsAsync(int take, bool isActive, CancellationToken ct);
     Task<SearchRun?> GetRunAsync(long runId, CancellationToken ct);
+    Task<bool> SetRunActiveAsync(long runId, bool isActive, CancellationToken ct);
     Task<IReadOnlyList<PlaceSnapshotRow>> GetRunSnapshotsAsync(long runId, CancellationToken ct);
     Task<RunKeyphraseTrafficSummary?> GetRunKeyphraseTrafficSummaryAsync(long runId, CancellationToken ct);
     Task<IReadOnlyList<RunTaskProgressRow>> GetRunTaskProgressAsync(SearchRun run, CancellationToken ct);
@@ -1264,7 +1265,7 @@ VALUES(
         return trimmed.Length <= maxLength ? trimmed : trimmed[..maxLength];
     }
 
-    public async Task<IReadOnlyList<SearchRun>> GetLatestRunsAsync(int take, CancellationToken ct)
+    public async Task<IReadOnlyList<SearchRun>> GetLatestRunsAsync(int take, bool isActive, CancellationToken ct)
     {
         await using var conn = (Microsoft.Data.SqlClient.SqlConnection)await connectionFactory.OpenConnectionAsync(ct);
         var rows = await conn.QueryAsync<SearchRun>(new CommandDefinition(@"
@@ -1285,12 +1286,18 @@ SELECT TOP (@Take)
   r.FetchGoogleQuestionsAndAnswers,
   r.FetchGoogleSocialProfiles,
   r.FetchAppleBing,
+  r.IsActive,
   r.RanAtUtc
 FROM dbo.SearchRun r
 JOIN dbo.GoogleBusinessProfileCategory c ON c.CategoryId = r.CategoryId
 JOIN dbo.GbTown t ON t.TownId = r.TownId
 JOIN dbo.GbCounty county ON county.CountyId = t.CountyId
-ORDER BY r.SearchRunId DESC", new { Take = take }, cancellationToken: ct));
+WHERE r.IsActive = @IsActive
+ORDER BY r.SearchRunId DESC", new
+        {
+            Take = take,
+            IsActive = isActive
+        }, cancellationToken: ct));
         return rows.ToList();
     }
 
@@ -1315,12 +1322,30 @@ SELECT
   r.FetchGoogleQuestionsAndAnswers,
   r.FetchGoogleSocialProfiles,
   r.FetchAppleBing,
+  r.IsActive,
   r.RanAtUtc
 FROM dbo.SearchRun r
 JOIN dbo.GoogleBusinessProfileCategory c ON c.CategoryId = r.CategoryId
 JOIN dbo.GbTown t ON t.TownId = r.TownId
 JOIN dbo.GbCounty county ON county.CountyId = t.CountyId
 WHERE r.SearchRunId=@RunId", new { RunId = runId }, cancellationToken: ct));
+    }
+
+    public async Task<bool> SetRunActiveAsync(long runId, bool isActive, CancellationToken ct)
+    {
+        if (runId <= 0)
+            return false;
+
+        await using var conn = (Microsoft.Data.SqlClient.SqlConnection)await connectionFactory.OpenConnectionAsync(ct);
+        var touched = await conn.ExecuteAsync(new CommandDefinition(@"
+UPDATE dbo.SearchRun
+SET IsActive = @IsActive
+WHERE SearchRunId = @RunId;", new
+        {
+            RunId = runId,
+            IsActive = isActive
+        }, cancellationToken: ct));
+        return touched > 0;
     }
 
     public async Task<IReadOnlyList<PlaceSnapshotRow>> GetRunSnapshotsAsync(long runId, CancellationToken ct)
